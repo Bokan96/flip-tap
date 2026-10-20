@@ -52,6 +52,21 @@ export const STRINGS = {
 
   cardCost: (n: number) => (n < 0 ? `${-n}` : n > 0 ? `+${n}` : '0'),
   kindNames: { move: 'Move', guard: 'Guard', focus: 'Focus', attack: 'Attack', heal: 'Heal' } as Record<string, string>,
+  groupNames: { move: 'Move', attack: 'Attack', special: 'Special' } as Record<string, string>,
+
+  menuTitle: 'Menu',
+  resume: 'Resume',
+  quit: 'Quit to main menu',
+  close: 'Close',
+  speed: 'Speed',
+  speedNames: { fast: 'Fast', normal: 'Normal', slow: 'Slow' } as Record<string, string>,
+  deckOf: (who: string, fighter: string) => `${who} · ${fighter}`,
+  tapHint: 'Tap a fighter to see their cards',
+  stepOf: (n: number, total: number) => `Step ${n} / ${total}`,
+  roundSummary: (n: number) => `Round ${n} recap`,
+  nextRound: 'Next round',
+  seeResult: 'See result',
+  notPlayed: 'Not played',
 
   rules: [
     'Both players secretly plan 3 cards, then the cards resolve one step at a time, simultaneously.',
@@ -60,5 +75,6 @@ export const STRINGS = {
     'Cards cost energy. Your plan must stay affordable step by step. Focus gives energy back.',
     'Guard reduces incoming damage that step. Each card can be used once per round.',
     'Both fighters regain 15 energy after every round. Bring your opponent’s life to 0 to win.',
+    'Tap a fighter on the board to see every card they can play.',
   ],
 };

@@ -133,15 +133,22 @@ function runBattle(
   p0: { fighterId: string; bonusCards?: string[] },
   p1: { fighterId: string; bonusCards?: string[] },
   onEnd: (outcome: MatchOutcome) => void,
+  onQuit: () => void = title,
 ): void {
   let view: BattleView | null = null;
   const [s0, s1] = seatsFor(mode, () => view!);
   const names: [string, string] = [STRINGS.player(1), mode === 'hotseat' ? STRINGS.player(2) : STRINGS.cpu];
   const container = screen('', 'battle-screen');
-  view = new BattleView(container, createMatch(p0, p1), [
-    { name: names[0], source: s0 },
-    { name: names[1], source: s1 },
-  ], (outcome) => onEnd(outcome));
+  view = new BattleView(
+    container,
+    createMatch(p0, p1),
+    [
+      { name: names[0], source: s0 },
+      { name: names[1], source: s1 },
+    ],
+    (outcome) => onEnd(outcome),
+    onQuit,
+  );
 }
 
 function outcomeText(outcome: MatchOutcome, names: [string, string]): string {
@@ -238,6 +245,7 @@ function tournamentMatch(progress: TournamentProgress): void {
         ]);
       }
     },
+    () => tournamentHub(progress.fighterId),
   );
 }
 
