@@ -582,6 +582,10 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .setting > span { color: var(--muted); font-size: .9rem; }
 .setting .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .modal-box > .settings { min-width: min(320px, 100%); }
+.install-setting { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 2px; }
+.install-chip { font-weight: 700; }
+.install-note { margin: -2px 0 0; font-size: .8rem; text-align: left; }
+.install-note.steps { color: var(--text); }
 
 /* reduced effects */
 .reduced-fx .fx, .reduced-fx .confetti, .reduced-fx .tile::after, .reduced-fx .battle.ko-flash::after { display: none !important; }

@@ -86,18 +86,21 @@ export function onInstallChange(fn: () => void): () => void {
   return () => listeners.delete(fn);
 }
 
-/** Open the browser's install dialog. Resolves true if the player accepted. */
-export async function promptInstall(): Promise<boolean> {
+/**
+ * Open the browser's install dialog. 'unavailable' = there is no dialog to open, or the browser
+ * refused to show it (then the player can still install from the browser's menu).
+ */
+export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
   const e = deferred;
-  if (!e) return false;
+  if (!e) return 'unavailable';
   try {
     await e.prompt();
   } catch {
     // The browser refused (for example without a real tap); keep the offer for the next try.
-    return false;
+    return 'unavailable';
   }
   deferred = null; // each prompt event can only be shown once
   const { outcome } = await e.userChoice;
   notify();
-  return outcome === 'accepted';
+  return outcome;
 }

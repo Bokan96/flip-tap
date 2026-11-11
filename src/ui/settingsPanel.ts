@@ -17,6 +17,7 @@ import {
   type PlanTimer,
   type Speed,
 } from '../settings';
+import { installMode, isInstalled, onInstallChange, promptInstall } from '../pwa';
 import { haptic } from './fx';
 
 /** One settings panel, shared by the title screen and the in-battle menu. */
@@ -108,12 +109,52 @@ export function settingsHtml(): string {
         .map(([v, label]) => `<button class="chip${v === r.current() ? ' on' : ''}" data-v="${v}">${label}</button>`)
         .join('')}</div></div>`,
     )
-    .join('')}</div>`;
+    .join('')}${installRowHtml()}</div>`;
+}
+
+// ---------- "App" row: install the game to the home screen ----------
+
+function installRowHtml(): string {
+  return `<div class="setting install-setting"><span>${STRINGS.settings.app}</span><div class="chips">${installChip()}</div></div>
+    <p class="note install-note">${isInstalled() ? STRINGS.install.installedHint : STRINGS.install.hint}</p>`;
+}
+
+function installChip(): string {
+  return isInstalled()
+    ? `<button class="chip on" disabled>${STRINGS.install.installed}</button>`
+    : `<button class="chip install-chip" data-install>${STRINGS.install.settingsButton}</button>`;
+}
+
+/**
+ * Where the browser offers its own install dialog (Chrome, Edge, Brave, Samsung Internet), the
+ * button opens it. Otherwise (iPhone, or the browser hasn't offered it) the steps show right below.
+ */
+function bindInstallRow(root: HTMLElement): void {
+  const row = root.querySelector<HTMLElement>('.install-setting');
+  const note = root.querySelector<HTMLElement>('.install-note');
+  if (!row || !note) return;
+  const render = () => {
+    row.querySelector('.chips')!.innerHTML = installChip();
+    if (isInstalled()) note.textContent = STRINGS.install.installedHint;
+    row.querySelector('[data-install]')?.addEventListener('click', async () => {
+      play('click');
+      const mode = installMode();
+      if (mode === 'prompt' && (await promptInstall()) !== 'unavailable') {
+        render();
+        return;
+      }
+      note.textContent = mode === 'ios' ? STRINGS.install.iosSteps.join(' ') : STRINGS.install.manualSteps;
+      note.classList.add('steps');
+    });
+  };
+  render();
+  const stop = onInstallChange(() => (document.contains(row) ? render() : stop()));
 }
 
 export function bindSettings(root: HTMLElement): void {
+  bindInstallRow(root);
   const byKey = new Map(rows().map((r) => [r.key, r]));
-  root.querySelectorAll<HTMLElement>('.setting').forEach((rowEl) => {
+  root.querySelectorAll<HTMLElement>('.setting[data-set]').forEach((rowEl) => {
     const row = byKey.get(rowEl.dataset.set!)!;
     rowEl.querySelectorAll<HTMLElement>('[data-v]').forEach((chip) =>
       chip.addEventListener('click', () => {

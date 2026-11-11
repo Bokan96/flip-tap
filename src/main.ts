@@ -155,12 +155,14 @@ function bindInstallButton(root: HTMLElement): void {
   const stop = onInstallChange(() => (document.contains(btn) ? refresh() : stop()));
   btn.addEventListener('click', async () => {
     play('click');
-    if (installMode() === 'prompt') {
-      await promptInstall();
+    const mode = installMode();
+    if (mode === 'prompt' && (await promptInstall()) !== 'unavailable') {
       refresh();
-    } else {
-      modal(`<h2>${STRINGS.install.iosTitle}</h2><ol class="rules">${STRINGS.install.iosSteps.map((s) => `<li>${s}</li>`).join('')}</ol>`);
+      return;
     }
+    // iPhone/iPad, or the browser wouldn't open its dialog: explain how to do it from the browser.
+    const steps = mode === 'ios' ? STRINGS.install.iosSteps : [STRINGS.install.manualSteps];
+    modal(`<h2>${STRINGS.install.iosTitle}</h2><ol class="rules">${steps.map((s) => `<li>${s}</li>`).join('')}</ol>`);
   });
 }
 

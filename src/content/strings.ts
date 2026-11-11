@@ -23,6 +23,7 @@ export const STRINGS = {
     off: 'Off',
     full: 'Full',
     reduced: 'Reduced',
+    app: 'App',
   },
 
   resumeMatch: {
@@ -33,6 +34,11 @@ export const STRINGS = {
   install: {
     button: 'Install app',
     hint: 'Play from your home screen, even offline.',
+    settingsButton: '⤓ Install',
+    installed: '✓ Installed',
+    installedHint: 'You’re playing the installed app.',
+    /** Shown when the browser hasn't offered its own install dialog (yet). */
+    manualSteps: 'Open your browser’s menu (⋮) and choose “Install app” or “Add to Home screen”.',
     iosTitle: 'Install Flip Tap',
     iosSteps: [
       'Tap the Share button (the square with an arrow) in the browser toolbar.',
