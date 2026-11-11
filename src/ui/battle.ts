@@ -271,6 +271,8 @@ export class BattleView {
             <div class="bar energy"><i></i><em class="planned"></em><span></span></div>
           </div>`;
         panel.style.setProperty('--clr', f.color);
+        // One segment per 10 energy (10 segments for a standard 100 max).
+        panel.querySelector<HTMLElement>('.bar.energy')!.style.setProperty('--seg', String(Math.max(1, Math.round(p.energyMax / 10))));
         panel.title = STRINGS.tapHint;
         panel.dataset.ready = '1';
       }
@@ -675,7 +677,8 @@ export class BattleView {
     }
     const slot = this.hovered?.slot ?? Math.max(0, this.nextEmptySlot());
     const facing = this.projectedPath().facing[slot] ?? this.state.players[this.planSeat].facing;
-    panel.innerHTML = `${cardHtml(this.previewCard, { facing, readonly: true })}<p class="desc">${describeCard(this.previewCard)}</p>`;
+    const desc = describeCard(this.previewCard);
+    panel.innerHTML = cardHtml(this.previewCard, { facing, readonly: true }) + (desc ? `<p class="desc">${desc}</p>` : '');
   }
 
   private onPlannerHover(e: Event): void {

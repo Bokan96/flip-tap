@@ -462,7 +462,10 @@ function tournamentMatch(fighterId: string): void {
       const { card, champion } = recordLadderWin(fighterId, rivals.length);
       const extra =
         (champion ? `<p class="champion-line">★ ${STRINGS.newChampion(getFighter(fighterId).name)}</p>` : '') +
-        (card ? `<p>${STRINGS.newBonus}</p><div class="hand">${cardHtml(card)}</div><p class="note">${describeCard(card)}</p>` : '');
+        (card
+          ? `<p>${STRINGS.newBonus}</p><div class="hand">${cardHtml(card)}</div>` +
+            (describeCard(card) ? `<p class="note">${describeCard(card)}</p>` : '')
+          : '');
       resultScreen(outcomeText(outcome, names), 0, [fighterId, rival], [
         { label: STRINGS.continue, primary: true, fn: () => tournamentHub(fighterId) },
       ], extra, true);

@@ -103,41 +103,20 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
   </${tag}>`;
 }
 
-function moveText([dr, dc]: [number, number]): string {
-  const parts: string[] = [];
-  if (dr) parts.push(STRINGS.descMove(Math.abs(dr), dr < 0 ? STRINGS.dirNames.up : STRINGS.dirNames.down));
-  if (dc) parts.push(STRINGS.descMove(Math.abs(dc), dc < 0 ? STRINGS.dirNames.left : STRINGS.dirNames.right));
-  return parts.join(' ');
-}
-
-/** Plain-language description built from the card's numbers (plus any extra note in `text`). */
+/**
+ * Words for a card's special effects only (push, pull, stun, counter, drain and any extra note).
+ * Damage, cost and movement are already shown on the card itself. Empty if the card has none.
+ */
 export function describeCard(id: string): string {
   const c = getCard(id);
-  let main = '';
-  switch (c.kind) {
-    case 'attack':
-      main = STRINGS.descAttack(c.damage ?? 0);
-      if (c.push && c.push > 0) main += ` ${STRINGS.descPush(c.push)}`;
-      if (c.push && c.push < 0) main += ` ${STRINGS.descPull(-c.push)}`;
-      if (c.stun) main += ` ${STRINGS.descStun}`;
-      if (c.drain) main += ` ${STRINGS.descDrain(c.drain)}`;
-      if (c.text) main += ` ${c.text}`;
-      break;
-    case 'move':
-      main = c.text ?? moveText(c.step ?? [0, 0]);
-      break;
-    case 'guard':
-      main = c.text ?? STRINGS.descGuard(c.guard ?? 0) + (c.counter ? ` ${STRINGS.descCounter(c.counter)}` : '');
-      break;
-    case 'focus':
-      main = c.text ?? STRINGS.descFocus(c.cost);
-      break;
-    case 'heal':
-      main = c.text ?? STRINGS.descHeal(c.heal ?? 0);
-      break;
-  }
-  const cost = c.cost < 0 ? STRINGS.descCost(-c.cost) : c.cost === 0 ? STRINGS.descFree : '';
-  return [main, cost, c.bonus ? STRINGS.descBonus : ''].filter(Boolean).join(' ');
+  const parts: string[] = [];
+  if (c.push && c.push > 0) parts.push(STRINGS.descPush(c.push));
+  if (c.push && c.push < 0) parts.push(STRINGS.descPull(-c.push));
+  if (c.stun) parts.push(STRINGS.descStun);
+  if (c.counter) parts.push(STRINGS.descCounter(c.counter));
+  if (c.drain) parts.push(STRINGS.descDrain(c.drain));
+  if (c.text) parts.push(c.text);
+  return parts.join(' ');
 }
 
 /** One-line description of a fighter's passive ability. */

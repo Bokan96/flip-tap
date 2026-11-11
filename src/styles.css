@@ -256,7 +256,20 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .panel.p1 .bar i { inset: 0 0 0 auto; }
 .bar.life i { background: linear-gradient(90deg, #2fbf6c, var(--life)); }
 .bar.energy i { background: linear-gradient(90deg, #e0b020, var(--energy)); }
-.bar span { position: relative; display: block; font-size: .66rem; font-weight: 800; padding: 0 8px; line-height: 15px; color: #0a0d18; transform: skewX(18deg); }
+/* White numbers with a dark outline stay readable over the coloured fill and the empty bar alike. */
+.bar span {
+  position: relative; z-index: 2; display: block; font-size: .66rem; font-weight: 800; padding: 0 8px; line-height: 15px;
+  color: #fff; text-shadow: 0 0 2px #000, 0 1px 2px #000, 0 0 4px rgba(0, 0, 0, .9); transform: skewX(18deg);
+}
+/* Energy bar split into 10-point segments (--seg is set per fighter from its max energy). */
+.bar.energy::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(100% / var(--seg, 10) - 2px),
+    rgba(10, 13, 24, .9) calc(100% / var(--seg, 10) - 2px) calc(100% / var(--seg, 10))
+  );
+}
 .panel.p1 .bar span { transform: skewX(-18deg); }
 
 /* board row: [left side] [arena] [right side] */
