@@ -32,3 +32,72 @@ export function registerServiceWorker(onUpdate: (apply: () => void) => void): vo
     }
   });
 }
+
+// ---------- "Install app" button ----------
+
+/** Chromium's install prompt event (Chrome, Edge, Brave, Samsung Internet, Opera). */
+interface InstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+let deferred: InstallPromptEvent | null = null;
+const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((fn) => fn());
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Keep the event so our own button can open the browser's install dialog later.
+  e.preventDefault();
+  deferred = e as InstallPromptEvent;
+  notify();
+});
+window.addEventListener('appinstalled', () => {
+  deferred = null;
+  notify();
+});
+
+/** Already running as an installed app (home screen / app window)? */
+export function isInstalled(): boolean {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  return (
+    nav.standalone === true ||
+    ['standalone', 'fullscreen', 'minimal-ui'].some((m) => matchMedia(`(display-mode: ${m})`).matches)
+  );
+}
+
+/** iPhone / iPad: no install API, the player uses Share → Add to Home Screen. */
+export function isIos(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * How the game can be installed right now: 'prompt' (the browser's own dialog), 'ios'
+ * (show instructions) or null (already installed, or the browser can't install apps).
+ */
+export function installMode(): 'prompt' | 'ios' | null {
+  if (isInstalled()) return null;
+  if (deferred) return 'prompt';
+  return isIos() ? 'ios' : null;
+}
+
+/** Called whenever installMode() may have changed (prompt became available, app installed). */
+export function onInstallChange(fn: () => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+/** Open the browser's install dialog. Resolves true if the player accepted. */
+export async function promptInstall(): Promise<boolean> {
+  const e = deferred;
+  if (!e) return false;
+  try {
+    await e.prompt();
+  } catch {
+    // The browser refused (for example without a real tap); keep the offer for the next try.
+    return false;
+  }
+  deferred = null; // each prompt event can only be shown once
+  const { outcome } = await e.userChoice;
+  notify();
+  return outcome === 'accepted';
+}

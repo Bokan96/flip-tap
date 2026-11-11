@@ -32,7 +32,7 @@ import {
   type MatchMode,
 } from './meta/profile';
 import { CpuPlanSource, type PlanSource } from './net/transport';
-import { registerServiceWorker } from './pwa';
+import { installMode, onInstallChange, promptInstall, registerServiceWorker } from './pwa';
 import { applyEffectsClass, fullEffects } from './settings';
 import { currentRival, rivalBonus, rivalsFor } from './tournament';
 import { createTutorialMatch, ScriptedPlanSource, TUTORIAL, tutorialHooks } from './tutorial';
@@ -121,6 +121,7 @@ function title(): void {
         <button class="btn big" data-mode="cpu">${STRINGS.modeCpu}<small>${STRINGS.modeCpuHint}</small></button>
         <button class="btn big" data-mode="hotseat">${STRINGS.modeHotseat}<small>${STRINGS.modeHotseatHint}</small></button>
       </nav>
+      <button class="btn install-btn hidden" data-act="install">⤓ ${STRINGS.install.button}<small>${STRINGS.install.hint}</small></button>
       <div class="row">
         <button class="btn ghost-btn" data-act="howto">${STRINGS.howToPlay}</button>
         <button class="btn ghost-btn" data-act="profile">${STRINGS.profile.title}</button>
@@ -136,9 +137,27 @@ function title(): void {
   on(root, '[data-act="profile"]', profileScreen);
   on(root, '[data-act="settings"]', openSettings);
   on(root, '[data-act="tutorial"]', startTutorial);
+  bindInstallButton(root);
   on(root, '[data-act="no-tutorial"]', () => {
     setTutorialDone();
     root.querySelector('.banner')?.remove();
+  });
+}
+
+/** "Install app": the browser's own install dialog where supported, instructions on iPhone/iPad. */
+function bindInstallButton(root: HTMLElement): void {
+  const btn = root.querySelector<HTMLElement>('[data-act="install"]')!;
+  const refresh = () => btn.classList.toggle('hidden', installMode() === null);
+  refresh();
+  const stop = onInstallChange(() => (document.contains(btn) ? refresh() : stop()));
+  btn.addEventListener('click', async () => {
+    play('click');
+    if (installMode() === 'prompt') {
+      await promptInstall();
+      refresh();
+    } else {
+      modal(`<h2>${STRINGS.install.iosTitle}</h2><ol class="rules">${STRINGS.install.iosSteps.map((s) => `<li>${s}</li>`).join('')}</ol>`);
+    }
   });
 }
 

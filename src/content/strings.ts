@@ -30,6 +30,15 @@ export const STRINGS = {
     hint: (a: string, b: string, round: number) => `${a} vs ${b} · Round ${round}`,
   },
   update: { ready: 'A new version is ready.', apply: 'Update' },
+  install: {
+    button: 'Install app',
+    hint: 'Play from your home screen, even offline.',
+    iosTitle: 'Install Flip Tap',
+    iosSteps: [
+      'Tap the Share button (the square with an arrow) in the browser toolbar.',
+      'Choose “Add to Home Screen”, then tap Add.',
+    ],
+  },
 
   pickFighter: (who: string) => `${who}: choose your fighter`,
   player: (n: number) => `Player ${n}`,
