@@ -90,6 +90,8 @@ export class BattleView {
   private fx!: Fx;
   /** Slow-motion factor for the knockout step. */
   private slow = 1;
+  /** Bumped to cancel a running recap replay. */
+  private replayRun = 0;
 
   constructor(
     private root: HTMLElement,
@@ -187,7 +189,7 @@ export class BattleView {
           <div class="arena" style="--rows:${BALANCE.rows};--cols:${BALANCE.cols}">
             ${tiles}
             <svg class="path" viewBox="0 0 ${BALANCE.cols} ${BALANCE.rows}" preserveAspectRatio="none"><polyline points=""></polyline></svg>
-            ${'<div class="ghost hidden"><b></b></div>'.repeat(BALANCE.slotsPerRound)}
+            ${'<div class="ghost hidden"></div>'.repeat(BALANCE.slotsPerRound)}
             ${tokens}
             <div class="fx-layer"></div>
             <div class="floats"></div>
@@ -612,13 +614,13 @@ export class BattleView {
   }
 
   /**
-   * Numbered markers where the plan takes you (1, 2, 3; steps that end on the same square share a
-   * marker) joined by a dotted line, assuming the opponent stays put.
+   * Silhouettes where the plan takes you (red where you attack) joined by a dotted line,
+   * assuming the opponent stays put.
    */
   private renderPath(path: { pos: Pos[] }): void {
     this.clearPath();
     const me = this.state.players[this.planSeat];
-    const marks: { pos: Pos; steps: number[]; attack: boolean }[] = [];
+    const marks: { pos: Pos; attack: boolean }[] = [];
     let prev = me.pos;
     const line = [me.pos];
     this.plan.forEach((id, i) => {
@@ -627,10 +629,8 @@ export class BattleView {
       const attack = getCard(id).kind === 'attack';
       if (samePos(pos, prev) && !attack) return;
       const same = marks.find((m) => samePos(m.pos, pos));
-      if (same) {
-        same.steps.push(i + 1);
-        same.attack ||= attack;
-      } else marks.push({ pos, steps: [i + 1], attack });
+      if (same) same.attack ||= attack;
+      else marks.push({ pos, attack });
       if (!samePos(pos, line[line.length - 1])) line.push(pos);
       prev = pos;
     });
@@ -640,7 +640,6 @@ export class BattleView {
       g.style.setProperty('--r', String(m.pos.r));
       g.style.setProperty('--c', String(m.pos.c));
       g.classList.toggle('atk', m.attack);
-      g.querySelector('b')!.textContent = m.steps.join('·');
       g.classList.remove('hidden');
     });
     if (line.length > 1) {
@@ -789,6 +788,10 @@ export class BattleView {
 
   private async animateRound(plans: [Plan, Plan]): Promise<void> {
     const result = resolveRound(this.state, plans);
+    const start = {
+      pos: this.state.players.map((p) => ({ ...p.pos })) as [Pos, Pos],
+      facing: this.state.players.map((p) => p.facing) as [number, number],
+    };
     this.el.querySelectorAll('.pile-cards').forEach((p) => (p.innerHTML = ''));
     this.q('.step-label').textContent = '';
     this.setMode('reveal');
@@ -813,7 +816,7 @@ export class BattleView {
       await this.sleep('energy');
     }
     if (this.destroyed) return;
-    await this.showSummary(roundNo, plans, result);
+    await this.showSummary(roundNo, plans, result, start);
   }
 
   private async animateStep(step: StepResult, plans: [Plan, Plan]): Promise<void> {
@@ -907,8 +910,7 @@ export class BattleView {
           this.floatText(posNow[i], STRINGS.guarded, 'guarded', stacks[i]++);
           sounds.push('guard');
         } else if (p.hit === 'miss') {
-          retrigger(token, 'dodge');
-          this.floatText(posNow[i], STRINGS.miss, 'miss', stacks[i]++);
+          // A miss shows nothing on the opponent; the attack's squares simply don't hit them.
           sounds.push('miss');
         }
         if (p.counterTaken > 0) {
@@ -1007,10 +1009,95 @@ export class BattleView {
     this.clearAreas();
   }
 
+  /** Put the board back to the end-of-round state (after a replay). */
+  private restoreBoard(): void {
+    this.clearAreas();
+    this.el.querySelectorAll('.summary .now').forEach((e) => e.classList.remove('now'));
+    const ps = this.state.players;
+    this.placeTokens([ps[0].pos, ps[1].pos], [ps[0].facing, ps[1].facing]);
+    const o = this.state.outcome;
+    [0, 1].forEach((i) => {
+      const t = this.q(`.token.p${i}`);
+      t.classList.remove('dazed', 'hop', 'shake', 'flash');
+      t.classList.toggle('ko', !!o && (o.winner === null || o.winner !== i));
+      t.classList.remove('ko-fall');
+    });
+  }
+
+  /**
+   * Loop the round on the board (silently): moves, attacks in their real order, hits and pushes,
+   * with a short pause before each loop. Runs until `replayRun` changes.
+   */
+  private async replayRound(result: RoundResult, start: { pos: [Pos, Pos]; facing: [number, number] }, run: number): Promise<void> {
+    const CANCELLED = Symbol('cancelled');
+    const tokens = [this.q('.token.p0'), this.q('.token.p1')];
+    const pause = async (ms: number) => {
+      await wait(ms * speedMultiplier());
+      while (this.paused && this.replayRun === run && !this.destroyed) await wait(100);
+      if (this.replayRun !== run || this.destroyed) throw CANCELLED;
+    };
+    const mark = (slot: number | null) =>
+      this.el.querySelectorAll<HTMLElement>('.summary [data-step]').forEach((e) => e.classList.toggle('now', Number(e.dataset.step) === slot));
+    try {
+      for (;;) {
+        mark(null);
+        tokens.forEach((t) => t.classList.remove('ko', 'ko-fall', 'dazed'));
+        this.clearAreas();
+        this.placeTokens(start.pos, start.facing);
+        await pause(700);
+        for (const step of result.steps) {
+          const P = step.players;
+          const facing: [number, number] = [P[0].facing, P[1].facing];
+          const posNow: [Pos, Pos] = [P[0].to, P[1].to];
+          mark(step.slot);
+          this.placeTokens(posNow, facing);
+          P.forEach((p, i) => p.moved && retrigger(tokens[i], 'hop'));
+          await pause(P.some((p) => p.moved) ? 550 : 250);
+
+          // Same order as the real reveal: one strike at a time when both attack.
+          const strikes = step.sequence
+            ? step.sequence.filter((o) => !P[o].interrupted).map((o) => [o])
+            : [[0, 1].filter((i) => P[i].area.length > 0)];
+          for (const group of strikes) {
+            if (!group.length) continue;
+            for (const o of group) this.showArea(P[o].area, `area-p${o}`, posNow[o], fxKind(getCard(P[o].cardId)));
+            await pause(650);
+            for (const o of group) {
+              const d = o === 0 ? 1 : 0;
+              if (P[d].damageTaken > 0) {
+                retrigger(tokens[d], 'flash');
+                retrigger(tokens[d], 'shake');
+                this.floatText(posNow[d], `-${P[d].damageTaken}`, 'damage', 0, P[d].damageTaken);
+              } else if (P[d].hit === 'guard') {
+                this.floatText(posNow[d], STRINGS.guarded, 'guarded');
+              }
+              if (P[o].counterTaken > 0) this.floatText(posNow[o], `${STRINGS.effectIcons.counter} -${P[o].counterTaken}`, 'damage', 1);
+              posNow[d] = P[d].final;
+            }
+            this.placeTokens(posNow, facing);
+            await pause(500);
+            this.clearAreas();
+          }
+          this.placeTokens([P[0].final, P[1].final], facing);
+          await pause(300);
+        }
+        mark(null);
+        await pause(1200);
+      }
+    } catch (e) {
+      if (e !== CANCELLED) throw e;
+    }
+  }
+
   /** After the round: both players' three cards side by side, in order. */
-  private async showSummary(roundNo: number, plans: [Plan, Plan], result: RoundResult): Promise<void> {
+  private async showSummary(
+    roundNo: number,
+    plans: [Plan, Plan],
+    result: RoundResult,
+    start: { pos: [Pos, Pos]; facing: [number, number] },
+  ): Promise<void> {
     const summary = this.q('.summary');
-    const header = plans[0].map((_, s) => `<span class="slot-label">${STRINGS.slot(s + 1)}</span>`).join('');
+    const header = plans[0].map((_, s) => `<span class="slot-label" data-step="${s}">${STRINGS.slot(s + 1)}</span>`).join('');
     const rows = ([0, 1] as Seat[])
       .map((i) => {
         const cells = plans[i]
@@ -1018,7 +1105,7 @@ export class BattleView {
             const step = result.steps[s];
             const facing = step ? step.players[i].facing : result.state.players[i].facing;
             const cls = !step ? ' unplayed' : step.players[i].active ? '' : ' inactive';
-            return `<div class="sum-cell${cls}" title="${!step ? STRINGS.notPlayed : ''}">${cardHtml(id, { facing, small: true, readonly: true })}</div>`;
+            return `<div class="sum-cell${cls}" data-step="${s}" title="${!step ? STRINGS.notPlayed : ''}">${cardHtml(id, { facing, small: true, readonly: true })}</div>`;
           })
           .join('');
         return `<div class="sum-row p${i}"><span class="sum-name">${this.seats[i].name}</span>${cells}</div>`;
@@ -1027,11 +1114,28 @@ export class BattleView {
     const label = result.state.outcome ? STRINGS.seeResult : STRINGS.nextRound;
     summary.innerHTML = `<h3>${STRINGS.roundSummary(roundNo)}</h3>
       <div class="sum-grid"><span></span>${header}${rows}</div>
-      <button class="btn primary" data-act="next">${label}</button>`;
+      <div class="row">
+        <button class="btn" data-act="replay">${STRINGS.replay}</button>
+        <button class="btn primary" data-act="next">${label}</button>
+      </div>`;
     this.setMode('summary');
+    const replayBtn = summary.querySelector<HTMLElement>('[data-act="replay"]')!;
+    const stopReplay = () => {
+      this.replayRun++;
+      replayBtn.textContent = STRINGS.replay;
+      this.restoreBoard();
+    };
+    replayBtn.addEventListener('click', () => {
+      play('click');
+      if (replayBtn.textContent === STRINGS.stopReplay) return stopReplay();
+      const run = ++this.replayRun;
+      replayBtn.textContent = STRINGS.stopReplay;
+      void this.replayRound(result, start, run);
+    });
     const done = new Promise<void>((res) => {
       summary.querySelector('[data-act="next"]')!.addEventListener('click', () => {
         play('click');
+        stopReplay();
         res();
       });
     });

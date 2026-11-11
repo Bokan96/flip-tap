@@ -42,7 +42,6 @@ export const STRINGS = {
   ready: 'I’m ready',
   reveal: 'Reveal!',
   energyBack: (n: number) => `+${n}⚡`,
-  miss: 'Miss',
   guarded: 'Guard',
 
   wins: (who: string) => `${who} wins!`,
@@ -141,6 +140,8 @@ export const STRINGS = {
   gotIt: 'Got it',
   roundSummary: (n: number) => `Round ${n} recap`,
   nextRound: 'Next round',
+  replay: '▶ Replay',
+  stopReplay: '■ Stop',
   seeResult: 'See result',
   notPlayed: 'Not played',
 
