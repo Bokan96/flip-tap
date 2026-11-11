@@ -1,5 +1,6 @@
 import { getCard } from '../content/cards';
 import { STRINGS } from '../content/strings';
+import type { FighterDef } from '../engine/types';
 
 export type CardGroup = 'move' | 'attack' | 'special';
 const GROUP_ORDER: CardGroup[] = ['move', 'attack', 'special'];
@@ -35,6 +36,20 @@ function moveGrid([dr, dc]: [number, number]): string {
   return `<span class="mini-grid${cols > 3 ? ' wide' : ''}" style="--gc:${cols}">${cells}</span>`;
 }
 
+type Effect = keyof typeof STRINGS.effectIcons;
+
+/** The special effects on a card, in display order. */
+export function cardEffects(id: string): Effect[] {
+  const c = getCard(id);
+  const out: Effect[] = [];
+  if (c.push && c.push > 0) out.push('push');
+  if (c.push && c.push < 0) out.push('pull');
+  if (c.stun) out.push('stun');
+  if (c.counter) out.push('counter');
+  if (c.drain) out.push('drain');
+  return out;
+}
+
 export interface CardOpts {
   facing?: 1 | -1;
   disabled?: boolean;
@@ -56,7 +71,7 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     art = moveGrid(c.step);
   } else if (c.kind === 'guard') {
     art = '<span class="big-glyph">⛨</span>';
-    stat = `<span class="stat grd" title="Guard">⛨ ${c.guard}</span>`;
+    stat = `<span class="stat grd" title="Guard">⛨ ${c.guard}${c.counter ? ` ${STRINGS.effectIcons.counter} ${c.counter}` : ''}</span>`;
   } else if (c.kind === 'focus') {
     art = '<span class="big-glyph">✦</span>';
   } else if (c.kind === 'heal') {
@@ -64,6 +79,10 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     stat = `<span class="stat heal" title="Heal">✚ ${c.heal}</span>`;
   }
   const costCls = c.cost > 0 ? 'gain' : c.cost < 0 ? 'spend' : 'free';
+  const effects = cardEffects(id);
+  const badges = effects.length
+    ? `<span class="badges">${effects.map((e) => `<i class="fx-${e}" title="${STRINGS.effectNames[e]}">${STRINGS.effectIcons[e]}</i>`).join('')}</span>`
+    : '';
   const cls = [
     'card',
     `kind-${c.kind}`,
@@ -77,7 +96,7 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     .join(' ');
   const tag = opts.readonly ? 'div' : 'button';
   return `<${tag} class="${cls}" data-card="${c.id}" title="${c.name}" ${opts.disabled ? 'aria-disabled="true"' : ''}>
-    <span class="cost ${costCls}" title="Energy">${STRINGS.cardCost(c.cost)}</span>
+    <span class="cost ${costCls}" title="Energy">${STRINGS.cardCost(c.cost)}</span>${badges}
     <span class="art">${art}</span>
     <span class="name">${c.name}</span>
     ${stat}
@@ -97,13 +116,18 @@ export function describeCard(id: string): string {
   let main = '';
   switch (c.kind) {
     case 'attack':
-      main = STRINGS.descAttack(c.damage ?? 0) + (c.text ? ` ${c.text}` : '');
+      main = STRINGS.descAttack(c.damage ?? 0);
+      if (c.push && c.push > 0) main += ` ${STRINGS.descPush(c.push)}`;
+      if (c.push && c.push < 0) main += ` ${STRINGS.descPull(-c.push)}`;
+      if (c.stun) main += ` ${STRINGS.descStun}`;
+      if (c.drain) main += ` ${STRINGS.descDrain(c.drain)}`;
+      if (c.text) main += ` ${c.text}`;
       break;
     case 'move':
       main = c.text ?? moveText(c.step ?? [0, 0]);
       break;
     case 'guard':
-      main = c.text ?? STRINGS.descGuard(c.guard ?? 0);
+      main = c.text ?? STRINGS.descGuard(c.guard ?? 0) + (c.counter ? ` ${STRINGS.descCounter(c.counter)}` : '');
       break;
     case 'focus':
       main = c.text ?? STRINGS.descFocus(c.cost);
@@ -114,6 +138,12 @@ export function describeCard(id: string): string {
   }
   const cost = c.cost < 0 ? STRINGS.descCost(-c.cost) : c.cost === 0 ? STRINGS.descFree : '';
   return [main, cost, c.bonus ? STRINGS.descBonus : ''].filter(Boolean).join(' ');
+}
+
+/** One-line description of a fighter's passive ability. */
+export function passiveHtml(f: FighterDef): string {
+  if (!f.passive) return '';
+  return `<p class="passive"><b>${STRINGS.passive}: ${f.passive.name}</b> ${f.passive.text}</p>`;
 }
 
 /** Cards laid out in labelled rows of 4: movement, attacks, specials. */

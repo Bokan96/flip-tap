@@ -7,7 +7,9 @@ import type { MatchState, Plan, PlayerState, Seat } from './types';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 
-interface DifficultyProfile {
+export interface AiProfile {
+  /** How many of our plans are used to guess the opponent's likely replies. */
+  probe: number;
   /** How many of the opponent's likely plans to test against. */
   opponentSamples: number;
   /** Softmax temperature over plan scores; higher = more random. */
@@ -16,11 +18,14 @@ interface DifficultyProfile {
   caution: number;
 }
 
-const PROFILES: Record<Difficulty, DifficultyProfile> = {
-  easy: { opponentSamples: 6, temperature: 18, caution: 0 },
-  normal: { opponentSamples: 16, temperature: 5, caution: 0.25 },
-  hard: { opponentSamples: 32, temperature: 1.5, caution: 0.35 },
+export const PROFILES: Record<Difficulty, AiProfile> = {
+  easy: { probe: 12, opponentSamples: 6, temperature: 18, caution: 0 },
+  normal: { probe: 12, opponentSamples: 16, temperature: 5, caution: 0.25 },
+  hard: { probe: 12, opponentSamples: 32, temperature: 1.5, caution: 0.35 },
 };
+
+/** Cheaper, fairly strong profile for balance simulations (not shown in the UI). */
+export const SIM_PROFILE: AiProfile = { probe: 6, opponentSamples: 10, temperature: 4, caution: 0.25 };
 
 /** Every legal plan for a player (ordered, affordable, unique cards). */
 export function enumeratePlans(player: PlayerState): Plan[] {
@@ -93,14 +98,17 @@ function softmaxPick(scores: number[], temperature: number, rng: Rng): number {
  * pick our plan against those likely replies.
  */
 export function choosePlan(state: MatchState, seat: Seat, difficulty: Difficulty, rng: Rng): Plan {
-  const profile = PROFILES[difficulty];
+  return choosePlanWith(state, seat, PROFILES[difficulty], rng);
+}
+
+export function choosePlanWith(state: MatchState, seat: Seat, profile: AiProfile, rng: Rng): Plan {
   const other: Seat = seat === 0 ? 1 : 0;
   const mine = enumeratePlans(state.players[seat]);
   const theirs = enumeratePlans(state.players[other]);
   if (mine.length === 0) throw new Error('No legal plan available.');
 
   // Level 1: which opponent plans look strong against a random sample of ours?
-  const probe = sample(mine, 12, rng);
+  const probe = sample(mine, profile.probe, rng);
   const theirScores = scorePlans(state, other, theirs, probe, 0);
   const ranked = theirs.map((p, i) => ({ p, s: theirScores[i] })).sort((a, b) => b.s - a.s);
   const likely = ranked.slice(0, Math.ceil(profile.opponentSamples * 0.75)).map((x) => x.p);

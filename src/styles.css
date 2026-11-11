@@ -118,9 +118,9 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 }
 .fighter:hover { transform: translateY(-3px); border-color: var(--clr); background: #1e2438; }
 .fighter .emblem { width: 64px; height: 64px; filter: drop-shadow(0 0 10px color-mix(in srgb, var(--clr) 50%, transparent)); transition: transform .4s; }
-.fighter b { font-size: 1.05rem; text-transform: uppercase; letter-spacing: .05em; }
+.fighter > b { font-size: 1.05rem; text-transform: uppercase; letter-spacing: .05em; }
 .fighter i { color: var(--clr); font-size: .78rem; font-style: normal; }
-.fighter span { color: var(--muted); font-size: .76rem; }
+.fighter > span { color: var(--muted); font-size: .76rem; }
 /* pick animation: chosen fighter flares, the others fade back */
 .fighters.picking { pointer-events: none; }
 .fighters.picking .fighter:not(.chosen) { opacity: .2; filter: grayscale(.8); transform: scale(.94); }
@@ -406,6 +406,31 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .menu-rules summary { cursor: pointer; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: var(--text); text-align: center; }
 
 /* ---------- phones (portrait): everything fits on one screen ---------- */
+/* ---------- effects (push, pull, stun, counter, drain) ---------- */
+.card .badges { position: absolute; top: 2px; right: 13px; display: flex; gap: 1px; font-style: normal; }
+.card .badges i { font-style: normal; font-size: .72rem; font-weight: 900; line-height: 1; padding: 1px 2px; background: rgba(0, 0, 0, .45); }
+.badges .fx-push, .badges .fx-pull { color: #9fd4ff; }
+.badges .fx-stun { color: #ffe36b; }
+.badges .fx-counter { color: #ffb36b; }
+.badges .fx-drain { color: #7dffb0; }
+.passive { margin: 0; font-size: .74rem; line-height: 1.3; color: var(--text); }
+.passive b { color: var(--accent); }
+.fighter .passive { border-top: 1px solid var(--line); padding-top: 6px; margin-top: 2px; color: var(--muted); }
+.fighter .passive b { display: block; font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; }
+.modal .passive { text-align: left; max-width: 440px; }
+.float { margin-top: calc(var(--k, 0) * 1.5em); }
+.float.stun { color: #ffe36b; font-size: 1rem; }
+.token.dazed::after {
+  content: '✷ ✷'; position: absolute; top: -4%; font-size: .8rem; color: #ffe36b; letter-spacing: 2px;
+  text-shadow: 0 0 6px #000; animation: daze 1s linear infinite;
+}
+@keyframes daze { 50% { transform: translateX(3px) rotate(8deg); } }
+.pile-card.stunned .card { opacity: .3; }
+.pile-tag {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-12deg); z-index: 1;
+  background: #ffe36b; color: #2b2100; font-size: .6rem; font-weight: 900; text-transform: uppercase; padding: 2px 5px;
+}
+
 @media (max-width: 600px) {
   .screen { padding: 14px 10px 20px; }
   .battle-screen { padding: 6px 8px 10px; gap: 6px; }
@@ -415,6 +440,12 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   .card .name { font-size: .55rem; }
   .card .stat { font-size: .58rem; }
   .card .cost { min-width: 20px; height: 16px; font-size: .64rem; }
+  .card .badges { right: 9px; top: 1px; }
+  .card .badges i { font-size: .58rem; padding: 0 1px; }
+  .fighter .passive { font-size: .66rem; padding-top: 4px; }
+  .fighter > span { display: none; }
+  .fighter { padding: 8px 6px; gap: 2px; }
+  .fighter .emblem { width: 48px; height: 48px; }
   .big-glyph { font-size: 1.4rem; }
   .card.small { --cell: 8px; width: 56px; height: 70px; padding-top: 15px; }
   .card.small .name { font-size: .5rem; }

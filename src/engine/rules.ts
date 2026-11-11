@@ -5,6 +5,7 @@ import type {
   Facing,
   MatchOutcome,
   MatchState,
+  Mods,
   Plan,
   PlayerState,
   Pos,
@@ -20,7 +21,10 @@ export function cloneState(s: MatchState): MatchState {
   return {
     round: s.round,
     outcome: s.outcome,
-    players: s.players.map((p) => ({ ...p, pos: { ...p.pos }, deck: [...p.deck] })) as [PlayerState, PlayerState],
+    players: s.players.map((p) => ({ ...p, pos: { ...p.pos }, deck: [...p.deck], mods: { ...p.mods } })) as [
+      PlayerState,
+      PlayerState,
+    ],
   };
 }
 
@@ -105,26 +109,74 @@ function outcomeFor(players: [PlayerState, PlayerState]): MatchOutcome | null {
   return null;
 }
 
+/** Life a hit removes, after the attacker's and defender's modifiers. Never below 0. */
+export function hitDamage(
+  card: CardDef,
+  attacker: PlayerState,
+  defender: PlayerState,
+  defenderGuard: number,
+  defenderMoved: boolean,
+): number {
+  const am = attacker.mods;
+  const dm = defender.mods;
+  let dmg = (card.damage ?? 0) + am.damageBonus;
+  if (am.lowLifeThreshold > 0 && attacker.life <= am.lowLifeThreshold) dmg += am.lowLifeBonus;
+  if (defenderMoved) dmg += am.vsMovedBonus - dm.movedReduction;
+  dmg -= defenderGuard + dm.damageReduction;
+  return Math.max(0, dmg);
+}
+
+/**
+ * Where a push (n > 0) or pull (n < 0) leaves the target. Pushes go away from the attacker
+ * (along the attacker's facing when they share a column); pulls never pass the attacker's column.
+ */
+export function displace(target: Pos, attacker: Pos, attackerFacing: Facing, n: number): Pos {
+  if (n > 0) {
+    const dir = target.c === attacker.c ? attackerFacing : Math.sign(target.c - attacker.c);
+    return { r: target.r, c: clamp(target.c + dir * n, 0, BALANCE.cols - 1) };
+  }
+  const gap = attacker.c - target.c;
+  const steps = Math.min(-n, Math.abs(gap));
+  return { r: target.r, c: target.c + Math.sign(gap) * steps };
+}
+
+/** A card's push (or pull, if negative) plus the attacker's bonus squares. */
+export function pushAmount(push: number, attackerMods: Mods): number {
+  return push + Math.sign(push) * attackerMods.pushBonus;
+}
+
+/** Energy a player regains at the end of a round. */
+export function energyRecovery(p: PlayerState): number {
+  return BALANCE.energyPerRound + p.mods.energyPerRound;
+}
+
 /** Resolve one slot for both players simultaneously. Mutates `state`. */
 export function resolveStep(state: MatchState, cardIds: [string, string], slot: number): StepResult {
   const ps = state.players;
   const cards = [getCard(cardIds[0]), getCard(cardIds[1])] as const;
-  const active = [ps[0].energy + cards[0].cost >= 0, ps[1].energy + cards[1].cost >= 0];
+  const stunned = [ps[0].dazed, ps[1].dazed];
+  ps[0].dazed = ps[1].dazed = false;
+  const active = [0, 1].map((i) => !stunned[i] && ps[i].energy + cards[i].cost >= 0);
   const from = [{ ...ps[0].pos }, { ...ps[1].pos }];
 
-  // 1. Movement (simultaneous).
+  // 1. Movement (simultaneous), then face each other.
   for (const i of [0, 1] as const) {
     if (active[i]) ps[i].pos = movePos(ps[i].pos, cards[i]);
   }
+  const moved = [0, 1].map((i) => !samePos(from[i], ps[i].pos));
+  const to = [{ ...ps[0].pos }, { ...ps[1].pos }];
   for (const i of [0, 1] as const) {
-    const o = i === 0 ? 1 : 0;
-    ps[i].facing = faceTowards(ps[i].pos, ps[o].pos, ps[i].facing);
+    ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
   }
 
   // 2. Hits, computed from post-movement positions.
   const areas = [0, 1].map((i) => (active[i] ? attackArea(cards[i], ps[i].pos, ps[i].facing) : [])) as [Pos[], Pos[]];
   const hit: StepPlayerResult['hit'][] = ['none', 'none'];
   const damage = [0, 0];
+  const counter = [0, 0];
+  const drained = [0, 0];
+  const dazed = [false, false];
+  const pushTo: (Pos | null)[] = [null, null];
   for (const i of [0, 1] as const) {
     const o = i === 0 ? 1 : 0;
     const atk = cards[o];
@@ -135,14 +187,18 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     }
     const guard = active[i] ? (cards[i].guard ?? 0) : 0;
     hit[i] = guard > 0 ? 'guard' : 'hit';
-    damage[i] = Math.max(0, (atk.damage ?? 0) - guard);
+    damage[i] = hitDamage(atk, ps[o], ps[i], guard, moved[i]);
+    if (active[i] && cards[i].counter) counter[o] += cards[i].counter!;
+    if (atk.drain && damage[i] > 0) drained[o] = Math.floor((damage[i] * atk.drain) / 100);
+    if (atk.stun && damage[i] > 0) dazed[i] = true;
+    if (atk.push && !ps[i].mods.immovable) pushTo[i] = displace(ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
   }
 
-  // 3. Self effects, then 4. clamp.
+  // 3. Self effects, then clamp.
   const healed = [0, 0];
   for (const i of [0, 1] as const) {
     const p = ps[i];
-    let life = p.life - damage[i];
+    let life = p.life - damage[i] - counter[i] + drained[i];
     let energy = p.energy;
     if (active[i]) {
       healed[i] = cards[i].heal ?? 0;
@@ -151,6 +207,15 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     }
     p.life = clamp(life, 0, p.lifeMax);
     p.energy = clamp(energy, 0, p.energyMax);
+    p.dazed = dazed[i];
+  }
+
+  // 4. Push and pull (simultaneous), then face each other again.
+  for (const i of [0, 1] as const) {
+    if (pushTo[i]) ps[i].pos = pushTo[i]!;
+  }
+  for (const i of [0, 1] as const) {
+    ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
   }
 
   // 5. KO check.
@@ -159,12 +224,18 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const players = [0, 1].map((i) => ({
     cardId: cardIds[i],
     active: active[i],
+    stunned: stunned[i],
     from: from[i],
-    to: { ...ps[i].pos },
+    to: to[i],
+    final: { ...ps[i].pos },
+    moved: moved[i],
     facing: ps[i].facing,
     area: areas[i],
     hit: hit[i],
     damageTaken: damage[i],
+    counterTaken: counter[i],
+    drained: drained[i],
+    dazed: dazed[i],
     healed: healed[i],
     life: ps[i].life,
     energy: ps[i].energy,
@@ -186,8 +257,9 @@ export function resolveRound(state: MatchState, plans: [Plan, Plan]): RoundResul
     steps.push(resolveStep(next, [plans[0][slot], plans[1][slot]], slot));
     if (next.outcome) break;
   }
+  for (const p of next.players) p.dazed = false;
   if (!next.outcome) {
-    for (const p of next.players) p.energy = Math.min(p.energyMax, p.energy + BALANCE.energyPerRound);
+    for (const p of next.players) p.energy = Math.min(p.energyMax, p.energy + energyRecovery(p));
     next.round += 1;
   }
   return { steps, state: next };

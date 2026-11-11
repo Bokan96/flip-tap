@@ -2,11 +2,11 @@ import { isSoundEnabled, play, setSoundEnabled } from '../audio/sfx';
 import { BALANCE } from '../content/balance';
 import { getCard, getFighter } from '../content/cards';
 import { STRINGS } from '../content/strings';
-import { attackArea, canPlace, faceTowards, movePos, planError, resolveRound } from '../engine/rules';
+import { attackArea, canPlace, energyRecovery, faceTowards, movePos, planError, resolveRound, samePos } from '../engine/rules';
 import type { MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult } from '../engine/types';
 import type { PlanSource } from '../net/transport';
 import { getSpeed, setSpeed, speedMultiplier, type Speed } from '../settings';
-import { cardHtml, describeCard, groupedCardsHtml } from './card';
+import { cardHtml, describeCard, groupedCardsHtml, passiveHtml } from './card';
 import { emblemHtml } from './emblems';
 
 export interface BattleSeat {
@@ -238,12 +238,14 @@ export class BattleView {
     for (const p of cells) this.q(`.tile[data-r="${p.r}"][data-c="${p.c}"]`).classList.add(cls);
   }
 
-  private floatText(pos: Pos, text: string, cls: string): void {
+  /** Rising text over a square. `stack` offsets extra labels so they don't overlap. */
+  private floatText(pos: Pos, text: string, cls: string, stack = 0): void {
     const f = document.createElement('div');
     f.className = `float ${cls}`;
     f.textContent = text;
     f.style.setProperty('--r', String(pos.r));
     f.style.setProperty('--c', String(pos.c));
+    f.style.setProperty('--k', String(stack));
     this.q('.floats').appendChild(f);
     setTimeout(() => f.remove(), 1400);
   }
@@ -295,6 +297,7 @@ export class BattleView {
     const f = getFighter(p.fighterId);
     this.openModal(
       `<div class="deck-head" style="--clr:${f.color}">${emblemHtml(f, 'hud-emblem')}<h2>${STRINGS.deckOf(this.seats[seat].name, f.name)}</h2></div>
+       ${passiveHtml(f)}
        <div class="hand grouped">${groupedCardsHtml(p.deck, (id) => cardHtml(id, { facing: p.facing, readonly: true }))}</div>
        <button class="btn" data-modal="close">${STRINGS.close}</button>`,
     );
@@ -508,8 +511,9 @@ export class BattleView {
 
     const roundNo = this.state.round;
     this.state = result.state;
+    this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed'));
     if (!result.state.outcome) {
-      for (const i of [0, 1]) this.floatText(this.state.players[i].pos, STRINGS.energyBack(BALANCE.energyPerRound), 'energy');
+      for (const p of this.state.players) this.floatText(p.pos, STRINGS.energyBack(energyRecovery(p)), 'energy');
       this.renderHud();
       await this.sleep('energy');
     } else {
@@ -531,11 +535,18 @@ export class BattleView {
     for (const i of [0, 1]) {
       const pile = this.q(`.pile.p${i} .pile-cards`);
       pile.querySelectorAll('.pile-card').forEach((c) => c.classList.add('under'));
+      const sp = step.players[i];
       const card = document.createElement('div');
-      card.className = `pile-card${step.players[i].active ? '' : ' inactive'}`;
+      card.className = `pile-card${sp.active ? '' : ' inactive'}${sp.stunned ? ' stunned' : ''}`;
       card.style.setProperty('--n', String(step.slot));
-      card.innerHTML = cardHtml(plans[i][step.slot], { facing: step.players[i].facing, small: true, readonly: true });
+      card.innerHTML =
+        cardHtml(plans[i][step.slot], { facing: sp.facing, small: true, readonly: true }) +
+        (sp.stunned ? `<span class="pile-tag">${STRINGS.stunned}</span>` : '');
       pile.appendChild(card);
+      if (sp.stunned) {
+        this.q(`.token.p${i}`).classList.remove('dazed');
+        this.floatText(sp.from, STRINGS.stunned, 'stun');
+      }
     }
     play('place');
     await this.sleep('place');
@@ -572,13 +583,32 @@ export class BattleView {
         this.floatText(p.to, STRINGS.miss, 'miss');
         sound = sound ?? 'miss';
       }
-      if (p.healed > 0) {
-        this.floatText(p.to, `+${p.healed}`, 'heal');
+      let stack = p.hit === 'none' ? 0 : 1;
+      if (p.counterTaken > 0) {
+        token.classList.remove('shake');
+        void token.offsetWidth;
+        token.classList.add('shake');
+        this.floatText(p.to, `${STRINGS.effectIcons.counter} -${p.counterTaken}`, 'damage', stack++);
+        sound = 'hit';
+      }
+      if (p.healed > 0 || p.drained > 0) {
+        this.floatText(p.to, `+${p.healed + p.drained}`, 'heal', stack++);
         sound = sound ?? 'heal';
+      }
+      if (p.dazed) {
+        token.classList.add('dazed');
+        this.floatText(p.to, STRINGS.dazed, 'stun', stack++);
       }
     });
     if (sound) play(sound);
     this.renderHud([step.players[0].life, step.players[1].life], [step.players[0].energy, step.players[1].energy]);
+
+    // Push and pull land just after the hit.
+    if (step.players.some((p) => !samePos(p.to, p.final))) {
+      await wait(300 * speedMultiplier());
+      this.placeTokens([step.players[0].final, step.players[1].final], [step.players[0].facing, step.players[1].facing]);
+      play('step');
+    }
     await this.sleep(attacking || sound ? 'hit' : 'quiet');
     this.clearAreas();
   }

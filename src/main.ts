@@ -1,6 +1,6 @@
 import './styles.css';
 import { isSoundEnabled, play, setSoundEnabled } from './audio/sfx';
-import { FIGHTERS, getCard, getFighter } from './content/cards';
+import { FIGHTERS, getFighter } from './content/cards';
 import { STRINGS } from './content/strings';
 import type { Difficulty } from './engine/ai';
 import { randomSeed } from './engine/rng';
@@ -9,7 +9,7 @@ import type { MatchOutcome, Seat } from './engine/types';
 import { CpuPlanSource, type PlanSource } from './net/transport';
 import { isChampion, loadProgress, recordWin, resetProgress, rivalBonus, rivalsFor, type TournamentProgress } from './tournament';
 import { BattleView, HumanPlanSource } from './ui/battle';
-import { cardHtml } from './ui/card';
+import { cardHtml, describeCard, passiveHtml } from './ui/card';
 import { emblemHtml } from './ui/emblems';
 
 type Mode = 'cpu' | 'hotseat' | 'tournament';
@@ -61,12 +61,12 @@ function title(): void {
 }
 
 function howTo(): void {
-  const example = ['right', 'guard', 'focus', 'cinderJab', 'zephyrGust'].map((id) => cardHtml(id)).join('');
+  const example = ['right', 'guard', 'focus', 'cinderJab', 'zephyrGust', 'basaltSpikes'].map((id) => cardHtml(id)).join('');
   const root = screen(
     `<h2>${STRINGS.howToPlay}</h2>
      <ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol>
      <div class="hand demo">${example}</div>
-     <p class="note">The number in the corner is the card's energy cost. On every grid the outlined centre square is you. Move cards mark where you will step in blue; attack cards mark the squares they hit in red, with an arrow showing the side you face.</p>
+     <p class="note">The number in the corner is the card's energy cost. On every grid the outlined centre square is you. Move cards mark where you will step in blue; attack cards mark the squares they hit in red, with an arrow showing the side you face. Icons in the top corner show special effects: ⇥ push, ⇤ pull, ✷ stun, ↺ counter, ♥ drain.</p>
      <button class="btn" data-act="back">${STRINGS.back}</button>`,
     'howto',
   );
@@ -80,6 +80,7 @@ function fighterGrid(selected?: string, locked: string[] = []): string {
     (f) => `<button class="fighter${f.id === selected ? ' selected' : ''}" data-fighter="${f.id}" style="--clr:${f.color}" ${locked.includes(f.id) ? 'disabled' : ''}>
       ${emblemHtml(f)}
       <b>${f.name}</b><i>${f.title}</i><span>${f.blurb}</span>
+      ${passiveHtml(f)}
     </button>`,
   ).join('')}</div>`;
 }
@@ -277,7 +278,7 @@ function tournamentMatch(progress: TournamentProgress): void {
       if (outcome.winner === 0) {
         play('win');
         const card = recordWin(progress);
-        const extra = card ? `<p>${STRINGS.newBonus}</p><div class="hand">${cardHtml(card)}</div><p class="note">${getCard(card).text ?? ''}</p>` : '';
+        const extra = card ? `<p>${STRINGS.newBonus}</p><div class="hand">${cardHtml(card)}</div><p class="note">${describeCard(card)}</p>` : '';
         resultScreen(outcomeText(outcome, names), 0, [progress.fighterId, rival], [
           { label: STRINGS.continue, primary: true, fn: () => tournamentHub(progress.fighterId) },
         ], extra);

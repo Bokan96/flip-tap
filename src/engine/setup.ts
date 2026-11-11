@@ -1,6 +1,6 @@
 import { BALANCE } from '../content/balance';
 import { BASIC_CARD_IDS, getFighter } from '../content/cards';
-import type { MatchState, PlayerState, Seat } from './types';
+import type { MatchState, Mods, PlayerState, Seat } from './types';
 
 export interface SeatConfig {
   fighterId: string;
@@ -8,31 +8,69 @@ export interface SeatConfig {
   bonusCards?: string[];
 }
 
+/** Rule changes applied to both players for a whole match (e.g. the daily challenge). */
+export interface MatchModifier {
+  mods?: Partial<Mods>;
+  /** Start values instead of full life / energy. */
+  startLife?: number;
+  startEnergy?: number;
+}
+
+export const NO_MODS: Mods = {
+  damageBonus: 0,
+  lowLifeThreshold: 0,
+  lowLifeBonus: 0,
+  damageReduction: 0,
+  movedReduction: 0,
+  vsMovedBonus: 0,
+  energyPerRound: 0,
+  immovable: false,
+  pushBonus: 0,
+};
+
+/** Combine modifier sets: numbers add up, flags combine with OR, thresholds take the highest. */
+export function mergeMods(...parts: (Partial<Mods> | undefined)[]): Mods {
+  const out: Mods = { ...NO_MODS };
+  for (const m of parts) {
+    if (!m) continue;
+    for (const key of Object.keys(m) as (keyof Mods)[]) {
+      const v = m[key];
+      if (v === undefined) continue;
+      if (key === 'immovable') out.immovable = out.immovable || (v as boolean);
+      else if (key === 'lowLifeThreshold') out.lowLifeThreshold = Math.max(out.lowLifeThreshold, v as number);
+      else out[key] = (out[key] as number) + (v as number);
+    }
+  }
+  return out;
+}
+
 export function buildDeck(fighterId: string, bonusCards: string[] = []): string[] {
   const f = getFighter(fighterId);
   return [...BASIC_CARD_IDS, ...f.signature, ...bonusCards.filter((id) => !BASIC_CARD_IDS.includes(id))];
 }
 
-function createPlayer(seat: Seat, cfg: SeatConfig): PlayerState {
+function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier): PlayerState {
   const f = getFighter(cfg.fighterId);
   const lifeMax = f.lifeMax ?? BALANCE.lifeMax;
   const energyMax = f.energyMax ?? BALANCE.energyMax;
   return {
     fighterId: f.id,
-    life: lifeMax,
-    energy: energyMax,
+    life: Math.min(lifeMax, mod.startLife ?? lifeMax),
+    energy: Math.min(energyMax, mod.startEnergy ?? energyMax),
     lifeMax,
     energyMax,
     pos: { ...BALANCE.startPos[seat] },
     facing: seat === 0 ? 1 : -1,
     deck: buildDeck(f.id, cfg.bonusCards),
+    mods: mergeMods(f.passive?.mods, mod.mods),
+    dazed: false,
   };
 }
 
-export function createMatch(p0: SeatConfig, p1: SeatConfig): MatchState {
+export function createMatch(p0: SeatConfig, p1: SeatConfig, modifier: MatchModifier = {}): MatchState {
   return {
     round: 1,
     outcome: null,
-    players: [createPlayer(0, p0), createPlayer(1, p1)],
+    players: [createPlayer(0, p0, modifier), createPlayer(1, p1, modifier)],
   };
 }
