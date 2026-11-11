@@ -6,13 +6,20 @@ import { attackArea, canPlace, faceTowards, movePos, planError, resolveRound } f
 import type { MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult } from '../engine/types';
 import type { PlanSource } from '../net/transport';
 import { getSpeed, setSpeed, speedMultiplier, type Speed } from '../settings';
-import { cardHtml, groupedCardsHtml } from './card';
+import { cardHtml, describeCard, groupedCardsHtml } from './card';
 import { emblemHtml } from './emblems';
 
 export interface BattleSeat {
   name: string;
   source: PlanSource;
 }
+
+/**
+ * What the battle screen is doing; drives which panels are visible (see styles.css).
+ * plan: a human picks cards · wait: CPU thinking · pass: hot-seat hand-over
+ * reveal: cards resolve step by step · summary: round recap.
+ */
+type Mode = 'idle' | 'plan' | 'wait' | 'pass' | 'reveal' | 'summary';
 
 /** Base animation timings in ms at "normal" speed. */
 const TIMING = { intro: 500, place: 700, move: 650, area: 1150, hit: 1000, quiet: 450, energy: 900 };
@@ -34,6 +41,7 @@ export class BattleView {
   private planSeat: Seat = 0;
   private resolvePlan: ((p: Plan) => void) | null = null;
   private hovered: { slot: number; card: string } | null = null;
+  private previewCard: string | null = null;
   private paused = false;
   private destroyed = false;
 
@@ -50,6 +58,7 @@ export class BattleView {
     this.root.replaceChildren(this.el);
     this.renderShell();
     this.renderHud();
+    this.setMode('idle');
     // Start after construction so plan sources can reference this view.
     setTimeout(() => void this.loop(), 0);
   }
@@ -58,6 +67,15 @@ export class BattleView {
   private async sleep(key: keyof typeof TIMING): Promise<void> {
     await wait(TIMING[key] * speedMultiplier());
     while (this.paused && !this.destroyed) await wait(100);
+  }
+
+  private setMode(mode: Mode): void {
+    this.el.dataset.mode = mode;
+    if (mode !== 'plan') {
+      // Never leave a planned path or hover highlight on the board for the other player to see.
+      this.q('.ghost').classList.add('hidden');
+      this.clearAreas();
+    }
   }
 
   // ---------- main loop ----------
@@ -70,14 +88,16 @@ export class BattleView {
       for (const seat of [0, 1] as Seat[]) {
         const src = this.seats[seat].source;
         if (src.kind === 'human' && bothHuman) await this.passScreen(seat);
-        if (src.kind !== 'human') this.setStatus(STRINGS.cpuThinking, true);
+        if (src.kind !== 'human') {
+          this.setMode('wait');
+          this.q('.status').textContent = STRINGS.cpuThinking;
+        }
         const plan = await src.requestPlan(this.state, seat);
         if (this.destroyed) return;
         const err = planError(this.state.players[seat], plan);
         if (err) throw new Error(err);
         plans[seat] = plan;
       }
-      this.hidePlanner();
       if (bothHuman) await this.passScreen(null);
       await this.animateRound(plans as [Plan, Plan]);
       if (this.destroyed) return;
@@ -103,50 +123,61 @@ export class BattleView {
         <div class="panel p0" data-seat="0"></div>
         <div class="hud-center">
           <div class="round-label"></div>
+          <div class="step-label"></div>
           <button class="icon-btn" data-act="menu" aria-label="${STRINGS.menuTitle}">☰</button>
         </div>
         <div class="panel p1" data-seat="1"></div>
       </header>
-      <div class="arena-wrap">
-        <div class="arena" style="--rows:${BALANCE.rows};--cols:${BALANCE.cols}">
-          ${tiles}
-          <div class="ghost hidden"></div>
-          ${tokens}
-          <div class="floats"></div>
+      <div class="board-row">
+        <aside class="side left">
+          <div class="slots"></div>
+          ${pile(0)}
+        </aside>
+        <div class="arena-wrap">
+          <div class="arena" style="--rows:${BALANCE.rows};--cols:${BALANCE.cols}">
+            ${tiles}
+            <div class="ghost hidden"></div>
+            ${tokens}
+            <div class="floats"></div>
+          </div>
         </div>
+        <aside class="side right">
+          <div class="card-preview"></div>
+          ${pile(1)}
+        </aside>
       </div>
-      <section class="playout hidden">
-        <div class="stage">${pile(0)}<div class="step-label"></div>${pile(1)}</div>
-        <div class="summary hidden"></div>
-      </section>
-      <section class="planner hidden">
+      <section class="planner">
         <div class="status"></div>
-        <div class="tap-hint">${STRINGS.tapHint}</div>
-        <div class="slots"></div>
         <div class="hand grouped"></div>
         <div class="actions">
           <button class="btn ghost-btn" data-act="clear">${STRINGS.clear}</button>
           <button class="btn primary" data-act="lock">${STRINGS.lockIn}</button>
         </div>
       </section>
-      <div class="cover hidden"></div>
+      <section class="pass"></section>
+      <section class="summary"></section>
       <div class="modal hidden"><div class="modal-box"></div></div>`;
     this.placeTokens(this.state.players.map((p) => p.pos) as [Pos, Pos]);
 
-    const planner = this.q('.planner');
-    planner.addEventListener('click', (e) => this.onPlannerClick(e));
-    planner.addEventListener('pointerover', (e) => this.onPlannerHover(e));
-    planner.addEventListener('pointerleave', () => {
-      this.hovered = null;
-      this.renderPreview();
-    });
     this.el.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
-      if (t.closest('.modal, .planner, .cover')) return;
+      if (t.closest('.modal, .pass, .summary')) return;
       if (t.closest('[data-act="menu"]')) return this.openMenu();
+      if (t.closest('.planner, .slots')) return this.onPlannerClick(e);
       const seatEl = t.closest<HTMLElement>('.token, .panel');
       if (seatEl) this.showDeck(Number(seatEl.dataset.seat) as Seat);
     });
+    this.el.addEventListener('pointerover', (e) => {
+      if ((e.target as HTMLElement).closest('.planner, .slots')) this.onPlannerHover(e);
+    });
+    for (const sel of ['.planner', '.slots']) {
+      this.q(sel).addEventListener('pointerleave', (e) => {
+        // Touch "leaves" right after every tap; keep its preview until the next touch.
+        if ((e as PointerEvent).pointerType !== 'mouse') return;
+        this.hovered = null;
+        this.renderPreview();
+      });
+    }
   }
 
   private q<T extends HTMLElement = HTMLElement>(sel: string): T {
@@ -155,21 +186,6 @@ export class BattleView {
 
   private setRoundLabel(): void {
     this.q('.round-label').textContent = STRINGS.round(this.state.round);
-  }
-
-  private setStatus(text: string, waiting = false): void {
-    const planner = this.q('.planner');
-    this.q('.status').textContent = text;
-    if (waiting) {
-      planner.classList.remove('hidden');
-      planner.classList.add('waiting');
-    }
-  }
-
-  private hidePlanner(): void {
-    this.q('.planner').classList.add('hidden');
-    this.q('.ghost').classList.add('hidden');
-    this.clearAreas();
   }
 
   // ---------- HUD ----------
@@ -234,16 +250,18 @@ export class BattleView {
 
   // ---------- overlays ----------
 
+  /** Hot-seat hand-over. Board and stats stay visible; only the card area is replaced. */
   private passScreen(seat: Seat | null): Promise<void> {
-    const cover = this.q('.cover');
+    this.setMode('pass');
+    const pass = this.q('.pass');
     const title = seat === null ? STRINGS.reveal : STRINGS.passDevice(this.seats[seat].name);
     const hint = seat === null ? '' : `<p>${STRINGS.passDeviceHint}</p>`;
-    cover.innerHTML = `<div class="cover-box"><h2>${title}</h2>${hint}<button class="btn primary">${STRINGS.ready}</button></div>`;
-    cover.classList.remove('hidden');
+    pass.dataset.seat = seat === null ? '' : String(seat);
+    pass.innerHTML = `<h2>${title}</h2>${hint}<button class="btn primary huge">${STRINGS.ready}</button>`;
     return new Promise((res) => {
-      cover.querySelector('button')!.addEventListener('click', () => {
+      pass.querySelector('button')!.addEventListener('click', () => {
         play('click');
-        cover.classList.add('hidden');
+        this.setMode('idle');
         res();
       });
     });
@@ -326,10 +344,10 @@ export class BattleView {
     this.planSeat = seat;
     this.plan = Array(BALANCE.slotsPerRound).fill('');
     this.hovered = null;
-    const planner = this.q('.planner');
-    planner.classList.remove('hidden', 'waiting');
-    planner.dataset.seat = String(seat);
-    this.setStatus(STRINGS.planning(this.seats[seat].name));
+    this.previewCard = null;
+    this.el.dataset.seat = String(seat);
+    this.q('.status').textContent = STRINGS.planning(this.seats[seat].name);
+    this.setMode('plan');
     return new Promise((res) => {
       this.resolvePlan = res;
       this.renderPlanner();
@@ -345,7 +363,7 @@ export class BattleView {
     const facings = this.projectedPath().facing;
     this.q('.slots').innerHTML = this.plan
       .map((id, i) => {
-        const inner = id ? cardHtml(id, { facing: facings[i], small: true }) : `<span class="empty">${STRINGS.emptySlot}</span>`;
+        const inner = id ? cardHtml(id, { facing: facings[i], small: true }) : `<span class="empty"><b>${i + 1}</b>${STRINGS.emptySlot}</span>`;
         const next = i === this.nextEmptySlot() ? ' next' : '';
         return `<div class="slot${next}" data-slot="${i}"><span class="slot-label">${STRINGS.slot(i + 1)}</span>${inner}</div>`;
       })
@@ -358,6 +376,7 @@ export class BattleView {
     });
     this.q<HTMLButtonElement>('[data-act="lock"]').disabled = planError(me, this.plan) !== null;
     this.renderPreview();
+    this.renderPreviewPanel();
   }
 
   /** Walk our own plan assuming the opponent stays put; returns positions after each slot. */
@@ -376,6 +395,7 @@ export class BattleView {
     return out;
   }
 
+  /** Board highlight for the hovered card plus the ghost marker at the plan's end position. */
   private renderPreview(): void {
     // Only while a human is planning; never touch the board during the reveal animation.
     if (!this.resolvePlan) return;
@@ -401,13 +421,29 @@ export class BattleView {
     this.showArea(c.kind === 'attack' ? attackArea(c, pos, facing) : [pos], 'preview');
   }
 
+  /** Side panel with the focused card shown large and described in words. */
+  private renderPreviewPanel(): void {
+    const panel = this.q('.card-preview');
+    if (!this.previewCard) {
+      panel.innerHTML = `<p class="preview-hint">${STRINGS.previewHint}</p><p class="preview-hint">${STRINGS.previewHint2}</p>`;
+      return;
+    }
+    const slot = this.hovered?.slot ?? Math.max(0, this.nextEmptySlot());
+    const facing = this.projectedPath().facing[slot] ?? this.state.players[this.planSeat].facing;
+    panel.innerHTML = `${cardHtml(this.previewCard, { facing, readonly: true })}<p class="desc">${describeCard(this.previewCard)}</p>`;
+  }
+
   private onPlannerHover(e: Event): void {
     const cardEl = (e.target as HTMLElement).closest<HTMLElement>('[data-card]');
     if (!cardEl) return;
+    const id = cardEl.dataset.card!;
     const slotEl = cardEl.closest<HTMLElement>('[data-slot]');
     const slot = slotEl ? Number(slotEl.dataset.slot) : this.nextEmptySlot();
-    if (slot < 0) return;
-    this.hovered = { slot, card: cardEl.dataset.card! };
+    if (slot >= 0) this.hovered = { slot, card: id };
+    if (this.previewCard !== id) {
+      this.previewCard = id;
+      this.renderPreviewPanel();
+    }
     this.renderPreview();
   }
 
@@ -427,7 +463,7 @@ export class BattleView {
       play('click');
       const res = this.resolvePlan;
       this.resolvePlan = null;
-      this.q('.planner').classList.add('hidden');
+      this.setMode('idle');
       res([...this.plan]);
       return;
     }
@@ -437,6 +473,7 @@ export class BattleView {
       if (this.plan[i]) {
         this.plan[i] = '';
         play('place');
+        this.hovered = null;
         this.renderPlanner();
       }
       return;
@@ -449,6 +486,7 @@ export class BattleView {
       this.plan[slot] = id;
       play('place');
       this.hovered = null;
+      this.previewCard = id;
       this.renderPlanner();
     }
   }
@@ -457,11 +495,9 @@ export class BattleView {
 
   private async animateRound(plans: [Plan, Plan]): Promise<void> {
     const result = resolveRound(this.state, plans);
-    const playout = this.q('.playout');
-    this.q('.stage').classList.remove('hidden');
-    this.q('.summary').classList.add('hidden');
     this.el.querySelectorAll('.pile-cards').forEach((p) => (p.innerHTML = ''));
-    playout.classList.remove('hidden');
+    this.q('.step-label').textContent = '';
+    this.setMode('reveal');
     play('reveal');
     await this.sleep('intro');
 
@@ -486,7 +522,6 @@ export class BattleView {
     }
     if (this.destroyed) return;
     await this.showSummary(roundNo, plans, result);
-    playout.classList.add('hidden');
   }
 
   private async animateStep(step: StepResult, plans: [Plan, Plan]): Promise<void> {
@@ -499,7 +534,7 @@ export class BattleView {
       const card = document.createElement('div');
       card.className = `pile-card${step.players[i].active ? '' : ' inactive'}`;
       card.style.setProperty('--n', String(step.slot));
-      card.innerHTML = cardHtml(plans[i][step.slot], { facing: step.players[i].facing, readonly: true });
+      card.innerHTML = cardHtml(plans[i][step.slot], { facing: step.players[i].facing, small: true, readonly: true });
       pile.appendChild(card);
     }
     play('place');
@@ -550,7 +585,6 @@ export class BattleView {
 
   /** After the round: both players' three cards side by side, in order. */
   private showSummary(roundNo: number, plans: [Plan, Plan], result: RoundResult): Promise<void> {
-    this.q('.stage').classList.add('hidden');
     const summary = this.q('.summary');
     const header = plans[0].map((_, s) => `<span class="slot-label">${STRINGS.slot(s + 1)}</span>`).join('');
     const rows = ([0, 1] as Seat[])
@@ -570,7 +604,7 @@ export class BattleView {
     summary.innerHTML = `<h3>${STRINGS.roundSummary(roundNo)}</h3>
       <div class="sum-grid"><span></span>${header}${rows}</div>
       <button class="btn primary" data-act="next">${label}</button>`;
-    summary.classList.remove('hidden');
+    this.setMode('summary');
     return new Promise((res) => {
       summary.querySelector('[data-act="next"]')!.addEventListener('click', () => {
         play('click');

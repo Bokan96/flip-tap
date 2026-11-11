@@ -66,7 +66,7 @@ function howTo(): void {
     `<h2>${STRINGS.howToPlay}</h2>
      <ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol>
      <div class="hand demo">${example}</div>
-     <p class="note">The number in the corner is the card's energy cost. On attack cards, the grid shows which squares it hits (the centre square is you, facing your opponent).</p>
+     <p class="note">The number in the corner is the card's energy cost. On every grid the outlined centre square is you. Move cards mark where you will step in blue; attack cards mark the squares they hit in red, with an arrow showing the side you face.</p>
      <button class="btn" data-act="back">${STRINGS.back}</button>`,
     'howto',
   );
@@ -110,14 +110,55 @@ function pickFighters(mode: Mode): void {
     );
     bindDifficulty(root);
     on(root, '[data-act="back"]', title);
-    on(root, '[data-fighter]', (el) => {
-      picks.push(el.dataset.fighter!);
-      if (mode === 'tournament') return tournamentHub(picks[0]);
-      if (picks.length === 2) return startMatch(mode, picks[0], picks[1]);
-      step();
-    });
+    root.querySelectorAll<HTMLElement>('[data-fighter]').forEach((el) =>
+      el.addEventListener('click', async () => {
+        await animatePick(root, el);
+        picks.push(el.dataset.fighter!);
+        if (mode === 'tournament') return tournamentHub(picks[0]);
+        if (picks.length === 2) return startMatch(mode, picks[0], picks[1]);
+        step();
+      }),
+    );
   };
   step();
+}
+
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Highlight the chosen fighter and fade the rest before moving on. */
+async function animatePick(root: HTMLElement, chosen: HTMLElement): Promise<void> {
+  const grid = root.querySelector('.fighters')!;
+  if (grid.classList.contains('picking')) return;
+  grid.classList.add('picking');
+  chosen.classList.add('chosen');
+  play('place');
+  await wait(750);
+}
+
+/** Short "A vs B" splash before a match. Tap to skip. */
+function versusSplash(a: string, b: string, names: [string, string]): Promise<void> {
+  const fa = getFighter(a);
+  const fb = getFighter(b);
+  const root = screen(
+    `<div class="vs-splash">
+      <div class="vs-side left" style="--clr:${fa.color}">${emblemHtml(fa)}<b>${fa.name}</b><span>${names[0]}</span></div>
+      <div class="vs-mark">${STRINGS.vs}</div>
+      <div class="vs-side right" style="--clr:${fb.color}">${emblemHtml(fb)}<b>${fb.name}</b><span>${names[1]}</span></div>
+    </div>
+    <p class="note">${STRINGS.tapToContinue}</p>`,
+    'versus',
+  );
+  play('reveal');
+  return new Promise((res) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      res();
+    };
+    root.addEventListener('click', finish);
+    setTimeout(finish, 1900);
+  });
 }
 
 // ---------- matches ----------
@@ -138,17 +179,19 @@ function runBattle(
   let view: BattleView | null = null;
   const [s0, s1] = seatsFor(mode, () => view!);
   const names: [string, string] = [STRINGS.player(1), mode === 'hotseat' ? STRINGS.player(2) : STRINGS.cpu];
-  const container = screen('', 'battle-screen');
-  view = new BattleView(
-    container,
-    createMatch(p0, p1),
-    [
-      { name: names[0], source: s0 },
-      { name: names[1], source: s1 },
-    ],
-    (outcome) => onEnd(outcome),
-    onQuit,
-  );
+  void versusSplash(p0.fighterId, p1.fighterId, names).then(() => {
+    const container = screen('', 'battle-screen');
+    view = new BattleView(
+      container,
+      createMatch(p0, p1),
+      [
+        { name: names[0], source: s0 },
+        { name: names[1], source: s1 },
+      ],
+      (outcome) => onEnd(outcome),
+      onQuit,
+    );
+  });
 }
 
 function outcomeText(outcome: MatchOutcome, names: [string, string]): string {
