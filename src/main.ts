@@ -40,6 +40,7 @@ import { createTutorialMatch, ScriptedPlanSource, TUTORIAL, tutorialHooks } from
 import { BattleView, HumanPlanSource, type BattleOptions } from './ui/battle';
 import { cardHtml, describeCard, passiveHtml } from './ui/card';
 import { emblemHtml, portraitHtml } from './ui/emblems';
+import { retrigger } from './ui/fx';
 import { bindSettings, settingsHtml } from './ui/settingsPanel';
 import { applySkin, themeColor } from './ui/skin';
 import { toast } from './ui/toast';
@@ -132,7 +133,7 @@ function title(): void {
     </div>`,
     'title',
   );
-  on(root, '[data-mode]', (el) => pickFighters(el.dataset.mode as 'cpu' | 'hotseat' | 'tournament'));
+  on(root, '[data-mode]', (el) => matchSetup(el.dataset.mode as SetupMode));
   on(root, '[data-act="daily"]', dailyScreen);
   if (saved) on(root, '[data-act="resume"]', () => resumeMatch(saved));
   on(root, '[data-act="howto"]', howTo);
@@ -181,17 +182,6 @@ function howTo(): void {
 }
 
 // ---------- fighter selection and loadout ----------
-
-function fighterGrid(): string {
-  return `<div class="fighters">${FIGHTERS.map((f) => {
-    const champ = ladder(f.id).champion ? `<em class="champ" title="${STRINGS.championBadge}">★</em>` : '';
-    return `<button class="fighter" data-fighter="${f.id}" style="--clr:${f.color}">
-      ${champ}${portraitHtml(f)}
-      <b>${f.name}</b><i>${f.title}</i><span>${f.blurb}</span>
-      ${passiveHtml(f)}
-    </button>`;
-  }).join('')}</div>`;
-}
 
 function difficultyPicker(): string {
   return `<div class="difficulty"><span>${STRINGS.difficulty}:</span>${(['easy', 'normal', 'hard'] as Difficulty[])
@@ -250,47 +240,144 @@ function bindLoadout(root: HTMLElement): void {
   });
 }
 
-function pickFighters(mode: 'cpu' | 'hotseat' | 'tournament'): void {
-  const picks: string[] = [];
-  const step = () => {
-    const who = mode === 'hotseat' ? STRINGS.player(picks.length + 1) : picks.length === 0 ? STRINGS.player(1) : STRINGS.cpu;
-    const first = picks.length === 0;
-    const root = screen(
-      `<h2>${STRINGS.pickFighter(who)}</h2>
-       ${mode === 'cpu' && first ? difficultyPicker() : ''}
-       ${mode !== 'tournament' && first ? arenaPicker() : ''}
-       ${mode === 'cpu' && first ? loadoutHtml(false) : ''}
-       ${fighterGrid()}
-       <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>`,
-      'select',
-    );
-    bindDifficulty(root);
-    bindArena(root);
-    bindLoadout(root);
-    on(root, '[data-act="back"]', title);
-    root.querySelectorAll<HTMLElement>('[data-fighter]').forEach((el) =>
-      el.addEventListener('click', async () => {
-        await animatePick(root, el);
-        picks.push(el.dataset.fighter!);
-        if (mode === 'tournament') return tournamentHub(picks[0]);
-        if (picks.length === 2) return startMatch(mode, picks[0], picks[1]);
-        step();
-      }),
-    );
-  };
-  step();
-}
+type SetupMode = 'cpu' | 'hotseat' | 'tournament';
+
+/** The last picks per mode in this session, so coming back to setup keeps them. */
+const lastPicks: Partial<Record<SetupMode, (string | null)[]>> = {};
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** Highlight the chosen fighter and fade the rest before moving on. */
-async function animatePick(root: HTMLElement, chosen: HTMLElement): Promise<void> {
-  const grid = root.querySelector('.fighters')!;
-  if (grid.classList.contains('picking')) return;
-  grid.classList.add('picking');
-  chosen.classList.add('chosen');
-  play('place');
-  await wait(750);
+function stars(n: number): string {
+  return `<span class="stars" title="${STRINGS.setup.complexity}">${'★'.repeat(n)}<span class="off">${'★'.repeat(3 - n)}</span></span>`;
+}
+
+/**
+ * Match setup: the fighter slots (tap one to change it), the roster with a Random tile, details of
+ * the highlighted fighter, the mode's options and a Fight button. Nothing starts until Fight.
+ */
+function matchSetup(mode: SetupMode): void {
+  const seats = mode === 'tournament' ? 1 : 2;
+  const names = mode === 'hotseat' ? [STRINGS.player(1), STRINGS.player(2)] : mode === 'cpu' ? [STRINGS.setup.you, STRINGS.cpu] : [STRINGS.setup.you];
+  const picks: (string | null)[] = [...(lastPicks[mode] ?? Array(seats).fill(null))];
+  let active = picks.findIndex((p) => !p);
+  if (active < 0) active = 0;
+  let focus: string | null = picks[active] ?? picks[0];
+  let busy = false;
+
+  const heading = mode === 'cpu' ? STRINGS.modeCpu : mode === 'hotseat' ? STRINGS.modeHotseat : STRINGS.modeTournament;
+  const tiles = FIGHTERS.map((f) => {
+    const champ = ladder(f.id).champion ? `<em class="champ" title="${STRINGS.championBadge}">★</em>` : '';
+    return `<button class="pick" data-pick="${f.id}" style="--clr:${f.color}">
+      ${champ}<span class="pick-marks"></span>${portraitHtml(f, 'pick-emblem')}<b>${f.name}</b><small>${f.role}</small>
+    </button>`;
+  }).join('');
+  const options =
+    (mode === 'cpu' ? difficultyPicker() : '') + (mode !== 'tournament' ? arenaPicker() : '') + (mode === 'cpu' ? loadoutHtml(false) : '');
+  const root = screen(
+    `<h2>${heading}</h2>
+     <div class="setup">
+       <div class="setup-slots seats-${seats}"></div>
+       <div class="roster">${tiles}
+         <button class="pick random" data-random><span class="random-glyph">?</span><b>${STRINGS.setup.random}</b><small>&nbsp;</small></button>
+       </div>
+       <div class="fighter-detail"></div>
+       ${options ? `<div class="setup-options">${options}</div>` : ''}
+       <div class="row setup-actions">
+         <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>
+         <button class="btn primary fight-btn" data-act="fight">${mode === 'tournament' ? STRINGS.setup.next : STRINGS.setup.fight}</button>
+       </div>
+     </div>`,
+    'setup-screen',
+  );
+
+  const render = () => {
+    root.querySelector('.setup-slots')!.innerHTML = picks
+      .map((id, i) => {
+        const f = id ? getFighter(id) : null;
+        const slot = `<button class="slot-card p${i}${i === active ? ' active' : ''}" data-seat="${i}"${f ? ` style="--clr:${f.color}"` : ''}>
+          ${f ? emblemHtml(f, 'slot-emblem') : '<span class="slot-empty">?</span>'}
+          <span class="slot-text"><small>${names[i]}</small><b>${f ? f.name : STRINGS.setup.choose}</b></span>
+        </button>`;
+        return i === 1 ? `<span class="setup-vs">${STRINGS.vs}</span>${slot}` : slot;
+      })
+      .join('');
+    root.querySelectorAll<HTMLElement>('[data-pick]').forEach((tile) => {
+      const id = tile.dataset.pick!;
+      tile.classList.toggle('focus', id === focus);
+      tile.querySelector('.pick-marks')!.innerHTML = picks
+        .map((p, i) => (p === id ? `<i class="m${i}">${seats === 1 ? '✓' : i === 0 ? 'P1' : mode === 'cpu' ? 'CPU' : 'P2'}</i>` : ''))
+        .join('');
+    });
+    const detail = root.querySelector<HTMLElement>('.fighter-detail')!;
+    const f = focus ? getFighter(focus) : null;
+    if (!f) {
+      detail.style.removeProperty('--clr');
+      detail.innerHTML = `<p class="detail-blurb">${STRINGS.setup.pickFor(names[active])}</p>`;
+    } else {
+      detail.style.setProperty('--clr', f.color);
+      detail.innerHTML = `<div class="detail-head">${portraitHtml(f, 'detail-emblem')}
+          <div><b>${f.name}</b><i>${f.title}</i><div class="detail-tags"><span class="role-tag">${f.role}</span>${stars(f.complexity)}</div></div>
+          <span class="detail-stats">♥ ${f.lifeMax ?? BALANCE.lifeMax}<br>⚡ ${f.energyMax ?? BALANCE.energyMax}</span>
+        </div>
+        <p class="detail-blurb">${f.blurb}</p>
+        ${passiveHtml(f)}`;
+    }
+    root.querySelector<HTMLButtonElement>('[data-act="fight"]')!.disabled = picks.some((p) => !p);
+  };
+
+  const choose = (id: string) => {
+    const seat = active;
+    picks[seat] = id;
+    focus = id;
+    // Move on to the next empty slot, if any.
+    const next = picks.findIndex((p) => !p);
+    if (next >= 0) active = next;
+    render();
+    retrigger(root.querySelector(`[data-pick="${id}"]`)!, 'picked');
+    retrigger(root.querySelector(`.slot-card.p${seat}`)!, 'picked');
+  };
+
+  root.querySelector('.roster')!.addEventListener('click', async (e) => {
+    const tile = (e.target as HTMLElement).closest<HTMLElement>('.pick');
+    if (!tile || busy) return;
+    if (tile.dataset.pick) {
+      play('place');
+      return choose(tile.dataset.pick);
+    }
+    // Random: flick through the roster, then land on one.
+    busy = true;
+    play('reveal');
+    const all = [...root.querySelectorAll<HTMLElement>('[data-pick]')];
+    const final = FIGHTERS[Math.floor(Math.random() * FIGHTERS.length)].id;
+    for (let k = 0; k < 9; k++) {
+      all.forEach((t) => t.classList.remove('cycling'));
+      all[Math.floor(Math.random() * all.length)].classList.add('cycling');
+      await wait(60 + k * 12);
+    }
+    all.forEach((t) => t.classList.remove('cycling'));
+    busy = false;
+    play('place');
+    choose(final);
+  });
+  root.querySelector('.setup-slots')!.addEventListener('click', (e) => {
+    const slot = (e.target as HTMLElement).closest<HTMLElement>('[data-seat]');
+    if (!slot) return;
+    play('click');
+    active = Number(slot.dataset.seat);
+    focus = picks[active] ?? focus;
+    render();
+  });
+  bindDifficulty(root);
+  bindArena(root);
+  bindLoadout(root);
+  on(root, '[data-act="back"]', title);
+  on(root, '[data-act="fight"]', () => {
+    if (picks.some((p) => !p)) return;
+    lastPicks[mode] = [...picks];
+    if (mode === 'tournament') return tournamentHub(picks[0]!);
+    startMatch(mode, picks[0]!, picks[1]!);
+  });
+  render();
 }
 
 /** Short "A vs B" splash before a match. Tap to skip. */
@@ -428,7 +515,7 @@ function startTutorial(): void {
       if (outcome.winner === 0) play('win');
       const heading = outcome.winner === 0 ? STRINGS.tutorial.done : outcomeText(outcome, names);
       resultScreen(heading, outcome.winner, [TUTORIAL.player, TUTORIAL.dummy], [
-        { label: STRINGS.modeCpu, primary: true, fn: () => pickFighters('cpu') },
+        { label: STRINGS.modeCpu, primary: true, fn: () => matchSetup('cpu') },
         { label: STRINGS.retry, fn: startTutorial },
         { label: STRINGS.menu, fn: title },
       ], `<p class="note">${STRINGS.tutorial.doneHint}</p>`, outcome.winner === 0);

@@ -41,6 +41,15 @@ export const STRINGS = {
   },
 
   pickFighter: (who: string) => `${who}: choose your fighter`,
+  setup: {
+    choose: 'Choose',
+    pickFor: (who: string) => `Tap a fighter for ${who}.`,
+    random: 'Random',
+    fight: 'Fight!',
+    next: 'Continue',
+    complexity: 'How tricky to play (1–3 stars)',
+    you: 'You',
+  },
   player: (n: number) => `Player ${n}`,
   cpu: 'CPU',
   difficulty: 'Difficulty',

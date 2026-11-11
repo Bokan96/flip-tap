@@ -90,6 +90,10 @@ export interface FighterDef {
   /** Key into the emblem renderer (src/ui/emblems.ts) unless an image is supplied in assets. */
   emblem: string;
   signature: string[];
+  /** Short play-style tag shown on fighter select (e.g. "Burst", "Trapper"). */
+  role: string;
+  /** How tricky the fighter is to play well: 1 (simple) to 3 (advanced). */
+  complexity: 1 | 2 | 3;
   passive?: Passive;
   lifeMax?: number;
   energyMax?: number;

@@ -348,6 +348,15 @@ export class BattleView {
     }
   }
 
+  /** Put the tokens somewhere instantly (no sliding), e.g. when a replay starts over. */
+  private snapTokens(pos: [Pos, Pos], facing?: [number, number]): void {
+    const tokens = this.el.querySelectorAll<HTMLElement>('.token');
+    tokens.forEach((t) => t.classList.add('snap'));
+    this.placeTokens(pos, facing);
+    void tokens[0]?.offsetWidth; // apply the new position before transitions come back
+    requestAnimationFrame(() => tokens.forEach((t) => t.classList.remove('snap')));
+  }
+
   private clearAreas(): void {
     this.el.querySelectorAll<HTMLElement>('.tile').forEach((t) => {
       t.classList.remove('area-p0', 'area-p1', 'preview', 'preview-atk', 'preview-move', 'preview-trap', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake');
@@ -1125,7 +1134,7 @@ export class BattleView {
     this.renderTraps(this.state.arena.traps);
     this.el.querySelectorAll('.summary .now').forEach((e) => e.classList.remove('now'));
     const ps = this.state.players;
-    this.placeTokens([ps[0].pos, ps[1].pos], [ps[0].facing, ps[1].facing]);
+    this.snapTokens([ps[0].pos, ps[1].pos], [ps[0].facing, ps[1].facing]);
     const o = this.state.outcome;
     [0, 1].forEach((i) => {
       const t = this.q(`.token.p${i}`);
@@ -1155,7 +1164,7 @@ export class BattleView {
         tokens.forEach((t) => t.classList.remove('ko', 'ko-fall', 'dazed'));
         this.clearAreas();
         this.renderTraps(start.traps);
-        this.placeTokens(start.pos, start.facing);
+        this.snapTokens(start.pos, start.facing);
         await pause(700);
         for (const step of result.steps) {
           const P = step.players;
@@ -1194,8 +1203,9 @@ export class BattleView {
           this.renderTraps(step.traps);
           await pause(300);
         }
+        // Hold the final position a while before starting over.
+        await pause(2400);
         mark(null);
-        await pause(1200);
       }
     } catch (e) {
       if (e !== CANCELLED) throw e;

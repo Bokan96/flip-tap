@@ -109,6 +109,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#ff6b3d',
     emblem: 'flame',
     signature: ['cinderJab', 'cinderRing', 'cinderPillar', 'cinderBlaze'],
+    role: 'Burst',
+    complexity: 1,
     passive: { name: 'Kindle', text: 'Attacks deal 10 more damage while at 50 life or less.', mods: { lowLifeThreshold: 50, lowLifeBonus: 10 } },
   },
   {
@@ -119,6 +121,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#3da5ff',
     emblem: 'wave',
     signature: ['marinSplash', 'marinUndertow', 'marinWall', 'marinFlood'],
+    role: 'Control',
+    complexity: 2,
     passive: { name: 'Riptide', text: 'Pushes and pulls move the target 1 extra square.', mods: { pushBonus: 1 } },
   },
   {
@@ -129,6 +133,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#5fe3b0',
     emblem: 'swirl',
     signature: ['zephyrGust', 'zephyrShear', 'zephyrSpiral', 'zephyrEdge'],
+    role: 'Evasive',
+    complexity: 2,
     passive: { name: 'Slipstream', text: 'Takes 10 less damage on steps where it moved.', mods: { movedReduction: 10 } },
   },
   {
@@ -139,6 +145,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#c9a36b',
     emblem: 'hex',
     signature: ['basaltToss', 'basaltQuake', 'basaltSpikes', 'basaltCrush'],
+    role: 'Tank',
+    complexity: 1,
     passive: { name: 'Bedrock', text: '115 max life. Can’t be pushed or pulled.', mods: { immovable: true } },
     lifeMax: 115,
   },
@@ -150,6 +158,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#ffd23d',
     emblem: 'bolt',
     signature: ['voltaZap', 'voltaArc', 'voltaField', 'voltaClap'],
+    role: 'Tempo',
+    complexity: 2,
     passive: { name: 'Capacitor', text: '120 max energy. Regains 7 extra energy every round.', mods: { energyPerRound: 7 } },
     energyMax: 120,
   },
@@ -161,6 +171,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#b07cff',
     emblem: 'moon',
     signature: ['umbraClaw', 'umbraEclipse', 'umbraCreep', 'umbraGrasp'],
+    role: 'Ambusher',
+    complexity: 2,
     passive: { name: 'Ambush', text: 'Attacks deal 10 more damage to a target that moved this step.', mods: { vsMovedBonus: 10 } },
   },
   {
@@ -171,6 +183,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#9fb6cc',
     emblem: 'crosshair',
     signature: ['ferroSnap', 'ferroScatter', 'ferroSlug', 'ferroCannon', 'ferroReload'],
+    role: 'Gunner',
+    complexity: 3,
     passive: { name: 'Magazine', text: 'Each attack fires once, then needs a Reload.', mods: { ammo: true } },
   },
   {
@@ -181,6 +195,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#9fe04a',
     emblem: 'thorn',
     signature: ['briarSnare', 'briarField', 'briarLash', 'briarBloom'],
+    role: 'Trapper',
+    complexity: 3,
     passive: { name: 'Deep Roots', text: 'Your traps deal 10 more damage.', mods: { trapBonus: 10 } },
   },
   {
@@ -191,6 +207,8 @@ export const FIGHTERS: FighterDef[] = [
     color: '#ff5fb4',
     emblem: 'mask',
     signature: ['vexHex', 'vexSwap', 'vexSmolder', 'vexFlare'],
+    role: 'Trickster',
+    complexity: 3,
     passive: { name: 'Fever', text: 'Your burns deal 5 more damage each step.', mods: { burnBonus: 5 } },
   },
 ];
