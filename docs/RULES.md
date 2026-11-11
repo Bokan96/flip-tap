@@ -108,6 +108,9 @@ pattern in the same slot avoids the hit.
 - There is no round limit.
 
 ## Modes
+- **Tutorial:** a guided first match against a scripted training dummy, with tips about moving,
+  attacking, dodging, energy and guarding. Offered once on the title screen and always available
+  from How to play.
 - **Versus CPU:** pick fighters, play one match against the AI.
 - **Hot-seat:** two people share a device. Player 1 plans, then hands over the device ("pass" screen
   hides the plan), then Player 2 plans, then both are revealed.

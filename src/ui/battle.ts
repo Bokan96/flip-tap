@@ -2,17 +2,49 @@ import { isSoundEnabled, play, setSoundEnabled } from '../audio/sfx';
 import { BALANCE } from '../content/balance';
 import { getCard, getFighter } from '../content/cards';
 import { STRINGS } from '../content/strings';
-import { attackArea, canPlace, energyRecovery, faceTowards, movePos, planError, resolveRound, samePos } from '../engine/rules';
+import {
+  attackArea,
+  autoFillPlan,
+  canPlace,
+  energyRecovery,
+  faceTowards,
+  movePos,
+  partialPlanOk,
+  planEnergyTrace,
+  planError,
+  resolveRound,
+  samePos,
+} from '../engine/rules';
 import type { MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult } from '../engine/types';
 import type { PlanSource } from '../net/transport';
-import { getSpeed, setSpeed, speedMultiplier, type Speed } from '../settings';
+import { getPlanTimer, getSpeed, setPlanTimer, setSpeed, speedMultiplier, type PlanTimer, type Speed } from '../settings';
 import { cardHtml, describeCard, groupedCardsHtml, passiveHtml } from './card';
+import { enableDrag } from './drag';
 import { emblemHtml } from './emblems';
 
 export interface BattleSeat {
   name: string;
   source: PlanSource;
 }
+
+/** Optional callbacks, used by the tutorial to coach the player. Async hooks are awaited. */
+export interface BattleHooks {
+  /** A human's planner is on screen and ready. */
+  planStart?(view: BattleView, round: number, seat: Seat): void | Promise<void>;
+  /** A human changed their plan. */
+  planChanged?(view: BattleView, plan: Plan, seat: Seat): void;
+  /** The round recap is on screen. */
+  roundEnd?(view: BattleView, round: number, result: RoundResult): void | Promise<void>;
+}
+
+export interface BattleOptions {
+  hooks?: BattleHooks;
+  /** Ignore the plan timer setting (e.g. in the tutorial). */
+  noTimer?: boolean;
+}
+
+/** Free cards the plan timer uses to finish a plan, in order of preference. */
+const AUTO_FILL = ['guard', 'up', 'down', 'left', 'right', 'focus'];
 
 /**
  * What the battle screen is doing; drives which panels are visible (see styles.css).
@@ -44,6 +76,10 @@ export class BattleView {
   private previewCard: string | null = null;
   private paused = false;
   private destroyed = false;
+  /** Both players' plans from the previous round (shown in the deck viewer). */
+  private lastPlans: [Plan, Plan] | null = null;
+  private timerId: number | null = null;
+  private coachHighlight: string | null = null;
 
   constructor(
     private root: HTMLElement,
@@ -51,6 +87,7 @@ export class BattleView {
     private seats: [BattleSeat, BattleSeat],
     private onEnd: (outcome: MatchOutcome, state: MatchState) => void,
     private onQuit: () => void,
+    private opts: BattleOptions = {},
   ) {
     this.state = initial;
     this.el = document.createElement('div');
@@ -72,9 +109,11 @@ export class BattleView {
   private setMode(mode: Mode): void {
     this.el.dataset.mode = mode;
     if (mode !== 'plan') {
-      // Never leave a planned path or hover highlight on the board for the other player to see.
-      this.q('.ghost').classList.add('hidden');
+      // Never leave a planned path, planned energy or hover highlight for the other player to see.
+      this.clearPath();
       this.clearAreas();
+      this.showPlannedEnergy(null);
+      this.stopTimer();
     }
   }
 
@@ -136,7 +175,8 @@ export class BattleView {
         <div class="arena-wrap">
           <div class="arena" style="--rows:${BALANCE.rows};--cols:${BALANCE.cols}">
             ${tiles}
-            <div class="ghost hidden"></div>
+            <svg class="path" viewBox="0 0 ${BALANCE.cols} ${BALANCE.rows}" preserveAspectRatio="none"><polyline points=""></polyline></svg>
+            ${'<div class="ghost hidden"><b></b></div>'.repeat(BALANCE.slotsPerRound)}
             ${tokens}
             <div class="floats"></div>
           </div>
@@ -151,11 +191,12 @@ export class BattleView {
         <div class="hand grouped"></div>
         <div class="actions">
           <button class="btn ghost-btn" data-act="clear">${STRINGS.clear}</button>
-          <button class="btn primary" data-act="lock">${STRINGS.lockIn}</button>
+          <button class="btn primary" data-act="lock">${STRINGS.lockIn}<span class="timer"></span></button>
         </div>
       </section>
       <section class="pass"></section>
       <section class="summary"></section>
+      <div class="coach hidden"><div class="coach-box"><p></p><button class="btn primary">${STRINGS.gotIt}</button></div></div>
       <div class="modal hidden"><div class="modal-box"></div></div>`;
     this.placeTokens(this.state.players.map((p) => p.pos) as [Pos, Pos]);
 
@@ -178,6 +219,12 @@ export class BattleView {
         this.renderPreview();
       });
     }
+    enableDrag(this.el, {
+      source: (t) => (this.resolvePlan ? t.closest<HTMLElement>('.planner .hand .card[data-card], .slots .card[data-card]') : null),
+      over: (under, src) => this.onDragOver(under, src),
+      drop: (under, src) => this.onDrop(under, src),
+      end: () => this.el.querySelectorAll('.slot').forEach((sl) => sl.classList.remove('drop-ok', 'drop-bad')),
+    });
   }
 
   private q<T extends HTMLElement = HTMLElement>(sel: string): T {
@@ -201,7 +248,7 @@ export class BattleView {
           <div class="who"><b>${this.seats[i].name}</b><span>${f.name}</span></div>
           <div class="bars">
             <div class="bar life"><i></i><span></span></div>
-            <div class="bar energy"><i></i><span></span></div>
+            <div class="bar energy"><i></i><em class="planned"></em><span></span></div>
           </div>`;
         panel.style.setProperty('--clr', f.color);
         panel.title = STRINGS.tapHint;
@@ -214,6 +261,23 @@ export class BattleView {
       (eb.querySelector('i') as HTMLElement).style.width = `${(energy / p.energyMax) * 100}%`;
       eb.querySelector('span')!.textContent = `⚡ ${energy}`;
     });
+  }
+
+  /** Striped segment on the planner's energy bar from current energy to what the plan leaves. */
+  private showPlannedEnergy(after: number | null): void {
+    this.el.querySelectorAll<HTMLElement>('.bar.energy .planned').forEach((el) => (el.style.display = 'none'));
+    if (after === null) return;
+    const p = this.state.players[this.planSeat];
+    if (after === p.energy) return;
+    const el = this.q(`.panel.p${this.planSeat} .bar.energy .planned`);
+    const lo = Math.min(after, p.energy) / p.energyMax;
+    const hi = Math.max(after, p.energy) / p.energyMax;
+    el.style.display = 'block';
+    // Player 2's bars fill from the right.
+    el.style.left = this.planSeat === 0 ? `${lo * 100}%` : '';
+    el.style.right = this.planSeat === 1 ? `${lo * 100}%` : '';
+    el.style.width = `${(hi - lo) * 100}%`;
+    el.classList.toggle('gain', after > p.energy);
   }
 
   // ---------- board ----------
@@ -298,6 +362,13 @@ export class BattleView {
     this.openModal(
       `<div class="deck-head" style="--clr:${f.color}">${emblemHtml(f, 'hud-emblem')}<h2>${STRINGS.deckOf(this.seats[seat].name, f.name)}</h2></div>
        ${passiveHtml(f)}
+       ${
+         this.lastPlans
+           ? `<h3>${STRINGS.lastRound}</h3><div class="hand last-round">${this.lastPlans[seat]
+               .map((id) => cardHtml(id, { facing: p.facing, small: true, readonly: true }))
+               .join('')}</div>`
+           : ''
+       }
        <div class="hand grouped">${groupedCardsHtml(p.deck, (id) => cardHtml(id, { facing: p.facing, readonly: true }))}</div>
        <button class="btn" data-modal="close">${STRINGS.close}</button>`,
     );
@@ -308,12 +379,16 @@ export class BattleView {
     const speeds = (['fast', 'normal', 'slow'] as Speed[])
       .map((s) => `<button class="chip${s === getSpeed() ? ' on' : ''}" data-speed="${s}">${STRINGS.speedNames[s]}</button>`)
       .join('');
+    const timers = ([0, 30, 60] as PlanTimer[])
+      .map((t) => `<button class="chip${t === getPlanTimer() ? ' on' : ''}" data-timer="${t}">${STRINGS.timerName(t)}</button>`)
+      .join('');
     this.openModal(
       `<h2>${STRINGS.menuTitle}</h2>
        <div class="menu-list">
          <button class="btn primary" data-modal="close">${STRINGS.resume}</button>
          <button class="btn" data-m="sound">${isSoundEnabled() ? STRINGS.soundOn : STRINGS.soundOff}</button>
          <div class="difficulty"><span>${STRINGS.speed}:</span>${speeds}</div>
+         <div class="difficulty"><span>${STRINGS.planTimer}:</span>${timers}</div>
          <details class="menu-rules"><summary>${STRINGS.howToPlay}</summary><ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol></details>
          <button class="btn danger" data-m="quit">${STRINGS.quit}</button>
        </div>`,
@@ -330,10 +405,18 @@ export class BattleView {
             play('click');
           }),
         );
+        box.querySelectorAll<HTMLElement>('[data-timer]').forEach((chip) =>
+          chip.addEventListener('click', () => {
+            setPlanTimer(Number(chip.dataset.timer) as PlanTimer);
+            box.querySelectorAll('[data-timer]').forEach((c) => c.classList.toggle('on', c === chip));
+            play('click');
+          }),
+        );
         box.querySelector('[data-m="quit"]')!.addEventListener('click', () => {
           play('click');
           this.destroyed = true;
           this.paused = false;
+          this.stopTimer();
           this.onQuit();
         });
       },
@@ -354,7 +437,101 @@ export class BattleView {
     return new Promise((res) => {
       this.resolvePlan = res;
       this.renderPlanner();
+      void (async () => {
+        await this.opts.hooks?.planStart?.(this, state.round, seat);
+        if (this.resolvePlan === res) this.startTimer();
+      })();
     });
+  }
+
+  /** Commit the current plan (it must be complete and legal). */
+  private lockIn(): void {
+    const me = this.state.players[this.planSeat];
+    if (!this.resolvePlan || planError(me, this.plan)) return play('deny');
+    play('click');
+    const res = this.resolvePlan;
+    this.resolvePlan = null;
+    this.setMode('idle');
+    res([...this.plan]);
+  }
+
+  private setPlan(plan: Plan): void {
+    this.plan = plan;
+    this.hovered = null;
+    this.renderPlanner();
+    this.opts.hooks?.planChanged?.(this, [...plan], this.planSeat);
+  }
+
+  // ---------- plan timer ----------
+
+  private startTimer(): void {
+    const total = this.opts.noTimer ? 0 : getPlanTimer();
+    if (!total) return;
+    const lock = this.q('[data-act="lock"]');
+    let left = total * 1000;
+    let lastSecond = Math.ceil(left / 1000);
+    lock.classList.add('timed');
+    const tick = 250;
+    const update = () => {
+      lock.style.setProperty('--t', String(left / (total * 1000)));
+      const sec = Math.ceil(left / 1000);
+      lock.querySelector('.timer')!.textContent = String(sec);
+      lock.classList.toggle('urgent', sec <= 10);
+      if (sec !== lastSecond && sec <= 10 && sec > 0) play('tick');
+      lastSecond = sec;
+    };
+    update();
+    this.timerId = window.setInterval(() => {
+      if (this.paused || this.coachOpen()) return;
+      left -= tick;
+      update();
+      if (left > 0) return;
+      this.stopTimer();
+      const me = this.state.players[this.planSeat];
+      this.plan = autoFillPlan(me, this.plan, AUTO_FILL);
+      this.renderPlanner();
+      this.lockIn();
+    }, tick);
+  }
+
+  private stopTimer(): void {
+    if (this.timerId !== null) clearInterval(this.timerId);
+    this.timerId = null;
+    const lock = this.el.querySelector<HTMLElement>('[data-act="lock"]');
+    if (!lock) return;
+    lock.classList.remove('timed', 'urgent');
+    lock.querySelector('.timer')!.textContent = '';
+  }
+
+  // ---------- coaching (tutorial) ----------
+
+  private coachOpen(): boolean {
+    return !this.q('.coach').classList.contains('hidden');
+  }
+
+  /** Show a tip over the screen; resolves when the player taps "Got it". */
+  coach(text: string): Promise<void> {
+    const box = this.q('.coach');
+    box.querySelector('p')!.textContent = text;
+    box.classList.remove('hidden');
+    return new Promise((res) => {
+      box.querySelector('button')!.onclick = () => {
+        play('click');
+        box.classList.add('hidden');
+        res();
+      };
+    });
+  }
+
+  /** Pulse the elements matching `selector` (re-applied after every planner render). */
+  setHighlight(selector: string | null): void {
+    this.coachHighlight = selector;
+    this.applyHighlight();
+  }
+
+  private applyHighlight(): void {
+    this.el.querySelectorAll('.coach-hl').forEach((e) => e.classList.remove('coach-hl'));
+    if (this.coachHighlight) this.el.querySelectorAll(this.coachHighlight).forEach((e) => e.classList.add('coach-hl'));
   }
 
   private nextEmptySlot(): number {
@@ -364,13 +541,17 @@ export class BattleView {
   private renderPlanner(): void {
     const me = this.state.players[this.planSeat];
     const facings = this.projectedPath().facing;
+    const trace = planEnergyTrace(me.energy, me.energyMax, this.plan);
     this.q('.slots').innerHTML = this.plan
       .map((id, i) => {
         const inner = id ? cardHtml(id, { facing: facings[i], small: true }) : `<span class="empty"><b>${i + 1}</b>${STRINGS.emptySlot}</span>`;
         const next = i === this.nextEmptySlot() ? ' next' : '';
-        return `<div class="slot${next}" data-slot="${i}"><span class="slot-label">${STRINGS.slot(i + 1)}</span>${inner}</div>`;
+        const energy = id && trace ? `<span class="slot-energy" title="${STRINGS.energyAfter}">⚡ ${trace[i]}</span>` : '';
+        return `<div class="slot${next}" data-slot="${i}"><span class="slot-label">${STRINGS.slot(i + 1)}</span>${inner}${energy}</div>`;
       })
       .join('');
+    const filled = this.plan.some(Boolean);
+    this.showPlannedEnergy(filled && trace ? trace[trace.length - 1] : null);
     const target = this.nextEmptySlot();
     this.q('.hand').innerHTML = groupedCardsHtml(me.deck, (id) => {
       const used = this.plan.includes(id);
@@ -380,6 +561,7 @@ export class BattleView {
     this.q<HTMLButtonElement>('[data-act="lock"]').disabled = planError(me, this.plan) !== null;
     this.renderPreview();
     this.renderPreviewPanel();
+    this.applyHighlight();
   }
 
   /** Walk our own plan assuming the opponent stays put; returns positions after each slot. */
@@ -398,21 +580,55 @@ export class BattleView {
     return out;
   }
 
-  /** Board highlight for the hovered card plus the ghost marker at the plan's end position. */
+  private clearPath(): void {
+    this.el.querySelectorAll('.ghost').forEach((g) => g.classList.add('hidden'));
+    this.q('.path polyline').setAttribute('points', '');
+  }
+
+  /**
+   * Numbered markers where the plan takes you (1, 2, 3; steps that end on the same square share a
+   * marker) joined by a dotted line, assuming the opponent stays put.
+   */
+  private renderPath(path: { pos: Pos[] }): void {
+    this.clearPath();
+    const me = this.state.players[this.planSeat];
+    const marks: { pos: Pos; steps: number[]; attack: boolean }[] = [];
+    let prev = me.pos;
+    const line = [me.pos];
+    this.plan.forEach((id, i) => {
+      if (!id) return;
+      const pos = path.pos[i];
+      const attack = getCard(id).kind === 'attack';
+      if (samePos(pos, prev) && !attack) return;
+      const same = marks.find((m) => samePos(m.pos, pos));
+      if (same) {
+        same.steps.push(i + 1);
+        same.attack ||= attack;
+      } else marks.push({ pos, steps: [i + 1], attack });
+      if (!samePos(pos, line[line.length - 1])) line.push(pos);
+      prev = pos;
+    });
+    const ghosts = this.el.querySelectorAll<HTMLElement>('.ghost');
+    marks.slice(0, ghosts.length).forEach((m, k) => {
+      const g = ghosts[k];
+      g.style.setProperty('--r', String(m.pos.r));
+      g.style.setProperty('--c', String(m.pos.c));
+      g.classList.toggle('atk', m.attack);
+      g.querySelector('b')!.textContent = m.steps.join('·');
+      g.classList.remove('hidden');
+    });
+    if (line.length > 1) {
+      this.q('.path polyline').setAttribute('points', line.map((p) => `${p.c + 0.5},${p.r + 0.5}`).join(' '));
+    }
+  }
+
+  /** Board highlight for the hovered card plus the planned path. */
   private renderPreview(): void {
     // Only while a human is planning; never touch the board during the reveal animation.
     if (!this.resolvePlan) return;
     this.clearAreas();
-    const ghost = this.q('.ghost');
     const path = this.projectedPath();
-    if (this.plan.some(Boolean)) {
-      const last = path.pos[path.pos.length - 1];
-      ghost.style.setProperty('--r', String(last.r));
-      ghost.style.setProperty('--c', String(last.c));
-      ghost.classList.remove('hidden');
-    } else {
-      ghost.classList.add('hidden');
-    }
+    this.renderPath(path);
     if (!this.hovered) return;
     const { slot, card } = this.hovered;
     const me = this.state.players[this.planSeat];
@@ -456,28 +672,17 @@ export class BattleView {
     const act = target.closest<HTMLElement>('[data-act]')?.dataset.act;
     const me = this.state.players[this.planSeat];
     if (act === 'clear') {
-      this.plan = this.plan.map(() => '');
       play('place');
-      this.renderPlanner();
+      this.setPlan(this.plan.map(() => ''));
       return;
     }
-    if (act === 'lock') {
-      if (planError(me, this.plan)) return play('deny');
-      play('click');
-      const res = this.resolvePlan;
-      this.resolvePlan = null;
-      this.setMode('idle');
-      res([...this.plan]);
-      return;
-    }
+    if (act === 'lock') return this.lockIn();
     const slotEl = target.closest<HTMLElement>('[data-slot]');
     if (slotEl) {
       const i = Number(slotEl.dataset.slot);
       if (this.plan[i]) {
-        this.plan[i] = '';
         play('place');
-        this.hovered = null;
-        this.renderPlanner();
+        this.setPlan(this.plan.map((id, k) => (k === i ? '' : id)));
       }
       return;
     }
@@ -486,12 +691,68 @@ export class BattleView {
       const slot = this.nextEmptySlot();
       const id = cardEl.dataset.card!;
       if (slot < 0 || !canPlace(me, this.plan, slot, id)) return play('deny');
-      this.plan[slot] = id;
       play('place');
-      this.hovered = null;
       this.previewCard = id;
-      this.renderPlanner();
+      this.setPlan(this.plan.map((x, k) => (k === slot ? id : x)));
     }
+  }
+
+  // ---------- drag & drop ----------
+
+  /**
+   * The plan a drop would produce, or null if it changes nothing.
+   * Hand → slot places (moving the card if it was already planned), slot → slot swaps,
+   * slot → anywhere else removes.
+   */
+  private dropResult(under: HTMLElement | null, src: HTMLElement): Plan | null {
+    const id = src.dataset.card!;
+    const fromSlot = src.closest<HTMLElement>('[data-slot]');
+    const toSlot = under?.closest<HTMLElement>('.slots [data-slot]') ?? null;
+    const next = [...this.plan];
+    if (fromSlot) {
+      const i = Number(fromSlot.dataset.slot);
+      if (!toSlot) {
+        next[i] = '';
+        return next;
+      }
+      const j = Number(toSlot.dataset.slot);
+      if (i === j) return null;
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    }
+    if (!toSlot) return null;
+    const j = Number(toSlot.dataset.slot);
+    const was = next.indexOf(id);
+    if (was === j) return null;
+    if (was >= 0) next[was] = '';
+    next[j] = id;
+    return next;
+  }
+
+  private onDragOver(under: HTMLElement | null, src: HTMLElement): void {
+    const toSlot = under?.closest<HTMLElement>('.slots [data-slot]') ?? null;
+    this.el.querySelectorAll('.slot').forEach((sl) => sl.classList.remove('drop-ok', 'drop-bad'));
+    if (!toSlot) return;
+    const next = this.dropResult(under, src);
+    const ok = !!next && partialPlanOk(this.state.players[this.planSeat], next);
+    toSlot.classList.add(ok ? 'drop-ok' : 'drop-bad');
+  }
+
+  private onDrop(under: HTMLElement | null, src: HTMLElement): void {
+    if (!this.resolvePlan) return;
+    const next = this.dropResult(under, src);
+    if (!next) return;
+    if (!partialPlanOk(this.state.players[this.planSeat], next)) {
+      play('deny');
+      const target = under?.closest<HTMLElement>('.slots [data-slot]');
+      target?.classList.remove('shake');
+      void target?.offsetWidth;
+      target?.classList.add('shake');
+      return;
+    }
+    play('place');
+    this.previewCard = src.dataset.card!;
+    this.setPlan(next);
   }
 
   // ---------- resolution ----------
@@ -511,6 +772,7 @@ export class BattleView {
 
     const roundNo = this.state.round;
     this.state = result.state;
+    this.lastPlans = [[...plans[0]], [...plans[1]]];
     this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed'));
     if (!result.state.outcome) {
       for (const p of this.state.players) this.floatText(p.pos, STRINGS.energyBack(energyRecovery(p)), 'energy');
@@ -614,7 +876,7 @@ export class BattleView {
   }
 
   /** After the round: both players' three cards side by side, in order. */
-  private showSummary(roundNo: number, plans: [Plan, Plan], result: RoundResult): Promise<void> {
+  private async showSummary(roundNo: number, plans: [Plan, Plan], result: RoundResult): Promise<void> {
     const summary = this.q('.summary');
     const header = plans[0].map((_, s) => `<span class="slot-label">${STRINGS.slot(s + 1)}</span>`).join('');
     const rows = ([0, 1] as Seat[])
@@ -635,11 +897,13 @@ export class BattleView {
       <div class="sum-grid"><span></span>${header}${rows}</div>
       <button class="btn primary" data-act="next">${label}</button>`;
     this.setMode('summary');
-    return new Promise((res) => {
+    const done = new Promise<void>((res) => {
       summary.querySelector('[data-act="next"]')!.addEventListener('click', () => {
         play('click');
         res();
       });
     });
+    await this.opts.hooks?.roundEnd?.(this, roundNo, result);
+    return done;
   }
 }

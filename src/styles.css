@@ -431,6 +431,62 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   background: #ffe36b; color: #2b2100; font-size: .6rem; font-weight: 900; text-transform: uppercase; padding: 2px 5px;
 }
 
+/* ---------- planning aids: path, energy per step, drag & drop, timer, coach ---------- */
+.path { position: absolute; left: 4px; top: 4px; width: calc(100% - 8px); height: calc(100% - 8px); pointer-events: none; z-index: 1; overflow: visible; }
+.path polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; opacity: .75; }
+.ghost b {
+  position: absolute; z-index: 1; top: 6%; left: 6%; min-width: 20px; padding: 1px 4px; font-size: .72rem; font-weight: 900; line-height: 1.2;
+  background: var(--accent); color: #241c00;
+}
+.ghost.atk::after { border-color: var(--danger); }
+.ghost.atk b { background: var(--danger); color: #fff; }
+.slot { position: relative; }
+.slot-energy { font-size: .64rem; font-weight: 800; color: var(--energy); line-height: 1.1; }
+.bar.energy .planned {
+  display: none; position: absolute; top: 0; bottom: 0;
+  background: repeating-linear-gradient(-45deg, rgba(0, 0, 0, .55) 0 4px, rgba(0, 0, 0, .2) 4px 8px);
+}
+.bar.energy .planned.gain { background: repeating-linear-gradient(-45deg, rgba(75, 224, 138, .8) 0 4px, rgba(75, 224, 138, .35) 4px 8px); }
+
+.battle[data-mode="plan"] .planner .card, .battle[data-mode="plan"] .slots .card { touch-action: none; }
+.drag-clone { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; opacity: .92; box-shadow: 0 12px 28px rgba(0, 0, 0, .6); }
+.card.drag-source { opacity: .25; }
+.battle.dragging .slot { outline: 1px dashed var(--line-hi); outline-offset: 3px; }
+.slot.drop-ok { outline: 2px solid var(--life) !important; outline-offset: 3px; }
+.slot.drop-bad { outline: 2px solid var(--danger) !important; outline-offset: 3px; }
+.slot.shake { animation: shake .4s; }
+
+.btn.timed { position: relative; overflow: hidden; }
+.btn.timed::after {
+  content: ''; position: absolute; left: 0; bottom: 0; height: 4px; width: calc(var(--t, 1) * 100%);
+  background: rgba(0, 0, 0, .45); transition: width .25s linear;
+}
+.btn .timer:not(:empty) { margin-left: 8px; font-size: .8em; opacity: .8; }
+.btn.timed.urgent { animation: urgent .5s ease-in-out infinite alternate; }
+.btn.timed.urgent::after { background: var(--danger); }
+@keyframes urgent { to { box-shadow: inset 0 0 0 3px var(--danger); } }
+
+.coach { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; padding: 16px; background: rgba(5, 8, 16, .35); }
+.coach-box {
+  width: min(460px, 100%); background: var(--panel); border: 1px solid var(--accent); border-left: 4px solid var(--accent);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; text-align: left;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .6); animation: screen-in .3s ease-out;
+}
+.coach-box p { margin: 0; align-self: stretch; line-height: 1.4; font-size: .95rem; }
+/* Cards and buttons are clipped to an angled shape, so the highlight is drawn inside the box. */
+.coach-hl { animation: coach-hl .8s ease-in-out infinite alternate !important; opacity: 1 !important; }
+@keyframes coach-hl {
+  from { box-shadow: inset 0 0 0 3px var(--accent), inset 0 0 26px color-mix(in srgb, var(--accent) 60%, transparent); transform: translateY(-3px); }
+  to { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), inset 0 0 8px transparent; transform: none; }
+}
+.last-round { margin-bottom: 4px; }
+
+.banner {
+  width: min(460px, 100%); display: flex; flex-direction: column; gap: 10px; align-items: center;
+  padding: 12px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); border: 1px solid var(--accent);
+}
+.banner span { font-size: .9rem; }
+
 @media (max-width: 600px) {
   .screen { padding: 14px 10px 20px; }
   .battle-screen { padding: 6px 8px 10px; gap: 6px; }
@@ -441,6 +497,11 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   .card .stat { font-size: .58rem; }
   .card .cost { min-width: 20px; height: 16px; font-size: .64rem; }
   .card .badges { right: 9px; top: 1px; }
+  .slots .card .badges { display: none; }
+  .slot-energy {
+    position: absolute; top: 0; right: 0; z-index: 1; padding: 2px 3px;
+    font-size: .56rem; background: rgba(5, 8, 16, .9); border: 1px solid var(--line);
+  }
   .card .badges i { font-size: .58rem; padding: 0 1px; }
   .fighter .passive { font-size: .66rem; padding-top: 4px; }
   .fighter > span { display: none; }

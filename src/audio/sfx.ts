@@ -94,6 +94,7 @@ const SYNTH: Record<SoundId, () => void> = {
     tone(220, 0.6, 'sawtooth', 0.12, 40);
   },
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.25, 'triangle', 0.12, undefined, i * 0.13)),
+  tick: () => tone(1320, 0.04, 'square', 0.05),
 };
 
 const fileCache = new Map<string, HTMLAudioElement>();

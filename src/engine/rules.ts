@@ -91,13 +91,34 @@ export function planError(player: PlayerState, plan: Plan): string | null {
   return null;
 }
 
+/** Is a partially filled plan (empty slots allowed) still legal so far? */
+export function partialPlanOk(player: PlayerState, plan: Plan): boolean {
+  const used = plan.filter(Boolean);
+  if (used.some((id) => !player.deck.includes(id))) return false;
+  if (BALANCE.uniqueCardsPerPlan && new Set(used).size !== used.length) return false;
+  return planEnergyTrace(player.energy, player.energyMax, plan) !== null;
+}
+
 /** Can `cardId` be placed into `slot` of a partial plan without breaking energy or uniqueness? */
 export function canPlace(player: PlayerState, plan: Plan, slot: number, cardId: string): boolean {
-  if (!player.deck.includes(cardId)) return false;
-  if (BALANCE.uniqueCardsPerPlan && plan.some((id, i) => i !== slot && id === cardId)) return false;
   const next = [...plan];
   next[slot] = cardId;
-  return planEnergyTrace(player.energy, player.energyMax, next) !== null;
+  return partialPlanOk(player, next);
+}
+
+/**
+ * Fill the empty slots of a partial plan with free cards so it can be locked in
+ * (used when the plan timer runs out). Prefers Guard, then movement, then Focus.
+ */
+export function autoFillPlan(player: PlayerState, plan: Plan, preference: string[]): Plan {
+  const out = [...plan];
+  const order = [...preference, ...player.deck];
+  for (let i = 0; i < out.length; i++) {
+    if (out[i]) continue;
+    const pick = order.find((id) => player.deck.includes(id) && canPlace(player, out, i, id));
+    if (pick) out[i] = pick;
+  }
+  return out;
 }
 
 function outcomeFor(players: [PlayerState, PlayerState]): MatchOutcome | null {

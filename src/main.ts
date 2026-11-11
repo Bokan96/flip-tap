@@ -8,6 +8,7 @@ import { createMatch } from './engine/setup';
 import type { MatchOutcome, Seat } from './engine/types';
 import { CpuPlanSource, type PlanSource } from './net/transport';
 import { isChampion, loadProgress, recordWin, resetProgress, rivalBonus, rivalsFor, type TournamentProgress } from './tournament';
+import { createTutorialMatch, isTutorialDone, ScriptedPlanSource, setTutorialDone, TUTORIAL, tutorialHooks } from './tutorial';
 import { BattleView, HumanPlanSource } from './ui/battle';
 import { cardHtml, describeCard, passiveHtml } from './ui/card';
 import { emblemHtml } from './ui/emblems';
@@ -35,8 +36,16 @@ function on(root: HTMLElement, sel: string, fn: (el: HTMLElement) => void): void
 
 function title(): void {
   const logoEmblems = FIGHTERS.map((f) => emblemHtml(f, 'logo-emblem')).join('');
+  const banner = isTutorialDone()
+    ? ''
+    : `<div class="banner"><span>${STRINGS.tutorial.newHere}</span>
+        <div class="row">
+          <button class="btn primary" data-act="tutorial">${STRINGS.tutorial.playTutorial}</button>
+          <button class="btn ghost-btn" data-act="no-tutorial">${STRINGS.tutorial.noThanks}</button>
+        </div></div>`;
   const root = screen(
     `<div class="title-wrap">
+      ${banner}
       <div class="logo-emblems">${logoEmblems}</div>
       <h1 class="logo">${STRINGS.gameTitle}</h1>
       <p class="tagline">${STRINGS.tagline}</p>
@@ -54,6 +63,11 @@ function title(): void {
   );
   on(root, '[data-mode]', (el) => pickFighters(el.dataset.mode as Mode));
   on(root, '[data-act="howto"]', howTo);
+  on(root, '[data-act="tutorial"]', startTutorial);
+  on(root, '[data-act="no-tutorial"]', () => {
+    setTutorialDone();
+    root.querySelector('.banner')?.remove();
+  });
   on(root, '[data-act="sound"]', (el) => {
     setSoundEnabled(!isSoundEnabled());
     el.textContent = isSoundEnabled() ? STRINGS.soundOn : STRINGS.soundOff;
@@ -67,10 +81,14 @@ function howTo(): void {
      <ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol>
      <div class="hand demo">${example}</div>
      <p class="note">The number in the corner is the card's energy cost. On every grid the outlined centre square is you. Move cards mark where you will step in blue; attack cards mark the squares they hit in red, with an arrow showing the side you face. Icons in the top corner show special effects: ⇥ push, ⇤ pull, ✷ stun, ↺ counter, ♥ drain.</p>
-     <button class="btn" data-act="back">${STRINGS.back}</button>`,
+     <div class="row">
+       <button class="btn primary" data-act="tutorial">${STRINGS.tutorial.playTutorial}</button>
+       <button class="btn" data-act="back">${STRINGS.back}</button>
+     </div>`,
     'howto',
   );
   on(root, '[data-act="back"]', title);
+  on(root, '[data-act="tutorial"]', startTutorial);
 }
 
 // ---------- fighter selection ----------
@@ -191,6 +209,35 @@ function runBattle(
       ],
       (outcome) => onEnd(outcome),
       onQuit,
+    );
+  });
+}
+
+/** Guided first match against a scripted training dummy. */
+function startTutorial(): void {
+  let view: BattleView | null = null;
+  const names: [string, string] = [STRINGS.player(1), STRINGS.tutorial.dummy];
+  void versusSplash(TUTORIAL.player, TUTORIAL.dummy, names).then(() => {
+    const container = screen('', 'battle-screen');
+    view = new BattleView(
+      container,
+      createTutorialMatch(),
+      [
+        { name: names[0], source: new HumanPlanSource(() => view!) },
+        { name: names[1], source: new ScriptedPlanSource() },
+      ],
+      (outcome) => {
+        setTutorialDone();
+        if (outcome.winner === 0) play('win');
+        const heading = outcome.winner === 0 ? STRINGS.tutorial.done : outcomeText(outcome, names);
+        resultScreen(heading, outcome.winner, [TUTORIAL.player, TUTORIAL.dummy], [
+          { label: STRINGS.modeCpu, primary: true, fn: () => pickFighters('cpu') },
+          { label: STRINGS.retry, fn: startTutorial },
+          { label: STRINGS.menu, fn: title },
+        ], `<p class="note">${STRINGS.tutorial.doneHint}</p>`);
+      },
+      title,
+      { hooks: tutorialHooks(), noTimer: true },
     );
   });
 }

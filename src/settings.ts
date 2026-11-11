@@ -31,3 +31,30 @@ export function setSpeed(s: Speed): void {
 export function speedMultiplier(): number {
   return MULTIPLIER[speed];
 }
+
+/** Seconds a human gets to plan a round; 0 = no limit. */
+export type PlanTimer = 0 | 30 | 60;
+const TIMER_KEY = 'fliptap.timer';
+let timer: PlanTimer = readTimer();
+
+function readTimer(): PlanTimer {
+  try {
+    const v = Number(localStorage.getItem(TIMER_KEY));
+    return v === 30 || v === 60 ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function getPlanTimer(): PlanTimer {
+  return timer;
+}
+
+export function setPlanTimer(t: PlanTimer): void {
+  timer = t;
+  try {
+    localStorage.setItem(TIMER_KEY, String(t));
+  } catch {
+    /* storage unavailable */
+  }
+}

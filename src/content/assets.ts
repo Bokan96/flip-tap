@@ -9,7 +9,7 @@ export interface AssetOverrides {
   music?: string;
 }
 
-export type SoundId = 'click' | 'place' | 'deny' | 'reveal' | 'step' | 'hit' | 'guard' | 'miss' | 'heal' | 'ko' | 'win';
+export type SoundId = 'click' | 'place' | 'deny' | 'reveal' | 'step' | 'hit' | 'guard' | 'miss' | 'heal' | 'ko' | 'win' | 'tick';
 
 export const ASSETS: AssetOverrides = {
   fighters: {},
