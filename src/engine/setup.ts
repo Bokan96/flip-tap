@@ -26,6 +26,7 @@ export const NO_MODS: Mods = {
   energyPerRound: 0,
   immovable: false,
   pushBonus: 0,
+  ammo: false,
 };
 
 /** Combine modifier sets: numbers add up, flags combine with OR, thresholds take the highest. */
@@ -36,7 +37,7 @@ export function mergeMods(...parts: (Partial<Mods> | undefined)[]): Mods {
     for (const key of Object.keys(m) as (keyof Mods)[]) {
       const v = m[key];
       if (v === undefined) continue;
-      if (key === 'immovable') out.immovable = out.immovable || (v as boolean);
+      if (key === 'immovable' || key === 'ammo') out[key] = out[key] || (v as boolean);
       else if (key === 'lowLifeThreshold') out.lowLifeThreshold = Math.max(out.lowLifeThreshold, v as number);
       else out[key] = (out[key] as number) + (v as number);
     }
@@ -63,6 +64,7 @@ function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier): PlayerSt
     facing: seat === 0 ? 1 : -1,
     deck: buildDeck(f.id, cfg.bonusCards),
     mods: mergeMods(f.passive?.mods, mod.mods),
+    spent: [],
     dazed: false,
   };
 }

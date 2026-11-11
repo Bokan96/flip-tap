@@ -63,6 +63,13 @@ const signature: CardDef[] = [
   { id: 'voltaField', name: 'Static Field', kind: 'attack', cost: -25, damage: 20, pattern: ['111', '111', '111'] },
   { id: 'voltaClap', name: 'Thunderclap', kind: 'attack', cost: -55, damage: 40, pattern: ['010', '111', '010'], stun: true, fx: 'burst' },
 
+  // Ferro: heavy, cheap shots; each fires once until Reload
+  { id: 'ferroSnap', name: 'Snap Shot', kind: 'attack', cost: -10, damage: 30, pattern: ['000', '011', '000'], fx: 'beam' },
+  { id: 'ferroScatter', name: 'Scattershot', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '011', '001'], fx: 'burst' },
+  { id: 'ferroSlug', name: 'Slug', kind: 'attack', cost: -25, damage: 40, pattern: ['000', '001', '000'], push: 1, fx: 'beam' },
+  { id: 'ferroCannon', name: 'Hand Cannon', kind: 'attack', cost: -45, damage: 55, pattern: ['011', '011', '011'], fx: 'burst' },
+  { id: 'ferroReload', name: 'Reload', kind: 'reload', cost: 0 },
+
   // Umbra: tricky flanking shapes
   { id: 'umbraClaw', name: 'Night Claw', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '010', '001'], drain: 50 },
   { id: 'umbraEclipse', name: 'Eclipse', kind: 'attack', cost: -45, damage: 45, pattern: ['000', '101', '000'] },
@@ -139,6 +146,16 @@ export const FIGHTERS: FighterDef[] = [
     emblem: 'moon',
     signature: ['umbraClaw', 'umbraEclipse', 'umbraCreep', 'umbraGrasp'],
     passive: { name: 'Ambush', text: 'Attacks deal 10 more damage to a target that moved this step.', mods: { vsMovedBonus: 10 } },
+  },
+  {
+    id: 'ferro',
+    name: 'Ferro',
+    title: 'The Iron Gunner',
+    blurb: 'Big, cheap shots, then a pause to reload.',
+    color: '#9fb6cc',
+    emblem: 'crosshair',
+    signature: ['ferroSnap', 'ferroScatter', 'ferroSlug', 'ferroCannon', 'ferroReload'],
+    passive: { name: 'Magazine', text: 'Each attack fires once, then needs a Reload.', mods: { ammo: true } },
   },
 ];
 

@@ -33,21 +33,24 @@ export function enumeratePlans(player: PlayerState): Plan[] {
   const deck = player.deck;
   const slots = BALANCE.slotsPerRound;
   const cur: string[] = [];
-  const rec = (energy: number) => {
+  const rec = (energy: number, reloaded: boolean) => {
     if (cur.length === slots) {
       out.push([...cur]);
       return;
     }
     for (const id of deck) {
       if (BALANCE.uniqueCardsPerPlan && cur.includes(id)) continue;
-      const e = energy + getCard(id).cost;
+      const card = getCard(id);
+      // Ammo fighters can't fire a spent attack until a Reload earlier in the plan.
+      if (!reloaded && card.kind === 'attack' && player.mods.ammo && player.spent.includes(id)) continue;
+      const e = energy + card.cost;
       if (e < 0) continue;
       cur.push(id);
-      rec(Math.min(e, player.energyMax));
+      rec(Math.min(e, player.energyMax), reloaded || card.kind === 'reload');
       cur.pop();
     }
   };
-  rec(player.energy);
+  rec(player.energy, false);
   return out;
 }
 

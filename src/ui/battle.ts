@@ -9,6 +9,7 @@ import {
   autoFillPlan,
   canPlace,
   energyRecovery,
+  isSpent,
   faceTowards,
   movePos,
   partialPlanOk,
@@ -412,7 +413,7 @@ export class BattleView {
                .join('')}</div>`
            : ''
        }
-       <div class="hand grouped">${groupedCardsHtml(p.deck, (id) => cardHtml(id, { facing: p.facing, readonly: true }))}</div>
+       <div class="hand grouped">${groupedCardsHtml(p.deck, (id) => cardHtml(id, { facing: p.facing, readonly: true, spent: isSpent(p, id) }))}</div>
        <button class="btn" data-modal="close">${STRINGS.close}</button>`,
     );
   }
@@ -584,7 +585,7 @@ export class BattleView {
     this.q('.hand').innerHTML = groupedCardsHtml(me.deck, (id) => {
       const used = this.plan.includes(id);
       const ok = target >= 0 && canPlace(me, this.plan, target, id);
-      return cardHtml(id, { facing: facings[Math.max(0, target)], disabled: used || !ok, selected: used });
+      return cardHtml(id, { facing: facings[Math.max(0, target)], disabled: used || !ok, selected: used, spent: isSpent(me, id) });
     });
     this.q<HTMLButtonElement>('[data-act="lock"]').disabled = planError(me, this.plan) !== null;
     this.renderPreview();
@@ -850,6 +851,10 @@ export class BattleView {
     });
     play('flip');
     players.forEach((p, i) => {
+      if (p.reloaded) {
+        this.floatText(p.from, STRINGS.reloaded, 'reload');
+        play('reload');
+      }
       if (!p.stunned) return;
       tokens[i].classList.remove('dazed');
       this.floatText(p.from, STRINGS.stunned, 'stun');
@@ -1125,13 +1130,18 @@ export class BattleView {
       replayBtn.textContent = STRINGS.replay;
       this.restoreBoard();
     };
-    replayBtn.addEventListener('click', () => {
-      play('click');
-      if (replayBtn.textContent === STRINGS.stopReplay) return stopReplay();
+    const startReplay = () => {
       const run = ++this.replayRun;
       replayBtn.textContent = STRINGS.stopReplay;
       void this.replayRound(result, start, run);
+    };
+    replayBtn.addEventListener('click', () => {
+      play('click');
+      if (replayBtn.textContent === STRINGS.stopReplay) return stopReplay();
+      startReplay();
     });
+    // The recap replays the round on the board by itself; the button pauses/restarts it.
+    startReplay();
     const done = new Promise<void>((res) => {
       summary.querySelector('[data-act="next"]')!.addEventListener('click', () => {
         play('click');

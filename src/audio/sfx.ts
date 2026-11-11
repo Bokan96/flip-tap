@@ -124,6 +124,11 @@ const SYNTH: Record<SoundId, () => void> = {
     noise(0.12, 0.1, 0.02, 4000, 1500, 3);
   },
   shimmer: () => [988, 1319, 1568].forEach((f, i) => tone(f, 0.22, 'sine', 0.05, undefined, i * 0.06)),
+  reload: () => {
+    noise(0.05, 0.2, 0, 2500, 2500, 4);
+    noise(0.05, 0.2, 0.12, 1800, 1800, 4);
+    tone(440, 0.18, 'square', 0.05, 880, 0.2);
+  },
   thud: () => {
     tone(110, 0.2, 'sine', 0.2, 50);
     noise(0.12, 0.15, 0, 400, 150);

@@ -8,7 +8,7 @@ export interface Pos {
 /** +1 = facing right (towards higher columns), -1 = facing left. */
 export type Facing = 1 | -1;
 
-export type CardKind = 'move' | 'guard' | 'focus' | 'attack' | 'heal';
+export type CardKind = 'move' | 'guard' | 'focus' | 'attack' | 'heal' | 'reload';
 
 export interface CardDef {
   id: string;
@@ -60,6 +60,8 @@ export interface Mods {
   immovable: boolean;
   /** This player's pushes and pulls move the target this many extra squares. */
   pushBonus: number;
+  /** Attacks are spent once played and can't be used again until a Reload card is played. */
+  ammo: boolean;
 }
 
 export interface Passive {
@@ -94,6 +96,8 @@ export interface PlayerState {
   /** Card ids this player may plan with. */
   deck: string[];
   mods: Mods;
+  /** Ammo fighters only: attack cards already fired and not yet reloaded. */
+  spent: string[];
   /** Stunned: this player's next card this round is cancelled. Cleared at the end of every round. */
   dazed: boolean;
 }
@@ -137,6 +141,8 @@ export interface StepPlayerResult {
   dazed: boolean;
   /** This player's attack never landed because they were knocked out by a faster attack first. */
   interrupted: boolean;
+  /** This player's Reload card resolved: all spent attacks are usable again. */
+  reloaded: boolean;
   healed: number;
   life: number;
   energy: number;

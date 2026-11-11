@@ -21,7 +21,7 @@ export function cloneState(s: MatchState): MatchState {
   return {
     round: s.round,
     outcome: s.outcome,
-    players: s.players.map((p) => ({ ...p, pos: { ...p.pos }, deck: [...p.deck], mods: { ...p.mods } })) as [
+    players: s.players.map((p) => ({ ...p, pos: { ...p.pos }, deck: [...p.deck], mods: { ...p.mods }, spent: [...p.spent] })) as [
       PlayerState,
       PlayerState,
     ],
@@ -79,6 +79,27 @@ export function planEnergyTrace(startEnergy: number, energyMax: number, plan: Pl
   return trace;
 }
 
+/**
+ * Ammo fighters can't plan a spent attack unless a Reload comes earlier in the same plan.
+ * Always true for everyone else.
+ */
+export function ammoOk(player: PlayerState, plan: Plan): boolean {
+  if (!player.mods.ammo) return true;
+  let reloaded = false;
+  for (const id of plan) {
+    if (!id) continue;
+    const c = getCard(id);
+    if (c.kind === 'reload') reloaded = true;
+    else if (c.kind === 'attack' && !reloaded && player.spent.includes(id)) return false;
+  }
+  return true;
+}
+
+/** Is this card a spent attack for this player right now? */
+export function isSpent(player: PlayerState, cardId: string): boolean {
+  return player.mods.ammo && player.spent.includes(cardId) && getCard(cardId).kind === 'attack';
+}
+
 /** Why a plan is not allowed, or null if it is legal. */
 export function planError(player: PlayerState, plan: Plan): string | null {
   if (plan.length !== BALANCE.slotsPerRound) return 'Plan must fill every slot.';
@@ -88,6 +109,7 @@ export function planError(player: PlayerState, plan: Plan): string | null {
   }
   if (BALANCE.uniqueCardsPerPlan && new Set(plan).size !== plan.length) return 'Each card can be used once per round.';
   if (!planEnergyTrace(player.energy, player.energyMax, plan)) return 'Not enough energy for this plan.';
+  if (!ammoOk(player, plan)) return 'That attack must be reloaded first.';
   return null;
 }
 
@@ -96,6 +118,7 @@ export function partialPlanOk(player: PlayerState, plan: Plan): boolean {
   const used = plan.filter(Boolean);
   if (used.some((id) => !player.deck.includes(id))) return false;
   if (BALANCE.uniqueCardsPerPlan && new Set(used).size !== used.length) return false;
+  if (!ammoOk(player, plan)) return false;
   return planEnergyTrace(player.energy, player.energyMax, plan) !== null;
 }
 
@@ -189,7 +212,9 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const cards = [getCard(cardIds[0]), getCard(cardIds[1])] as const;
   const stunned = [ps[0].dazed, ps[1].dazed];
   ps[0].dazed = ps[1].dazed = false;
-  const active = [0, 1].map((i) => !stunned[i] && ps[i].energy + cards[i].cost >= 0);
+  // A card does nothing if its player is stunned, can't afford it, or it's a spent attack
+  // (possible when a stun cancelled the Reload planned before it).
+  const active = [0, 1].map((i) => !stunned[i] && ps[i].energy + cards[i].cost >= 0 && !isSpent(ps[i], cardIds[i]));
   const from = [{ ...ps[0].pos }, { ...ps[1].pos }];
 
   // 1. Movement (simultaneous), then face each other.
@@ -301,6 +326,18 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     reface();
   }
 
+  // Ammo: fired attacks are spent; Reload makes them all usable again.
+  const reloaded = [false, false];
+  for (const i of [0, 1] as const) {
+    if (!active[i]) continue;
+    if (cards[i].kind === 'reload') {
+      reloaded[i] = true;
+      ps[i].spent = [];
+    } else if (ps[i].mods.ammo && cards[i].kind === 'attack' && !ps[i].spent.includes(cardIds[i])) {
+      ps[i].spent.push(cardIds[i]);
+    }
+  }
+
   // 5. KO check.
   state.outcome = outcomeFor(ps);
 
@@ -320,6 +357,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     drained: drained[i],
     dazed: dazed[i],
     interrupted: interrupted[i],
+    reloaded: reloaded[i],
     healed: healed[i],
     life: ps[i].life,
     energy: ps[i].energy,

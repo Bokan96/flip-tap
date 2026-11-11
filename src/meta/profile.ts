@@ -1,5 +1,5 @@
 import { BALANCE } from '../content/balance';
-import { BONUS_CARD_IDS, FIGHTERS } from '../content/cards';
+import { BONUS_CARD_IDS } from '../content/cards';
 import { Rng, randomSeed } from '../engine/rng';
 import type { MatchLog, MatchOutcome, Seat } from '../engine/types';
 import { readJson, readRaw, removeKey, writeJson } from './storage';
@@ -44,6 +44,7 @@ export interface DailyRecord {
 export type MatchMode = 'cpu' | 'hotseat' | 'tournament' | 'daily' | 'tutorial';
 
 const KEY = 'fliptap.profile.v2';
+const V1_RIVALS = 5;
 const OLD_TOURNAMENT_KEY = 'fliptap.tournament';
 const OLD_TUTORIAL_KEY = 'fliptap.tutorialDone';
 
@@ -71,7 +72,9 @@ function migrate(): Profile {
   for (const t of Object.values(old)) {
     if (!t || typeof t.wins !== 'number') continue;
     for (const id of t.bonus ?? []) if (BONUS_CARD_IDS.includes(id) && !p.collection.includes(id)) p.collection.push(id);
-    p.tournaments[t.fighterId] = { wins: t.wins, champion: t.wins >= FIGHTERS.length - 1 };
+    // v1 had 6 fighters, so 5 wins finished a ladder. Champions keep their badge; newer fighters
+    // simply remain on their ladder.
+    p.tournaments[t.fighterId] = { wins: t.wins, champion: t.wins >= V1_RIVALS };
   }
   p.loadout = p.collection.slice(0, BALANCE.bonusSlots);
   p.tutorialDone = readRaw(OLD_TUTORIAL_KEY) === '1';

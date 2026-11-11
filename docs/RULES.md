@@ -56,13 +56,21 @@ Every fighter has one always-on passive ability, made of simple numeric modifier
 | Basalt | Bedrock | 115 max life; can't be pushed or pulled |
 | Volta | Capacitor | 120 max energy; regains 7 extra energy every round |
 | Umbra | Ambush | Attacks deal +10 damage to a target that moved this step |
+| Ferro | Magazine | Each attack fires once, then is **spent** until Ferro plays his **Reload** card |
+
+### Ammo and Reload (Ferro)
+- An attack is spent as soon as it is played (hit or miss). A spent attack can't be planned again.
+- **Reload** (a free card in Ferro's deck) makes every spent attack usable again. It can come earlier
+  in the same plan, so *Reload, Snap Shot, Guard* is legal even if Snap Shot is spent.
+- If Reload is cancelled by a stun, the attacks stay spent and a spent attack later in that plan does
+  nothing.
 
 The same modifier system powers match-wide rule changes (for example a daily challenge that adds
 damage to every attack).
 
 Each fighter has a deck made of:
 - **Basic cards** every fighter shares: Step ↑ ↓ ← →, Guard, Focus.
-- **4 signature attacks** unique to that fighter.
+- **4 signature cards** unique to that fighter (Basalt's include a counter guard; Ferro also has Reload).
 - **Bonus cards** earned in Tournament mode (see below).
 
 ### Patterns and facing

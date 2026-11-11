@@ -8,6 +8,8 @@ const SHAPES: Record<string, string> = {
   swirl: '<path d="M50 14 A36 36 0 1 1 14 50 L28 50 A22 22 0 1 0 50 28Z"/><circle cx="50" cy="50" r="9" fill="rgba(255,255,255,.55)"/>',
   hex: '<polygon points="50,8 86,29 86,71 50,92 14,71 14,29"/><polygon points="50,30 68,40 68,60 50,70 32,60 32,40" fill="rgba(255,255,255,.4)"/>',
   bolt: '<polygon points="58,6 22,56 46,56 38,94 78,40 54,40"/>',
+  crosshair:
+    '<path fill-rule="evenodd" d="M50 12 A38 38 0 1 1 49.99 12 Z M50 24 A26 26 0 1 0 50.01 24 Z"/><rect x="46" y="2" width="8" height="26"/><rect x="46" y="72" width="8" height="26"/><rect x="2" y="46" width="26" height="8"/><rect x="72" y="46" width="26" height="8"/><circle cx="50" cy="50" r="7" fill="rgba(255,255,255,.6)"/>',
   moon: '<path d="M62 10 A40 40 0 1 0 90 62 A30 30 0 1 1 62 10Z"/><circle cx="70" cy="34" r="5" fill="rgba(255,255,255,.55)"/>',
 };
 

@@ -13,7 +13,7 @@ export interface AssetOverrides {
 export type SoundId =
   | 'click' | 'place' | 'deny' | 'reveal' | 'step' | 'hit' | 'guard' | 'miss' | 'heal' | 'ko' | 'win' | 'tick'
   // effects
-  | 'flip' | 'clang' | 'zap' | 'shimmer' | 'thud'
+  | 'flip' | 'clang' | 'zap' | 'shimmer' | 'thud' | 'reload'
   // attack styles (see CardDef.fx)
   | 'slash' | 'burst' | 'wave' | 'beam' | 'quake';
 

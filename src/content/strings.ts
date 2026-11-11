@@ -104,7 +104,7 @@ export const STRINGS = {
   bonusCards: 'Bonus cards',
 
   cardCost: (n: number) => (n < 0 ? `${-n}` : n > 0 ? `+${n}` : '0'),
-  kindNames: { move: 'Move', guard: 'Guard', focus: 'Focus', attack: 'Attack', heal: 'Heal' } as Record<string, string>,
+  kindNames: { move: 'Move', guard: 'Guard', focus: 'Focus', attack: 'Attack', heal: 'Heal', reload: 'Reload' } as Record<string, string>,
   groupNames: { move: 'Move', attack: 'Attack', special: 'Special' } as Record<string, string>,
 
   menuTitle: 'Menu',
@@ -129,6 +129,9 @@ export const STRINGS = {
   descDrain: (pct: number) => (pct >= 100 ? 'Heals you for the damage it deals.' : `Heals you for ${pct}% of the damage it deals.`),
   passive: 'Passive',
   stunned: 'Stunned',
+  reloaded: 'Reloaded!',
+  spentTag: 'Empty',
+  descReload: 'Reloads all your spent attacks.',
   firstStrike: 'First strike!',
   tooLate: 'Too late!',
   dazed: 'Dazed!',

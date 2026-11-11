@@ -19,6 +19,7 @@ interface FastCard {
   stun: boolean;
   counter: number;
   drain: number;
+  reload: boolean;
   /** Flattened [dr, dc] pairs, facing right. */
   cells: number[];
 }
@@ -48,6 +49,7 @@ export function fastCard(id: string): FastCard {
       stun: isAttack && !!c.stun,
       counter: c.counter ?? 0,
       drain: isAttack ? (c.drain ?? 0) : 0,
+      reload: c.kind === 'reload',
       cells,
     };
     cache.set(id, fc);
@@ -110,6 +112,9 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   const c = [P[0].pos.c, P[1].pos.c];
   const f = [P[0].facing as number, P[1].facing as number];
   const z = [P[0].dazed, P[1].dazed];
+  // Spent attacks, tracked only for ammo fighters (null otherwise).
+  const spent: (string[] | null)[] = [m[0].ammo ? [...P[0].spent] : null, m[1].ammo ? [...P[1].spent] : null];
+  const ids = ['', ''];
   const card: FastCard[] = [fastCard(plan0[0]), fastCard(plan1[0])];
   const act = [false, false];
   const mv = [false, false];
@@ -131,10 +136,13 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   };
 
   for (let slot = 0; slot < plan0.length; slot++) {
-    card[0] = fastCard(plan0[slot]);
-    card[1] = fastCard(plan1[slot]);
+    ids[0] = plan0[slot];
+    ids[1] = plan1[slot];
+    card[0] = fastCard(ids[0]);
+    card[1] = fastCard(ids[1]);
     for (let i = 0; i < 2; i++) {
-      act[i] = !z[i] && en[i] + card[i].cost >= 0;
+      const sp = spent[i];
+      act[i] = !z[i] && en[i] + card[i].cost >= 0 && !(sp !== null && card[i].isAttack && sp.includes(ids[i]));
       nz[i] = false;
       const sr = r[i];
       const sc = c[i];
@@ -205,6 +213,13 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
     }
     z[0] = nz[0];
     z[1] = nz[1];
+    for (let i = 0; i < 2; i++) {
+      const sp = spent[i];
+      if (!act[i]) continue;
+      if (card[i].reload) {
+        if (sp) sp.length = 0;
+      } else if (sp && card[i].isAttack && !sp.includes(ids[i])) sp.push(ids[i]);
+    }
 
     if (life[0] <= 0 || life[1] <= 0) {
       outcome = life[0] <= 0 && life[1] <= 0 ? 2 : life[0] <= 0 ? 1 : 0;

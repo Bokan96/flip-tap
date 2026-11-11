@@ -57,6 +57,8 @@ export interface CardOpts {
   small?: boolean;
   /** Display only: no hover or click affordance. */
   readonly?: boolean;
+  /** Ammo fighters: an attack that was fired and needs a Reload. */
+  spent?: boolean;
 }
 
 /** HTML for one card. `facing` flips the pattern preview so it matches the board. */
@@ -77,6 +79,8 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
   } else if (c.kind === 'heal') {
     art = '<span class="big-glyph">✚</span>';
     stat = `<span class="stat heal" title="Heal">✚ ${c.heal}</span>`;
+  } else if (c.kind === 'reload') {
+    art = '<span class="big-glyph">⟳</span>';
   }
   const costCls = c.cost > 0 ? 'gain' : c.cost < 0 ? 'spend' : 'free';
   const effects = cardEffects(id);
@@ -90,6 +94,7 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     opts.selected && 'selected',
     opts.small && 'small',
     opts.readonly && 'readonly',
+    opts.spent && 'spent',
     c.bonus && 'bonus',
   ]
     .filter(Boolean)
@@ -99,7 +104,7 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     <span class="cost ${costCls}" title="Energy">${STRINGS.cardCost(c.cost)}</span>${badges}
     <span class="art">${art}</span>
     <span class="name">${c.name}</span>
-    ${stat}
+    ${stat}${opts.spent ? `<span class="spent-tag">${STRINGS.spentTag}</span>` : ''}
   </${tag}>`;
 }
 
@@ -115,6 +120,7 @@ export function describeCard(id: string): string {
   if (c.stun) parts.push(STRINGS.descStun);
   if (c.counter) parts.push(STRINGS.descCounter(c.counter));
   if (c.drain) parts.push(STRINGS.descDrain(c.drain));
+  if (c.kind === 'reload') parts.push(STRINGS.descReload);
   if (c.text) parts.push(c.text);
   return parts.join(' ');
 }

@@ -3,7 +3,7 @@ import { BALANCE } from '../src/content/balance';
 import { BONUS_CARD_IDS, CARDS, FIGHTERS } from '../src/content/cards';
 import { fastSimulate } from '../src/engine/fastsim';
 import { runMatch } from '../src/engine/match';
-import { SIM_PROFILE } from '../src/engine/ai';
+import { enumeratePlans, SIM_PROFILE } from '../src/engine/ai';
 import { Rng } from '../src/engine/rng';
 import { displace, planError, resolveRound } from '../src/engine/rules';
 import { createMatch, mergeMods } from '../src/engine/setup';
@@ -198,6 +198,7 @@ describe('fast simulator with every card and modifier', () => {
         p.life = 1 + rng.int(p.lifeMax);
         p.energy = rng.int(p.energyMax + 1);
         p.dazed = rng.int(5) === 0;
+        if (p.mods.ammo) p.spent = p.deck.filter((id) => CARDS[id].kind === 'attack' && rng.int(2) === 0);
       }
       const plans: [Plan, Plan] = [randomPlan(rng, s, 0), randomPlan(rng, s, 1)];
       const real = resolveRound(s, plans);
@@ -280,5 +281,58 @@ describe('attack priority', () => {
     const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['guard', 'focus', 'up']]);
     expect(r.steps[0].sequence).toBeNull();
     expect(r.steps[0].players[1].hit).toBe('guard');
+  });
+});
+
+describe('ammo (Ferro)', () => {
+  const ferro = () => duel('ferro', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
+
+  it('a fired attack is spent and cannot be planned again', () => {
+    const s = ferro();
+    const r = resolveRound(s, [['ferroSnap', 'guard', 'focus'], ['guard', 'focus', 'up']]);
+    const next = r.state.players[0];
+    expect(next.spent).toEqual(['ferroSnap']);
+    expect(planError(next, ['ferroSnap', 'guard', 'focus'])).toMatch(/reload/i);
+    expect(planError(next, ['ferroScatter', 'guard', 'focus'])).toBeNull();
+  });
+
+  it('Reload earlier in the plan makes spent attacks usable that same round', () => {
+    const s = ferro();
+    s.players[0].spent = ['ferroSnap', 'ferroSlug'];
+    expect(planError(s.players[0], ['ferroSnap', 'ferroReload', 'guard'])).not.toBeNull();
+    expect(planError(s.players[0], ['ferroReload', 'ferroSnap', 'guard'])).toBeNull();
+    const r = resolveRound(s, [['ferroReload', 'ferroSnap', 'guard'], ['guard', 'focus', 'up']]);
+    expect(r.steps[0].players[0].reloaded).toBe(true);
+    expect(r.steps[1].players[1].damageTaken).toBeGreaterThan(0);
+    expect(r.state.players[0].spent).toEqual(['ferroSnap']);
+  });
+
+  it('a stunned Reload leaves the attacks spent, so the next attack fizzles', () => {
+    // Marin is the stunner here: give her a stun card through a bonus.
+    const s = duel('ferro', 'marin', { r: 1, c: 1 }, { r: 1, c: 1 }, [], ['daze']);
+    s.players[0].spent = ['ferroSnap'];
+    // Focus (not Guard) in step 1, so Daze deals damage and its stun lands.
+    const r = resolveRound(s, [['focus', 'ferroReload', 'ferroSnap'], ['daze', 'guard', 'focus']]);
+    expect(r.steps[0].players[0].dazed).toBe(true);
+    expect(r.steps[1].players[0].stunned).toBe(true);
+    expect(r.steps[1].players[0].reloaded).toBe(false);
+    expect(r.steps[2].players[0].active).toBe(false);
+    expect(r.state.players[0].spent).toEqual(['ferroSnap']);
+  });
+
+  it('missing still spends the attack, and other fighters never run out', () => {
+    const s = duel('ferro', 'marin', { r: 1, c: 0 }, { r: 1, c: 3 });
+    const r = resolveRound(s, [['ferroSnap', 'guard', 'focus'], ['marinSplash', 'guard', 'focus']]);
+    expect(r.state.players[0].spent).toContain('ferroSnap');
+    expect(r.state.players[1].spent).toEqual([]);
+  });
+
+  it('the AI only proposes legal plans while attacks are spent', () => {
+    const s = ferro();
+    s.players[0].spent = ['ferroSnap', 'ferroScatter', 'ferroSlug', 'ferroCannon'];
+    const plans = enumeratePlans(s.players[0]);
+    expect(plans.length).toBeGreaterThan(0);
+    for (const p of plans) expect(planError(s.players[0], p)).toBeNull();
+    expect(plans.some((p) => p[0] === 'ferroReload' && p[1] === 'ferroCannon')).toBe(true);
   });
 });
