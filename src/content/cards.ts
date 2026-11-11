@@ -30,6 +30,10 @@ const bonus: CardDef[] = [
   { id: 'shockwave', name: 'Shockwave', kind: 'attack', cost: -30, damage: 15, pattern: ['001', '011', '001'], push: 1, bonus: true, fx: 'wave' },
   { id: 'hook', name: 'Hook', kind: 'attack', cost: -20, damage: 10, pattern: ['001', '001', '001'], push: -1, bonus: true },
   { id: 'daze', name: 'Daze', kind: 'attack', cost: -20, damage: 10, pattern: ['000', '011', '000'], stun: true, bonus: true },
+  { id: 'tripwire', name: 'Tripwire', kind: 'trap', cost: -10, trap: 15, pattern: ['000', '001', '000'], bonus: true },
+  { id: 'caltrops', name: 'Caltrops', kind: 'trap', cost: -15, trap: 10, pattern: ['010', '000', '010'], bonus: true },
+  { id: 'ignite', name: 'Ignite', kind: 'attack', cost: -20, damage: 10, pattern: ['000', '011', '000'], burn: 10, bonus: true, fx: 'burst' },
+  { id: 'phaseStep', name: 'Phase Step', kind: 'move', cost: -15, swap: true, bonus: true },
 ];
 
 const signature: CardDef[] = [
@@ -64,11 +68,23 @@ const signature: CardDef[] = [
   { id: 'voltaClap', name: 'Thunderclap', kind: 'attack', cost: -55, damage: 40, pattern: ['010', '111', '010'], stun: true, fx: 'burst' },
 
   // Ferro: heavy, cheap shots; each fires once until Reload
-  { id: 'ferroSnap', name: 'Snap Shot', kind: 'attack', cost: -10, damage: 30, pattern: ['000', '011', '000'], fx: 'beam' },
+  { id: 'ferroSnap', name: 'Snap Shot', kind: 'attack', cost: -10, damage: 25, pattern: ['000', '011', '000'], fx: 'beam' },
   { id: 'ferroScatter', name: 'Scattershot', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '011', '001'], fx: 'burst' },
   { id: 'ferroSlug', name: 'Slug', kind: 'attack', cost: -25, damage: 40, pattern: ['000', '001', '000'], push: 1, fx: 'beam' },
   { id: 'ferroCannon', name: 'Hand Cannon', kind: 'attack', cost: -45, damage: 55, pattern: ['011', '011', '011'], fx: 'burst' },
   { id: 'ferroReload', name: 'Reload', kind: 'reload', cost: 0 },
+
+  // Briar: sets traps, then pulls rivals onto them
+  { id: 'briarSnare', name: 'Snare', kind: 'trap', cost: -10, trap: 15, pattern: ['000', '001', '000'] },
+  { id: 'briarField', name: 'Thorn Ring', kind: 'trap', cost: -25, trap: 15, pattern: ['010', '101', '010'] },
+  { id: 'briarLash', name: 'Lash', kind: 'attack', cost: -15, damage: 20, pattern: ['001', '001', '001'], push: -1, fx: 'slash' },
+  { id: 'briarBloom', name: 'Bloom', kind: 'attack', cost: -40, damage: 35, pattern: ['111', '101', '111'], fx: 'burst' },
+
+  // Vex: burning hexes and trading places
+  { id: 'vexHex', name: 'Hex Bolt', kind: 'attack', cost: -15, damage: 20, pattern: ['000', '011', '000'], burn: 10, fx: 'beam' },
+  { id: 'vexSwap', name: 'Mirror Step', kind: 'move', cost: -10, swap: true },
+  { id: 'vexSmolder', name: 'Smolder', kind: 'attack', cost: -25, damage: 20, pattern: ['010', '111', '010'], burn: 5, fx: 'burst' },
+  { id: 'vexFlare', name: 'Flare', kind: 'attack', cost: -45, damage: 40, pattern: ['001', '011', '001'], fx: 'wave' },
 
   // Umbra: tricky flanking shapes
   { id: 'umbraClaw', name: 'Night Claw', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '010', '001'], drain: 50 },
@@ -156,6 +172,26 @@ export const FIGHTERS: FighterDef[] = [
     emblem: 'crosshair',
     signature: ['ferroSnap', 'ferroScatter', 'ferroSlug', 'ferroCannon', 'ferroReload'],
     passive: { name: 'Magazine', text: 'Each attack fires once, then needs a Reload.', mods: { ammo: true } },
+  },
+  {
+    id: 'briar',
+    name: 'Briar',
+    title: 'Warden of Thorns',
+    blurb: 'Lays traps, then drags rivals onto them.',
+    color: '#9fe04a',
+    emblem: 'thorn',
+    signature: ['briarSnare', 'briarField', 'briarLash', 'briarBloom'],
+    passive: { name: 'Deep Roots', text: 'Your traps deal 10 more damage.', mods: { trapBonus: 10 } },
+  },
+  {
+    id: 'vex',
+    name: 'Vex',
+    title: 'The Smiling Hex',
+    blurb: 'Burns that linger and a step that trades places.',
+    color: '#ff5fb4',
+    emblem: 'mask',
+    signature: ['vexHex', 'vexSwap', 'vexSmolder', 'vexFlare'],
+    passive: { name: 'Fever', text: 'Your burns deal 5 more damage each step.', mods: { burnBonus: 5 } },
   },
 ];
 

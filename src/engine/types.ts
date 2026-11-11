@@ -8,7 +8,7 @@ export interface Pos {
 /** +1 = facing right (towards higher columns), -1 = facing left. */
 export type Facing = 1 | -1;
 
-export type CardKind = 'move' | 'guard' | 'focus' | 'attack' | 'heal' | 'reload';
+export type CardKind = 'move' | 'guard' | 'focus' | 'attack' | 'heal' | 'reload' | 'trap';
 
 export interface CardDef {
   id: string;
@@ -31,6 +31,12 @@ export interface CardDef {
   counter?: number;
   /** Attack: percent of the damage dealt that heals the attacker. */
   drain?: number;
+  /** Attack: if the hit deals damage, the target takes this much at the end of each later step this round. */
+  burn?: number;
+  /** Trap card: damage a trap on each of the pattern's squares deals to the first enemy to end a step there. */
+  trap?: number;
+  /** Move card: after movement, the two fighters trade places. */
+  swap?: boolean;
   /** Attack animation style; guessed from the pattern when omitted (see ui/fx.ts). */
   fx?: 'slash' | 'burst' | 'wave' | 'beam' | 'quake';
   /** Bonus cards are earned in Tournament mode. */
@@ -62,6 +68,10 @@ export interface Mods {
   pushBonus: number;
   /** Attacks are spent once played and can't be used again until a Reload card is played. */
   ammo: boolean;
+  /** Extra damage this player's traps deal. */
+  trapBonus: number;
+  /** Extra damage this player's burns deal each step. */
+  burnBonus: number;
 }
 
 export interface Passive {
@@ -98,6 +108,8 @@ export interface PlayerState {
   mods: Mods;
   /** Ammo fighters only: attack cards already fired and not yet reloaded. */
   spent: string[];
+  /** Burn damage taken at the end of each remaining step this round (0 = not burning). */
+  burn: number;
   /** Stunned: this player's next card this round is cancelled. Cleared at the end of every round. */
   dazed: boolean;
 }
@@ -106,6 +118,16 @@ export type MatchOutcome = { winner: Seat } | { winner: null; draw: true };
 
 /** Effects some arena squares have on a fighter who ends a step there. */
 export type TileKind = 'spikes' | 'well';
+
+/** A trap on the board: hurts the owner's opponent when they end a step on it. */
+export interface Trap {
+  /** Square index (r * cols + c). */
+  at: number;
+  owner: Seat;
+  damage: number;
+  /** Removed at the end of this round. */
+  until: number;
+}
 
 /** The board a match is played on (see content/arenas.ts). Plain data, so it saves as JSON. */
 export interface ArenaState {
@@ -116,6 +138,8 @@ export interface ArenaState {
   blocked: number[];
   /** Square effects by square index. */
   tiles: Record<number, TileKind>;
+  /** Traps currently on the board. */
+  traps: Trap[];
 }
 
 export interface MatchState {
@@ -160,6 +184,14 @@ export interface StepPlayerResult {
   reloaded: boolean;
   /** The square effect this player ended the step on, if any. */
   tile: TileKind | null;
+  /** Both fighters traded places this step. */
+  swapped: boolean;
+  /** Damage from an enemy trap this player stepped on. */
+  trapDamage: number;
+  /** Burn damage this player took at the end of the step. */
+  burnDamage: number;
+  /** Burn still affecting this player after the step (for the status icon). */
+  burning: number;
   healed: number;
   life: number;
   energy: number;
@@ -176,6 +208,8 @@ export interface StepResult {
   sequence: [Seat, Seat] | null;
   /** Both fighters' life right after the first strike of a sequence (for the reveal animation). */
   midLives: [number, number] | null;
+  /** Traps on the board after this step (including ones placed during it). */
+  traps: Trap[];
 }
 
 export interface RoundResult {

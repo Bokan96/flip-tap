@@ -28,6 +28,8 @@ export const NO_MODS: Mods = {
   immovable: false,
   pushBonus: 0,
   ammo: false,
+  trapBonus: 0,
+  burnBonus: 0,
 };
 
 /** Combine modifier sets: numbers add up, flags combine with OR, thresholds take the highest. */
@@ -66,6 +68,7 @@ function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier, arenaId: 
     deck: buildDeck(f.id, cfg.bonusCards),
     mods: mergeMods(f.passive?.mods, mod.mods),
     spent: [],
+    burn: 0,
     dazed: false,
   };
 }

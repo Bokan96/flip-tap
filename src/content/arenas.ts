@@ -79,7 +79,7 @@ export function arenaState(id = DEFAULT_ARENA): ArenaState {
   const idx = ([r, c]: [number, number]) => r * a.cols + c;
   const tiles: Record<number, TileKind> = {};
   for (const t of a.tiles ?? []) tiles[idx(t.at)] = t.kind;
-  return { id: a.id, rows: a.rows, cols: a.cols, blocked: (a.blocked ?? []).map(idx), tiles };
+  return { id: a.id, rows: a.rows, cols: a.cols, blocked: (a.blocked ?? []).map(idx), tiles, traps: [] };
 }
 
 export function arenaStart(id: string, seat: 0 | 1): Pos {

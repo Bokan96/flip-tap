@@ -20,6 +20,10 @@ interface FastCard {
   counter: number;
   drain: number;
   reload: boolean;
+  burn: number;
+  /** Trap card: damage of each trap it sets (0 otherwise). */
+  trap: number;
+  swap: boolean;
   /** Flattened [dr, dc] pairs, facing right. */
   cells: number[];
 }
@@ -32,7 +36,7 @@ export function fastCard(id: string): FastCard {
     const c = getCard(id);
     const isAttack = c.kind === 'attack';
     const cells: number[] = [];
-    if (isAttack && c.pattern) {
+    if ((isAttack || c.kind === 'trap') && c.pattern) {
       c.pattern.forEach((row, i) => {
         for (let j = 0; j < 3; j++) if (row[j] === '1') cells.push(i - 1, j - 1);
       });
@@ -50,6 +54,9 @@ export function fastCard(id: string): FastCard {
       counter: c.counter ?? 0,
       drain: isAttack ? (c.drain ?? 0) : 0,
       reload: c.kind === 'reload',
+      burn: isAttack ? (c.burn ?? 0) : 0,
+      trap: c.kind === 'trap' ? (c.trap ?? 0) : 0,
+      swap: !!c.swap,
       cells,
     };
     cache.set(id, fc);
@@ -122,6 +129,13 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   // Spent attacks, tracked only for ammo fighters (null otherwise).
   const spent: (string[] | null)[] = [m[0].ammo ? [...P[0].spent] : null, m[1].ammo ? [...P[1].spent] : null];
   const ids = ['', ''];
+  // Traps on the board (copied: they fire and get placed during the round).
+  const traps = A.traps.map((t) => ({ at: t.at, owner: t.owner as number, damage: t.damage }));
+  const burn = [P[0].burn, P[1].burn];
+  const burnNow = [0, 0];
+  const burnHit = [0, 0];
+  const sr = [0, 0];
+  const sc = [0, 0];
   const card: FastCard[] = [fastCard(plan0[0]), fastCard(plan1[0])];
   const act = [false, false];
   const mv = [false, false];
@@ -151,8 +165,10 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       const sp = spent[i];
       act[i] = !z[i] && en[i] + card[i].cost >= 0 && !(sp !== null && card[i].isAttack && sp.includes(ids[i]));
       nz[i] = false;
-      const sr = r[i];
-      const sc = c[i];
+      burnNow[i] = burn[i];
+      burnHit[i] = 0;
+      sr[i] = r[i];
+      sc[i] = c[i];
       if (act[i] && (card[i].dr || card[i].dc)) {
         const nr = clamp(r[i] + card[i].dr, 0, rows - 1);
         const ncc = clamp(c[i] + card[i].dc, 0, cols - 1);
@@ -161,8 +177,19 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
           c[i] = ncc;
         }
       }
-      mv[i] = r[i] !== sr || c[i] !== sc;
     }
+    // Swap (same as rules.resolveStep).
+    const sw0 = act[0] && card[0].swap;
+    const sw1 = act[1] && card[1].swap;
+    if ((sw0 || sw1) && (sw0 || !m[0].immovable) && (sw1 || !m[1].immovable)) {
+      const tr = r[0];
+      const tc = c[0];
+      r[0] = r[1];
+      c[0] = c[1];
+      r[1] = tr;
+      c[1] = tc;
+    }
+    for (let i = 0; i < 2; i++) mv[i] = r[i] !== sr[i] || c[i] !== sc[i];
     face();
 
     // Both attack: the stronger card (then the healthier fighter) strikes first.
@@ -183,6 +210,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         life[i] = clamp(life[i] - d, 0, lifeMax[i]);
         if (a.drain && d > 0) life[o] = clamp(life[o] + Math.floor((d * a.drain) / 100), 0, lifeMax[o]);
         if (a.stun && d > 0) nz[i] = true;
+        if (a.burn && d > 0) burnHit[i] = a.burn + m[o].burnBonus;
         if (a.push && !m[i].immovable) {
           c[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
           face();
@@ -206,6 +234,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (act[i] && card[i].counter) ctr[o] += card[i].counter;
         if (a.drain && dmg[i] > 0) drn[o] = Math.floor((dmg[i] * a.drain) / 100);
         if (a.stun && dmg[i] > 0) nz[i] = true;
+        if (a.burn && dmg[i] > 0) burnHit[i] = a.burn + m[o].burnBonus;
         if (a.push && !m[i].immovable) nc[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
       }
       for (let i = 0; i < 2; i++) {
@@ -227,6 +256,37 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       const t = tiles[r[i] * cols + c[i]];
       if (t === 'spikes') life[i] = clamp(life[i] - BALANCE.tiles.spikes, 0, lifeMax[i]);
       else if (t === 'well') en[i] = clamp(en[i] + BALANCE.tiles.well, 0, energyMax[i]);
+    }
+    // Enemy traps, then running burns, then new traps (same order as rules.resolveStep).
+    if (traps.length) {
+      for (let i = 0; i < 2; i++) {
+        const at = r[i] * cols + c[i];
+        let hurt = 0;
+        for (let k = traps.length - 1; k >= 0; k--) {
+          if (traps[k].at === at && traps[k].owner !== i) {
+            hurt += traps[k].damage;
+            traps.splice(k, 1);
+          }
+        }
+        if (hurt) life[i] = clamp(life[i] - hurt, 0, lifeMax[i]);
+      }
+    }
+    for (let i = 0; i < 2; i++) {
+      if (burnNow[i] > 0) life[i] = clamp(life[i] - burnNow[i], 0, lifeMax[i]);
+      if (burnHit[i] > burn[i]) burn[i] = burnHit[i];
+    }
+    for (let i = 0; i < 2; i++) {
+      const tc = card[i];
+      if (!act[i] || !tc.trap) continue;
+      const cells = tc.cells;
+      for (let k = 0; k < cells.length; k += 2) {
+        const tr = r[i] + cells[k];
+        const tcc = c[i] + cells[k + 1] * f[i];
+        if (!open(tr, tcc)) continue;
+        const at = tr * cols + tcc;
+        for (let q = traps.length - 1; q >= 0; q--) if (traps[q].at === at && traps[q].owner === i) traps.splice(q, 1);
+        traps.push({ at, owner: i, damage: tc.trap + m[i].trapBonus });
+      }
     }
     z[0] = nz[0];
     z[1] = nz[1];

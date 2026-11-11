@@ -38,8 +38,11 @@ Every card has:
 | `stun` | Attack effect: if the hit deals damage, the target's **next card this round** is cancelled |
 | `counter` | Guard effect: if an attack hits you this step, the attacker takes this much damage |
 | `drain` | Attack effect: heal this percentage of the damage the attack dealt |
+| `burn` | Attack effect: if the hit deals damage, the target takes this much at the end of each later step this round |
+| `trap` | Trap card: sets a trap with this damage on each square of its pattern |
+| `swap` | Move card: after movement, the two fighters trade places |
 
-Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**.
+Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, **trap**, **reload**.
 
 ### Effects in detail **(design choices)**
 - **Push / pull** move the target along columns only, after damage is applied.
@@ -51,6 +54,15 @@ Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**.
   - A stun on the last step of a round has no effect, because stuns wear off at the end of every round.
 - **Counter** damage is fixed (not reduced by guard or passives). It triggers on any hit, even one fully guarded.
 - **Drain** rounds down.
+- **Traps** are set at the very end of the step their card is played, on the open squares of the card's
+  pattern (aimed like an attack). The first enemy to *end a later step* on a trap takes its damage and
+  the trap is used up. A trap never hurts its owner. Unused traps disappear at the end of the round
+  after the one they were set in. A new trap from the same owner on the same square replaces the old one.
+- **Burn** starts on the step after the hit: the target loses the burn's damage at the end of each
+  remaining step of the round. Burns don't stack (the stronger one applies) and end with the round.
+- **Swap** happens right after movement: the fighters trade squares (once, even if both swap). A swap
+  can't move an immovable opponent. Both fighters count as having moved.
+- Trap and burn damage is fixed: guard, counters and drains don't apply to it.
 
 ## Fighter passives
 Every fighter has one always-on passive ability, made of simple numeric modifiers:
@@ -64,6 +76,8 @@ Every fighter has one always-on passive ability, made of simple numeric modifier
 | Volta | Capacitor | 120 max energy; regains 7 extra energy every round |
 | Umbra | Ambush | Attacks deal +10 damage to a target that moved this step |
 | Ferro | Magazine | Each attack fires once, then is **spent** until Ferro plays his **Reload** card |
+| Briar | Deep Roots | Your traps deal +10 damage |
+| Vex | Fever | Your burns deal +5 damage each step |
 
 ### Ammo and Reload (Ferro)
 - An attack is spent as soon as it is played (hit or miss). A spent attack can't be planned again.
@@ -119,7 +133,8 @@ does nothing.
 3. **Self effects:** every active card applies its own `cost` and `heal`, and Life and Energy are
    clamped to `0..max`.
 4. **Push and pull:** queued displacements happen at the same time. Both fighters face each other again.
-   Then **square effects**: a fighter ending the step on thorns or a spring is hurt or recharged.
+   Then, in order: **square effects** (thorns, springs), **traps** springing, running **burns**, and
+   finally new **traps** being set.
 5. **KO check:** if exactly one fighter has 0 Life, the other wins. If both reach 0 on the same step,
    the match is a **draw**. A KO ends the round immediately, and the remaining slots don't resolve.
 

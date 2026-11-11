@@ -10,6 +10,9 @@ const SHAPES: Record<string, string> = {
   bolt: '<polygon points="58,6 22,56 46,56 38,94 78,40 54,40"/>',
   crosshair:
     '<path fill-rule="evenodd" d="M50 12 A38 38 0 1 1 49.99 12 Z M50 24 A26 26 0 1 0 50.01 24 Z"/><rect x="46" y="2" width="8" height="26"/><rect x="46" y="72" width="8" height="26"/><rect x="2" y="46" width="26" height="8"/><rect x="72" y="46" width="26" height="8"/><circle cx="50" cy="50" r="7" fill="rgba(255,255,255,.6)"/>',
+  thorn:
+    '<path d="M16 88 C28 64 42 54 56 42 C66 33 74 23 80 10 L88 14 C82 30 73 41 62 50 C49 61 36 70 26 92 Z"/><polygon points="43,54 30,42 49,48"/><polygon points="60,45 63,28 68,43"/><polygon points="32,68 17,66 30,74"/><polygon points="74,30 88,32 76,36"/>',
+  mask: '<path d="M8 30 Q50 8 92 30 Q90 70 50 88 Q10 70 8 30 Z"/><ellipse cx="33" cy="44" rx="11" ry="7" fill="rgba(16,19,31,.85)"/><ellipse cx="67" cy="44" rx="11" ry="7" fill="rgba(16,19,31,.85)"/><path d="M34 64 Q50 76 66 64" fill="none" stroke="rgba(16,19,31,.85)" stroke-width="5" stroke-linecap="round"/>',
   moon: '<path d="M62 10 A40 40 0 1 0 90 62 A30 30 0 1 1 62 10Z"/><circle cx="70" cy="34" r="5" fill="rgba(255,255,255,.55)"/>',
 };
 

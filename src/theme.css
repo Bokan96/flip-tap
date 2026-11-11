@@ -63,6 +63,8 @@
   --card-focus-b: #18211c;
   --card-reload-a: #3a4150;
   --card-reload-b: #1c2029;
+  --card-trap-a: #4a3a1c;
+  --card-trap-b: #1f1a12;
   --card-bonus: #b98aff; /* outline of bonus cards */
   --card-free: #3d4566; /* cost badge of free cards */
   --card-back-a: #2b3460; /* face-down cards on the reveal piles */
@@ -77,4 +79,6 @@
   --fx-push: #9fd4ff;
   --fx-reload: #c7ced9;
   --fx-dust: #aab4d2;
+  --fx-burn: #ff8a3d;
+  --trap: #ffb347; /* trap squares on cards, trap previews */
 }

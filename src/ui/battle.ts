@@ -18,7 +18,7 @@ import {
   resolveRound,
   samePos,
 } from '../engine/rules';
-import type { MatchLog, MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult } from '../engine/types';
+import type { MatchLog, MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult, Trap } from '../engine/types';
 import type { PlanSource } from '../net/transport';
 import { fullEffects, getPlanTimer, speedMultiplier } from '../settings';
 import { cardHtml, describeCard, groupedCardsHtml, passiveHtml } from './card';
@@ -98,6 +98,8 @@ export class BattleView {
   private slow = 1;
   /** Bumped to cancel a running recap replay. */
   private replayRun = 0;
+  /** Traps currently drawn on the board (to spot newly placed ones). */
+  private shownTraps: Trap[] = [];
 
   constructor(
     private root: HTMLElement,
@@ -238,6 +240,7 @@ export class BattleView {
       <div class="modal hidden"><div class="modal-box"></div></div>`;
     this.placeTokens(this.state.players.map((p) => p.pos) as [Pos, Pos]);
     this.fx = new Fx(this.q('.arena'), this.q('.fx-layer'));
+    this.renderTraps(this.state.arena.traps);
 
     this.el.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
@@ -347,10 +350,32 @@ export class BattleView {
 
   private clearAreas(): void {
     this.el.querySelectorAll<HTMLElement>('.tile').forEach((t) => {
-      t.classList.remove('area-p0', 'area-p1', 'preview', 'preview-atk', 'preview-move', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake');
+      t.classList.remove('area-p0', 'area-p1', 'preview', 'preview-atk', 'preview-move', 'preview-trap', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake');
       t.style.removeProperty('--d');
       t.style.removeProperty('--sx');
     });
+  }
+
+  /**
+   * Show the traps on the board, marked in their owner's colour. With `announce`, traps that weren't
+   * shown before pop in; returns whether there were any.
+   */
+  private renderTraps(traps: Trap[], announce = false): boolean {
+    const key = (t: Trap) => `${t.at}:${t.owner}`;
+    const shown = new Set(this.shownTraps.map(key));
+    const fresh = new Set(announce ? traps.filter((t) => !shown.has(key(t))).map(key) : []);
+    this.shownTraps = traps.map((t) => ({ ...t }));
+    this.el.querySelectorAll('.trap-mark').forEach((m) => m.remove());
+    const cols = this.state.arena.cols;
+    for (const t of traps) {
+      const tile = this.q(`.tile[data-r="${Math.floor(t.at / cols)}"][data-c="${t.at % cols}"]`);
+      const mark = document.createElement('span');
+      mark.className = `trap-mark p${t.owner}${fresh.has(key(t)) ? ' new' : ''}`;
+      mark.textContent = STRINGS.effectIcons.trap;
+      mark.title = `${STRINGS.effectNames.trap} ${t.damage}`;
+      tile.appendChild(mark);
+    }
+    return fresh.size > 0;
   }
 
   /** Highlight squares. Attack areas light up outward from the attacker in the card's style. */
@@ -687,8 +712,9 @@ export class BattleView {
     const pos = movePos(this.state.arena, before, c);
     const facing = faceTowards(pos, them.pos, slot === 0 ? me.facing : path.facing[slot - 1]);
     // Same colour language as the cards: red = where an attack hits, blue = where a move lands.
-    const cls = c.kind === 'attack' ? 'preview-atk' : c.kind === 'move' ? 'preview-move' : 'preview';
-    this.showArea(c.kind === 'attack' ? attackArea(this.state.arena, c, pos, facing) : [pos], cls);
+    const cls = c.kind === 'attack' ? 'preview-atk' : c.kind === 'trap' ? 'preview-trap' : c.kind === 'move' ? 'preview-move' : 'preview';
+    const squares = c.kind === 'attack' || c.kind === 'trap' ? attackArea(this.state.arena, c, pos, facing) : [pos];
+    this.showArea(squares, cls);
   }
 
   /** Side panel with the focused card shown large and described in words. */
@@ -815,6 +841,7 @@ export class BattleView {
     const start = {
       pos: this.state.players.map((p) => ({ ...p.pos })) as [Pos, Pos],
       facing: this.state.players.map((p) => p.facing) as [number, number],
+      traps: this.state.arena.traps.map((t) => ({ ...t })),
     };
     this.el.querySelectorAll('.pile-cards').forEach((p) => (p.innerHTML = ''));
     this.q('.step-label').textContent = '';
@@ -831,7 +858,8 @@ export class BattleView {
     this.state = result.state;
     this.lastPlans = [[...plans[0]], [...plans[1]]];
     this.log.rounds.push({ plans: this.lastPlans, result });
-    this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed'));
+    this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed', 'burning'));
+    this.renderTraps(this.state.arena.traps);
     if (result.fatigue > 0) {
       const tokens = [this.q('.token.p0'), this.q('.token.p1')];
       this.state.players.forEach((p, i) => {
@@ -906,6 +934,10 @@ export class BattleView {
 
     // 2. Movement: fighters hop to their new squares and kick up a little dust.
     this.placeTokens([players[0].to, players[1].to], [players[0].facing, players[1].facing]);
+    if (players[0].swapped) {
+      players.forEach((p) => this.floatText(p.to, STRINGS.swappedFloat, 'swap'));
+      play('swap');
+    }
     if (players.some((p) => p.moved)) {
       players.forEach((p, i) => {
         if (!p.moved) return;
@@ -1053,6 +1085,24 @@ export class BattleView {
       }
     });
 
+    // Traps spring, burns tick, then any new traps appear.
+    players.forEach((p, i) => {
+      if (p.trapDamage > 0) {
+        this.floatText(p.final, STRINGS.trapped(p.trapDamage), 'damage', stacks[i]++, p.trapDamage);
+        retrigger(tokens[i], 'shake');
+        play('trap');
+      }
+      if (p.burnDamage > 0) {
+        this.floatText(p.final, STRINGS.burned(p.burnDamage), 'burn', stacks[i]++, p.burnDamage);
+        play('burn');
+      }
+      tokens[i].classList.toggle('burning', p.burning > 0);
+    });
+    if (this.renderTraps(step.traps, true)) play('place');
+    if (players.some((p) => p.trapDamage > 0 || p.burnDamage > 0)) {
+      this.renderHud([players[0].life, players[1].life], [players[0].energy, players[1].energy]);
+    }
+
     // 6. Knockout: flash, and the loser falls.
     if (step.outcome) {
       await wait(ms(250));
@@ -1072,6 +1122,7 @@ export class BattleView {
   /** Put the board back to the end-of-round state (after a replay). */
   private restoreBoard(): void {
     this.clearAreas();
+    this.renderTraps(this.state.arena.traps);
     this.el.querySelectorAll('.summary .now').forEach((e) => e.classList.remove('now'));
     const ps = this.state.players;
     this.placeTokens([ps[0].pos, ps[1].pos], [ps[0].facing, ps[1].facing]);
@@ -1088,7 +1139,7 @@ export class BattleView {
    * Loop the round on the board (silently): moves, attacks in their real order, hits and pushes,
    * with a short pause before each loop. Runs until `replayRun` changes.
    */
-  private async replayRound(result: RoundResult, start: { pos: [Pos, Pos]; facing: [number, number] }, run: number): Promise<void> {
+  private async replayRound(result: RoundResult, start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[] }, run: number): Promise<void> {
     const CANCELLED = Symbol('cancelled');
     const tokens = [this.q('.token.p0'), this.q('.token.p1')];
     const pause = async (ms: number) => {
@@ -1103,6 +1154,7 @@ export class BattleView {
         mark(null);
         tokens.forEach((t) => t.classList.remove('ko', 'ko-fall', 'dazed'));
         this.clearAreas();
+        this.renderTraps(start.traps);
         this.placeTokens(start.pos, start.facing);
         await pause(700);
         for (const step of result.steps) {
@@ -1139,6 +1191,7 @@ export class BattleView {
             this.clearAreas();
           }
           this.placeTokens([P[0].final, P[1].final], facing);
+          this.renderTraps(step.traps);
           await pause(300);
         }
         mark(null);
@@ -1154,7 +1207,7 @@ export class BattleView {
     roundNo: number,
     plans: [Plan, Plan],
     result: RoundResult,
-    start: { pos: [Pos, Pos]; facing: [number, number] },
+    start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[] },
   ): Promise<void> {
     const summary = this.q('.summary');
     const header = plans[0].map((_, s) => `<span class="slot-label" data-step="${s}">${STRINGS.slot(s + 1)}</span>`).join('');

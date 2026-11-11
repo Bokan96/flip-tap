@@ -204,6 +204,12 @@ describe('fast simulator with every card, modifier and arena', () => {
         p.energy = rng.int(p.energyMax + 1);
         p.dazed = rng.int(5) === 0;
         if (p.mods.ammo) p.spent = p.deck.filter((id) => CARDS[id].kind === 'attack' && rng.int(2) === 0);
+        p.burn = rng.int(4) === 0 ? 5 + rng.int(3) * 5 : 0;
+      }
+      // A few traps already on the board, owned by either side.
+      for (let k = rng.int(3); k > 0; k--) {
+        const at = rng.int(s.arena.rows * s.arena.cols);
+        if (!s.arena.blocked.includes(at)) s.arena.traps.push({ at, owner: rng.int(2) as 0 | 1, damage: 10 + rng.int(3) * 5, until: s.round + 1 });
       }
       const plans: [Plan, Plan] = [randomPlan(rng, s, 0), randomPlan(rng, s, 1)];
       const real = resolveRound(s, plans);

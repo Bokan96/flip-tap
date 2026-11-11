@@ -9,13 +9,13 @@ const GROUP_SIZE = 4;
 
 export function cardGroup(id: string): CardGroup {
   const kind = getCard(id).kind;
-  return kind === 'move' ? 'move' : kind === 'attack' ? 'attack' : 'special';
+  return kind === 'move' ? 'move' : kind === 'attack' || kind === 'trap' ? 'attack' : 'special';
 }
 
-function attackGrid(pattern: [string, string, string], facing: 1 | -1): string {
+function attackGrid(pattern: [string, string, string], facing: 1 | -1, cls = 'on'): string {
   const cells = pattern
     .flatMap((row) => (facing === -1 ? [...row].reverse() : [...row]))
-    .map((v, i) => `<i class="${v === '1' ? 'on' : ''}${i === 4 ? ' me' : ''}"></i>`)
+    .map((v, i) => `<i class="${v === '1' ? cls : ''}${i === 4 ? ' me' : ''}"></i>`)
     .join('');
   return `<span class="mini-grid ${facing === -1 ? 'face-l' : 'face-r'}">${cells}</span>`;
 }
@@ -48,6 +48,9 @@ export function cardEffects(id: string): Effect[] {
   if (c.stun) out.push('stun');
   if (c.counter) out.push('counter');
   if (c.drain) out.push('drain');
+  if (c.burn) out.push('burn');
+  if (c.kind === 'trap') out.push('trap');
+  if (c.swap) out.push('swap');
   return out;
 }
 
@@ -70,6 +73,11 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
   if (c.kind === 'attack' && c.pattern) {
     art = attackGrid(c.pattern, opts.facing ?? 1);
     stat = `<span class="stat dmg" title="${STRINGS.cardTips.damage}">⚔ ${c.damage}</span>`;
+  } else if (c.kind === 'trap' && c.pattern) {
+    art = attackGrid(c.pattern, opts.facing ?? 1, 'trap');
+    stat = `<span class="stat trap" title="${STRINGS.cardTips.trap}">${STRINGS.effectIcons.trap} ${c.trap}</span>`;
+  } else if (c.kind === 'move' && c.swap) {
+    art = `<span class="big-glyph">${STRINGS.effectIcons.swap}</span>`;
   } else if (c.kind === 'move' && c.step) {
     art = moveGrid(c.step);
   } else if (c.kind === 'guard') {
@@ -122,6 +130,9 @@ export function describeCard(id: string): string {
   if (c.stun) parts.push(STRINGS.descStun);
   if (c.counter) parts.push(STRINGS.descCounter(c.counter));
   if (c.drain) parts.push(STRINGS.descDrain(c.drain));
+  if (c.burn) parts.push(STRINGS.descBurn(c.burn));
+  if (c.kind === 'trap') parts.push(STRINGS.descTrap(c.trap ?? 0));
+  if (c.swap) parts.push(STRINGS.descSwap);
   if (c.kind === 'reload') parts.push(STRINGS.descReload);
   if (c.text) parts.push(c.text);
   return parts.join(' ');
