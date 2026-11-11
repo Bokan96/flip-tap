@@ -6,14 +6,21 @@
 export interface AssetOverrides {
   fighters: Record<string, string>;
   sounds: Partial<Record<SoundId, string>>;
-  music?: string;
+  /** Looping background tracks. Without them the built-in synthesized loops play. */
+  music: { menu?: string; battle?: string };
 }
 
-export type SoundId = 'click' | 'place' | 'deny' | 'reveal' | 'step' | 'hit' | 'guard' | 'miss' | 'heal' | 'ko' | 'win' | 'tick';
+export type SoundId =
+  | 'click' | 'place' | 'deny' | 'reveal' | 'step' | 'hit' | 'guard' | 'miss' | 'heal' | 'ko' | 'win' | 'tick'
+  // effects
+  | 'flip' | 'clang' | 'zap' | 'shimmer' | 'thud'
+  // attack styles (see CardDef.fx)
+  | 'slash' | 'burst' | 'wave' | 'beam' | 'quake';
 
 export const ASSETS: AssetOverrides = {
   fighters: {},
   sounds: {},
+  music: {},
 };
 
 export function assetUrl(path: string): string {

@@ -31,6 +31,8 @@ export interface CardDef {
   counter?: number;
   /** Attack: percent of the damage dealt that heals the attacker. */
   drain?: number;
+  /** Attack animation style; guessed from the pattern when omitted (see ui/fx.ts). */
+  fx?: 'slash' | 'burst' | 'wave' | 'beam' | 'quake';
   /** Bonus cards are earned in Tournament mode. */
   bonus?: boolean;
   text?: string;

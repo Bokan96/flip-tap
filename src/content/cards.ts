@@ -27,46 +27,46 @@ const bonus: CardDef[] = [
   { id: 'surge', name: 'Surge', kind: 'focus', cost: 35, bonus: true },
   { id: 'riposte', name: 'Riposte', kind: 'guard', cost: -10, guard: 10, counter: 20, bonus: true },
   { id: 'leech', name: 'Leech', kind: 'attack', cost: -30, damage: 20, pattern: ['000', '011', '000'], drain: 100, bonus: true },
-  { id: 'shockwave', name: 'Shockwave', kind: 'attack', cost: -30, damage: 15, pattern: ['001', '011', '001'], push: 1, bonus: true },
+  { id: 'shockwave', name: 'Shockwave', kind: 'attack', cost: -30, damage: 15, pattern: ['001', '011', '001'], push: 1, bonus: true, fx: 'wave' },
   { id: 'hook', name: 'Hook', kind: 'attack', cost: -20, damage: 10, pattern: ['001', '001', '001'], push: -1, bonus: true },
   { id: 'daze', name: 'Daze', kind: 'attack', cost: -20, damage: 10, pattern: ['000', '011', '000'], stun: true, bonus: true },
 ];
 
 const signature: CardDef[] = [
   // Cinder: high damage, hungry for energy
-  { id: 'cinderJab', name: 'Ember Jab', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '011', '000'] },
+  { id: 'cinderJab', name: 'Ember Jab', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '011', '000'], fx: 'slash' },
   { id: 'cinderRing', name: 'Fire Ring', kind: 'attack', cost: -30, damage: 20, pattern: ['111', '101', '111'], push: 1 },
   { id: 'cinderPillar', name: 'Flame Pillar', kind: 'attack', cost: -25, damage: 30, pattern: ['010', '010', '010'], stun: true },
-  { id: 'cinderBlaze', name: 'Wildfire', kind: 'attack', cost: -55, damage: 45, pattern: ['011', '011', '011'] },
+  { id: 'cinderBlaze', name: 'Wildfire', kind: 'attack', cost: -55, damage: 45, pattern: ['011', '011', '011'], fx: 'burst' },
 
   // Marin: wide reach in front
   { id: 'marinSplash', name: 'Splash', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '111', '000'] },
-  { id: 'marinUndertow', name: 'Undertow', kind: 'attack', cost: -25, damage: 25, pattern: ['101', '010', '101'], push: -1 },
-  { id: 'marinWall', name: 'Tide Wall', kind: 'attack', cost: -30, damage: 35, pattern: ['001', '001', '001'], push: 1 },
-  { id: 'marinFlood', name: 'Flood', kind: 'attack', cost: -45, damage: 40, pattern: ['111', '111', '000'] },
+  { id: 'marinUndertow', name: 'Undertow', kind: 'attack', cost: -25, damage: 25, pattern: ['101', '010', '101'], push: -1, fx: 'wave' },
+  { id: 'marinWall', name: 'Tide Wall', kind: 'attack', cost: -30, damage: 35, pattern: ['001', '001', '001'], push: 1, fx: 'wave' },
+  { id: 'marinFlood', name: 'Flood', kind: 'attack', cost: -45, damage: 40, pattern: ['111', '111', '000'], fx: 'wave' },
 
   // Zephyr: cheap, broad and slippery
-  { id: 'zephyrGust', name: 'Gust', kind: 'attack', cost: -20, damage: 20, pattern: ['010', '111', '010'], push: 1 },
+  { id: 'zephyrGust', name: 'Gust', kind: 'attack', cost: -20, damage: 20, pattern: ['010', '111', '010'], push: 1, fx: 'wave' },
   { id: 'zephyrShear', name: 'Shear', kind: 'attack', cost: -25, damage: 30, pattern: ['101', '000', '101'] },
   { id: 'zephyrSpiral', name: 'Spiral', kind: 'attack', cost: -20, damage: 15, pattern: ['111', '111', '111'] },
-  { id: 'zephyrEdge', name: 'Sky Edge', kind: 'attack', cost: -50, damage: 45, pattern: ['001', '011', '001'] },
+  { id: 'zephyrEdge', name: 'Sky Edge', kind: 'attack', cost: -50, damage: 45, pattern: ['001', '011', '001'], fx: 'slash' },
 
   // Basalt: narrow but heavy, punishes attackers
-  { id: 'basaltToss', name: 'Stone Toss', kind: 'attack', cost: -15, damage: 30, pattern: ['000', '001', '000'] },
+  { id: 'basaltToss', name: 'Stone Toss', kind: 'attack', cost: -15, damage: 30, pattern: ['000', '001', '000'], fx: 'burst' },
   { id: 'basaltQuake', name: 'Tremor', kind: 'attack', cost: -30, damage: 25, pattern: ['000', '111', '111'], stun: true },
   { id: 'basaltSpikes', name: 'Spiked Wall', kind: 'guard', cost: -15, guard: 20, counter: 20 },
-  { id: 'basaltCrush', name: 'Crush', kind: 'attack', cost: -60, damage: 60, pattern: ['000', '010', '000'] },
+  { id: 'basaltCrush', name: 'Crush', kind: 'attack', cost: -60, damage: 60, pattern: ['000', '010', '000'], fx: 'quake' },
 
   // Volta: fast and efficient
-  { id: 'voltaZap', name: 'Zap', kind: 'attack', cost: -10, damage: 20, pattern: ['000', '011', '000'] },
-  { id: 'voltaArc', name: 'Arc', kind: 'attack', cost: -25, damage: 25, pattern: ['101', '010', '101'] },
+  { id: 'voltaZap', name: 'Zap', kind: 'attack', cost: -10, damage: 20, pattern: ['000', '011', '000'], fx: 'beam' },
+  { id: 'voltaArc', name: 'Arc', kind: 'attack', cost: -25, damage: 25, pattern: ['101', '010', '101'], fx: 'beam' },
   { id: 'voltaField', name: 'Static Field', kind: 'attack', cost: -25, damage: 20, pattern: ['111', '111', '111'] },
-  { id: 'voltaClap', name: 'Thunderclap', kind: 'attack', cost: -55, damage: 40, pattern: ['010', '111', '010'], stun: true },
+  { id: 'voltaClap', name: 'Thunderclap', kind: 'attack', cost: -55, damage: 40, pattern: ['010', '111', '010'], stun: true, fx: 'burst' },
 
   // Umbra: tricky flanking shapes
   { id: 'umbraClaw', name: 'Night Claw', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '010', '001'], drain: 50 },
   { id: 'umbraEclipse', name: 'Eclipse', kind: 'attack', cost: -45, damage: 45, pattern: ['000', '101', '000'] },
-  { id: 'umbraCreep', name: 'Creeping Dark', kind: 'attack', cost: -20, damage: 20, pattern: ['000', '111', '111'] },
+  { id: 'umbraCreep', name: 'Creeping Dark', kind: 'attack', cost: -20, damage: 20, pattern: ['000', '111', '111'], fx: 'wave' },
   { id: 'umbraGrasp', name: 'Void Grasp', kind: 'attack', cost: -40, damage: 35, pattern: ['011', '010', '011'], push: -1 },
 ];
 

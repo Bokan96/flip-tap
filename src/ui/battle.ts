@@ -1,4 +1,6 @@
-import { isSoundEnabled, play, setSoundEnabled } from '../audio/sfx';
+import { duckMusic } from '../audio/music';
+import { play } from '../audio/sfx';
+import type { SoundId } from '../content/assets';
 import { BALANCE } from '../content/balance';
 import { getCard, getFighter } from '../content/cards';
 import { STRINGS } from '../content/strings';
@@ -17,9 +19,11 @@ import {
 } from '../engine/rules';
 import type { MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult } from '../engine/types';
 import type { PlanSource } from '../net/transport';
-import { getPlanTimer, getSpeed, setPlanTimer, setSpeed, speedMultiplier, type PlanTimer, type Speed } from '../settings';
+import { fullEffects, getPlanTimer, speedMultiplier } from '../settings';
 import { cardHtml, describeCard, groupedCardsHtml, passiveHtml } from './card';
 import { enableDrag } from './drag';
+import { Fx, fxKind, haptic, retrigger, type FxKind } from './fx';
+import { bindSettings, settingsHtml } from './settingsPanel';
 import { emblemHtml } from './emblems';
 
 export interface BattleSeat {
@@ -80,6 +84,9 @@ export class BattleView {
   private lastPlans: [Plan, Plan] | null = null;
   private timerId: number | null = null;
   private coachHighlight: string | null = null;
+  private fx!: Fx;
+  /** Slow-motion factor for the knockout step. */
+  private slow = 1;
 
   constructor(
     private root: HTMLElement,
@@ -102,7 +109,7 @@ export class BattleView {
 
   /** Sleep that respects the speed setting and holds while a menu or deck viewer is open. */
   private async sleep(key: keyof typeof TIMING): Promise<void> {
-    await wait(TIMING[key] * speedMultiplier());
+    await wait(TIMING[key] * speedMultiplier() * this.slow);
     while (this.paused && !this.destroyed) await wait(100);
   }
 
@@ -178,6 +185,7 @@ export class BattleView {
             <svg class="path" viewBox="0 0 ${BALANCE.cols} ${BALANCE.rows}" preserveAspectRatio="none"><polyline points=""></polyline></svg>
             ${'<div class="ghost hidden"><b></b></div>'.repeat(BALANCE.slotsPerRound)}
             ${tokens}
+            <div class="fx-layer"></div>
             <div class="floats"></div>
           </div>
         </div>
@@ -199,6 +207,7 @@ export class BattleView {
       <div class="coach hidden"><div class="coach-box"><p></p><button class="btn primary">${STRINGS.gotIt}</button></div></div>
       <div class="modal hidden"><div class="modal-box"></div></div>`;
     this.placeTokens(this.state.players.map((p) => p.pos) as [Pos, Pos]);
+    this.fx = new Fx(this.q('.arena'), this.q('.fx-layer'));
 
     this.el.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
@@ -247,7 +256,7 @@ export class BattleView {
         panel.innerHTML = `${emblemHtml(f, 'hud-emblem')}
           <div class="who"><b>${this.seats[i].name}</b><span>${f.name}</span></div>
           <div class="bars">
-            <div class="bar life"><i></i><span></span></div>
+            <div class="bar life"><b class="chip"></b><i></i><span></span></div>
             <div class="bar energy"><i></i><em class="planned"></em><span></span></div>
           </div>`;
         panel.style.setProperty('--clr', f.color);
@@ -255,7 +264,10 @@ export class BattleView {
         panel.dataset.ready = '1';
       }
       const lb = panel.querySelector('.bar.life')!;
-      (lb.querySelector('i') as HTMLElement).style.width = `${(life / p.lifeMax) * 100}%`;
+      const lifePct = `${(life / p.lifeMax) * 100}%`;
+      (lb.querySelector('i') as HTMLElement).style.width = lifePct;
+      // The pale "chip" trails behind so the damage just taken stays visible for a moment.
+      (lb.querySelector('.chip') as HTMLElement).style.width = lifePct;
       lb.querySelector('span')!.textContent = `♥ ${life}`;
       const eb = panel.querySelector('.bar.energy')!;
       (eb.querySelector('i') as HTMLElement).style.width = `${(energy / p.energyMax) * 100}%`;
@@ -295,18 +307,32 @@ export class BattleView {
   }
 
   private clearAreas(): void {
-    this.el.querySelectorAll('.tile').forEach((t) => t.classList.remove('area-p0', 'area-p1', 'preview'));
+    this.el.querySelectorAll<HTMLElement>('.tile').forEach((t) => {
+      t.classList.remove('area-p0', 'area-p1', 'preview', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake');
+      t.style.removeProperty('--d');
+      t.style.removeProperty('--sx');
+    });
   }
 
-  private showArea(cells: Pos[], cls: string): void {
-    for (const p of cells) this.q(`.tile[data-r="${p.r}"][data-c="${p.c}"]`).classList.add(cls);
+  /** Highlight squares. Attack areas light up outward from the attacker in the card's style. */
+  private showArea(cells: Pos[], cls: string, origin?: Pos, kind?: FxKind): void {
+    for (const p of cells) {
+      const tile = this.q(`.tile[data-r="${p.r}"][data-c="${p.c}"]`);
+      tile.classList.add(cls);
+      if (!origin || !kind) continue;
+      tile.classList.add(`fx-${kind}`);
+      tile.style.setProperty('--d', String(Math.max(Math.abs(p.r - origin.r), Math.abs(p.c - origin.c))));
+      tile.style.setProperty('--sx', String(Math.sign(p.c - origin.c) || 1));
+    }
   }
 
   /** Rising text over a square. `stack` offsets extra labels so they don't overlap. */
-  private floatText(pos: Pos, text: string, cls: string, stack = 0): void {
+  private floatText(pos: Pos, text: string, cls: string, stack = 0, amount = 0): void {
     const f = document.createElement('div');
     f.className = `float ${cls}`;
     f.textContent = text;
+    // Bigger hits get bigger numbers.
+    f.style.setProperty('--size', String(1 + Math.min(amount, 60) / 80));
     f.style.setProperty('--r', String(pos.r));
     f.style.setProperty('--c', String(pos.c));
     f.style.setProperty('--k', String(stack));
@@ -339,9 +365,11 @@ export class BattleView {
     box.innerHTML = html;
     modal.classList.remove('hidden');
     this.paused = true;
+    duckMusic(true);
     const close = () => {
       modal.classList.add('hidden');
       this.paused = false;
+      duckMusic(false);
     };
     modal.onclick = (e) => {
       if (e.target === modal) close();
@@ -376,47 +404,22 @@ export class BattleView {
 
   private openMenu(): void {
     play('click');
-    const speeds = (['fast', 'normal', 'slow'] as Speed[])
-      .map((s) => `<button class="chip${s === getSpeed() ? ' on' : ''}" data-speed="${s}">${STRINGS.speedNames[s]}</button>`)
-      .join('');
-    const timers = ([0, 30, 60] as PlanTimer[])
-      .map((t) => `<button class="chip${t === getPlanTimer() ? ' on' : ''}" data-timer="${t}">${STRINGS.timerName(t)}</button>`)
-      .join('');
     this.openModal(
       `<h2>${STRINGS.menuTitle}</h2>
        <div class="menu-list">
          <button class="btn primary" data-modal="close">${STRINGS.resume}</button>
-         <button class="btn" data-m="sound">${isSoundEnabled() ? STRINGS.soundOn : STRINGS.soundOff}</button>
-         <div class="difficulty"><span>${STRINGS.speed}:</span>${speeds}</div>
-         <div class="difficulty"><span>${STRINGS.planTimer}:</span>${timers}</div>
+         ${settingsHtml()}
          <details class="menu-rules"><summary>${STRINGS.howToPlay}</summary><ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol></details>
          <button class="btn danger" data-m="quit">${STRINGS.quit}</button>
        </div>`,
       (box) => {
-        box.querySelector('[data-m="sound"]')!.addEventListener('click', (e) => {
-          setSoundEnabled(!isSoundEnabled());
-          (e.currentTarget as HTMLElement).textContent = isSoundEnabled() ? STRINGS.soundOn : STRINGS.soundOff;
-          play('click');
-        });
-        box.querySelectorAll<HTMLElement>('[data-speed]').forEach((chip) =>
-          chip.addEventListener('click', () => {
-            setSpeed(chip.dataset.speed as Speed);
-            box.querySelectorAll('[data-speed]').forEach((c) => c.classList.toggle('on', c === chip));
-            play('click');
-          }),
-        );
-        box.querySelectorAll<HTMLElement>('[data-timer]').forEach((chip) =>
-          chip.addEventListener('click', () => {
-            setPlanTimer(Number(chip.dataset.timer) as PlanTimer);
-            box.querySelectorAll('[data-timer]').forEach((c) => c.classList.toggle('on', c === chip));
-            play('click');
-          }),
-        );
+        bindSettings(box);
         box.querySelector('[data-m="quit"]')!.addEventListener('click', () => {
           play('click');
           this.destroyed = true;
           this.paused = false;
           this.stopTimer();
+          duckMusic(false);
           this.onQuit();
         });
       },
@@ -692,6 +695,7 @@ export class BattleView {
       const id = cardEl.dataset.card!;
       if (slot < 0 || !canPlace(me, this.plan, slot, id)) return play('deny');
       play('place');
+      haptic('tap');
       this.previewCard = id;
       this.setPlan(this.plan.map((x, k) => (k === slot ? id : x)));
     }
@@ -779,11 +783,6 @@ export class BattleView {
       this.renderHud();
       await this.sleep('energy');
     } else {
-      play('ko');
-      const o = result.state.outcome;
-      for (const i of [0, 1] as Seat[]) {
-        if (o.winner === null || o.winner !== i) this.q(`.token.p${i}`).classList.add('ko');
-      }
       await this.sleep('energy');
     }
     if (this.destroyed) return;
@@ -792,86 +791,152 @@ export class BattleView {
 
   private async animateStep(step: StepResult, plans: [Plan, Plan]): Promise<void> {
     this.q('.step-label').textContent = STRINGS.stepOf(step.slot + 1, BALANCE.slotsPerRound);
+    const players = step.players;
+    const tokens = [this.q('.token.p0'), this.q('.token.p1')];
+    const color = (i: number) => getFighter(this.state.players[i].fighterId).color;
+    const ms = (n: number) => n * speedMultiplier() * this.slow;
+    if (step.outcome) this.slow = 1.8;
 
-    // Each player's card lands on top of their pile.
+    // 1. Each player's card lands face down on their pile, then flips over.
+    const dealt: HTMLElement[] = [];
     for (const i of [0, 1]) {
       const pile = this.q(`.pile.p${i} .pile-cards`);
       pile.querySelectorAll('.pile-card').forEach((c) => c.classList.add('under'));
-      const sp = step.players[i];
+      const sp = players[i];
       const card = document.createElement('div');
-      card.className = `pile-card${sp.active ? '' : ' inactive'}${sp.stunned ? ' stunned' : ''}`;
+      card.className = `pile-card face-down${sp.active ? '' : ' inactive'}${sp.stunned ? ' stunned' : ''}`;
       card.style.setProperty('--n', String(step.slot));
       card.innerHTML =
         cardHtml(plans[i][step.slot], { facing: sp.facing, small: true, readonly: true }) +
         (sp.stunned ? `<span class="pile-tag">${STRINGS.stunned}</span>` : '');
       pile.appendChild(card);
-      if (sp.stunned) {
-        this.q(`.token.p${i}`).classList.remove('dazed');
-        this.floatText(sp.from, STRINGS.stunned, 'stun');
-      }
+      dealt.push(card);
     }
     play('place');
+    await wait(ms(240));
+    dealt.forEach((c) => {
+      c.classList.remove('face-down');
+      c.classList.add('flipped');
+    });
+    play('flip');
+    players.forEach((p, i) => {
+      if (!p.stunned) return;
+      tokens[i].classList.remove('dazed');
+      this.floatText(p.from, STRINGS.stunned, 'stun');
+    });
     await this.sleep('place');
 
-    // Movement.
-    const moved = step.players.some((p) => p.from.r !== p.to.r || p.from.c !== p.to.c);
-    this.placeTokens([step.players[0].to, step.players[1].to], [step.players[0].facing, step.players[1].facing]);
-    if (moved) {
+    // 2. Movement: fighters hop to their new squares and kick up a little dust.
+    this.placeTokens([players[0].to, players[1].to], [players[0].facing, players[1].facing]);
+    if (players.some((p) => p.moved)) {
+      players.forEach((p, i) => {
+        if (!p.moved) return;
+        retrigger(tokens[i], 'hop');
+        setTimeout(() => this.fx.particles(p.to, '#9aa3c7', 6, 'dust'), ms(420));
+      });
       play('step');
       await this.sleep('move');
     }
 
-    // Attack areas are shown for a beat before they land.
-    const attacking = step.players.some((p) => p.area.length > 0);
-    if (attacking) {
-      step.players.forEach((p, i) => this.showArea(p.area, `area-p${i}`));
+    // 3. Attacks wind up, then their squares light up outward from the attacker.
+    const attackers = [0, 1].filter((i) => players[i].area.length > 0);
+    if (attackers.length) {
+      attackers.forEach((i) => retrigger(tokens[i], 'charge'));
+      await wait(ms(260));
+      for (const i of attackers) {
+        const kind = fxKind(getCard(players[i].cardId));
+        this.showArea(players[i].area, `area-p${i}`, players[i].to, kind);
+        play(kind);
+      }
       await this.sleep('area');
     }
 
-    // Hits, guards, heals.
-    let sound: Parameters<typeof play>[0] | null = null;
-    step.players.forEach((p, i) => {
-      const token = this.q(`.token.p${i}`);
+    // 4. Impact: a brief freeze, then hits, guards, counters, drains and stuns.
+    const lands = players.some((p) => p.damageTaken > 0 || p.counterTaken > 0);
+    if (lands && fullEffects()) await wait(90);
+    const sounds: SoundId[] = [];
+    let biggest = 0;
+    players.forEach((p, i) => {
+      const o = i === 0 ? 1 : 0;
+      const token = tokens[i];
+      let stack = 0;
       if (p.hit === 'hit' || (p.hit === 'guard' && p.damageTaken > 0)) {
-        token.classList.remove('shake');
-        void token.offsetWidth;
-        token.classList.add('shake');
-        this.floatText(p.to, `-${p.damageTaken}`, p.hit === 'guard' ? 'guarded' : 'damage');
-        sound = p.hit === 'hit' ? 'hit' : (sound ?? 'guard');
+        retrigger(token, 'shake');
+        retrigger(token, 'flash');
+        this.fx.particles(p.to, color(o), 10);
+        if (p.hit === 'guard') this.fx.ring(p.to, 'shield');
+        this.floatText(p.to, `-${p.damageTaken}`, p.hit === 'guard' ? 'guarded' : 'damage', stack++, p.damageTaken);
+        biggest = Math.max(biggest, p.damageTaken);
+        sounds.push(p.hit === 'hit' ? 'hit' : 'guard');
       } else if (p.hit === 'guard') {
-        this.floatText(p.to, STRINGS.guarded, 'guarded');
-        sound = sound ?? 'guard';
+        this.fx.ring(p.to, 'shield');
+        this.floatText(p.to, STRINGS.guarded, 'guarded', stack++);
+        sounds.push('guard');
       } else if (p.hit === 'miss') {
-        this.floatText(p.to, STRINGS.miss, 'miss');
-        sound = sound ?? 'miss';
+        retrigger(token, 'dodge');
+        this.floatText(p.to, STRINGS.miss, 'miss', stack++);
+        sounds.push('miss');
       }
-      let stack = p.hit === 'none' ? 0 : 1;
       if (p.counterTaken > 0) {
-        token.classList.remove('shake');
-        void token.offsetWidth;
-        token.classList.add('shake');
-        this.floatText(p.to, `${STRINGS.effectIcons.counter} -${p.counterTaken}`, 'damage', stack++);
-        sound = 'hit';
+        // Sparks fly back from the defender into this attacker.
+        this.fx.travel(players[o].to, p.to, '#ffb36b', 4, 'spark');
+        const k = stack++;
+        setTimeout(() => {
+          retrigger(token, 'shake');
+          retrigger(token, 'flash');
+          this.floatText(p.to, `${STRINGS.effectIcons.counter} -${p.counterTaken}`, 'damage', k, p.counterTaken);
+        }, ms(fullEffects() ? 420 : 0));
+        biggest = Math.max(biggest, p.counterTaken);
+        sounds.push('clang');
+      }
+      if (p.drained > 0) {
+        this.fx.travel(players[o].to, p.to, '#7dffb0', 6, 'mote');
+        sounds.push('shimmer');
       }
       if (p.healed > 0 || p.drained > 0) {
         this.floatText(p.to, `+${p.healed + p.drained}`, 'heal', stack++);
-        sound = sound ?? 'heal';
+        if (p.healed > 0) sounds.push('heal');
       }
       if (p.dazed) {
         token.classList.add('dazed');
+        this.fx.ring(p.to, 'stun');
         this.floatText(p.to, STRINGS.dazed, 'stun', stack++);
+        sounds.push('zap');
       }
     });
-    if (sound) play(sound);
-    this.renderHud([step.players[0].life, step.players[1].life], [step.players[0].energy, step.players[1].energy]);
-
-    // Push and pull land just after the hit.
-    if (step.players.some((p) => !samePos(p.to, p.final))) {
-      await wait(300 * speedMultiplier());
-      this.placeTokens([step.players[0].final, step.players[1].final], [step.players[0].facing, step.players[1].facing]);
-      play('step');
+    [...new Set(sounds)].forEach((id, k) => setTimeout(() => play(id), k * 110));
+    if (biggest > 0) {
+      const strength = biggest >= 40 ? 3 : biggest >= 25 ? 2 : 1;
+      this.fx.shake(strength);
+      haptic(strength === 3 ? 'big' : 'hit');
     }
-    await this.sleep(attacking || sound ? 'hit' : 'quiet');
+    this.renderHud([players[0].life, players[1].life], [players[0].energy, players[1].energy]);
+
+    // 5. Push and pull land just after the hit.
+    const displaced = [0, 1].filter((i) => !samePos(players[i].to, players[i].final));
+    if (displaced.length) {
+      await wait(ms(300));
+      displaced.forEach((i) => {
+        retrigger(tokens[i], 'skid');
+        this.fx.particles(players[i].to, '#9aa3c7', 6, 'dust');
+      });
+      this.placeTokens([players[0].final, players[1].final], [players[0].facing, players[1].facing]);
+      play('thud');
+    }
+
+    // 6. Knockout: flash, and the loser falls.
+    if (step.outcome) {
+      await wait(ms(250));
+      play('ko');
+      haptic('ko');
+      if (fullEffects()) retrigger(this.el, 'ko-flash');
+      const w = step.outcome.winner;
+      tokens.forEach((t, i) => {
+        if (w === null || w !== i) t.classList.add('ko', 'ko-fall');
+      });
+    }
+    await this.sleep(attackers.length || sounds.length ? 'hit' : 'quiet');
+    this.slow = 1;
     this.clearAreas();
   }
 

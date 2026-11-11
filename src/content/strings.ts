@@ -11,8 +11,17 @@ export const STRINGS = {
   howToPlay: 'How to play',
   back: 'Back',
   menu: 'Menu',
-  soundOn: 'Sound: on',
-  soundOff: 'Sound: off',
+  settings: {
+    title: 'Settings',
+    sound: 'Sound',
+    music: 'Music',
+    vibration: 'Vibration',
+    effects: 'Effects',
+    on: 'On',
+    off: 'Off',
+    full: 'Full',
+    reduced: 'Reduced',
+  },
 
   pickFighter: (who: string) => `${who}: choose your fighter`,
   player: (n: number) => `Player ${n}`,
@@ -32,7 +41,7 @@ export const STRINGS = {
   passDeviceHint: 'Do not peek at your opponent’s plan!',
   ready: 'I’m ready',
   reveal: 'Reveal!',
-  energyBack: (n: number) => `+${n} energy`,
+  energyBack: (n: number) => `+${n}⚡`,
   miss: 'Miss',
   guarded: 'Guard',
 

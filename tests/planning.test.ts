@@ -47,3 +47,18 @@ describe('tutorial', () => {
     }
   });
 });
+
+describe('attack styles', () => {
+  it('every attack gets a style, guessed from its pattern when not set', async () => {
+    const { fxKind } = await import('../src/ui/fx');
+    const { CARDS } = await import('../src/content/cards');
+    const kinds = ['slash', 'burst', 'wave', 'beam', 'quake'];
+    for (const c of Object.values(CARDS)) if (c.kind === 'attack') expect(kinds).toContain(fxKind(c));
+    expect(fxKind(CARDS.zephyrSpiral)).toBe('burst');
+    expect(fxKind(CARDS.basaltQuake)).toBe('quake');
+    expect(fxKind(CARDS.cinderPillar)).toBe('beam');
+    expect(fxKind(CARDS.marinSplash)).toBe('wave');
+    expect(fxKind(CARDS.zephyrShear)).toBe('slash');
+    expect(fxKind(CARDS.cinderJab)).toBe('slash'); // set explicitly on the card
+  });
+});

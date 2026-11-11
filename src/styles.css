@@ -249,7 +249,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .who span { font-size: .72rem; color: var(--muted); }
 .bars { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 70px; }
 .bar { position: relative; height: 15px; background: rgba(0, 0, 0, .45); overflow: hidden; transform: skewX(-18deg); }
-.bar i { position: absolute; inset: 0 auto 0 0; transition: width .5s ease; }
+.bar i { position: absolute; inset: 0 auto 0 0; transition: width .25s ease; }
 .panel.p1 .bar { transform: skewX(18deg); }
 .panel.p1 .bar i { inset: 0 0 0 auto; }
 .bar.life i { background: linear-gradient(90deg, #2fbf6c, var(--life)); }
@@ -280,14 +280,14 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   gap: 3px; padding: 4px; background: #0a0d18; border: 1px solid var(--line-hi);
   clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
 }
-.tile { border-radius: 1px; background: linear-gradient(160deg, #222a48, #171c33); transition: background .2s, box-shadow .2s; }
+.tile { position: relative; overflow: hidden; border-radius: 1px; background: linear-gradient(160deg, #222a48, #171c33); transition: background .2s, box-shadow .2s; }
 .tile.preview { background: rgba(255, 210, 61, .3); box-shadow: inset 0 0 0 2px var(--accent); }
 .tile.area-p0 { background: rgba(79, 195, 255, .5); box-shadow: inset 0 0 0 2px var(--p0), inset 0 0 22px var(--p0); animation: pulse .5s ease-in-out infinite alternate; }
 .tile.area-p1 { background: rgba(255, 107, 138, .5); box-shadow: inset 0 0 0 2px var(--p1), inset 0 0 22px var(--p1); animation: pulse .5s ease-in-out infinite alternate; }
 .tile.area-p0.area-p1 { background: rgba(200, 140, 255, .55); }
 @keyframes pulse { to { filter: brightness(1.35); } }
 
-.token, .ghost, .float {
+.token, .ghost, .float, .fx {
   position: absolute;
   width: calc((100% - 8px) / var(--cols)); height: calc((100% - 8px) / var(--rows));
   left: calc(4px + var(--c) * (100% - 8px) / var(--cols)); top: calc(4px + var(--r) * (100% - 8px) / var(--rows));
@@ -312,7 +312,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .ghost { z-index: 1; }
 .ghost::after { content: ''; width: 46%; aspect-ratio: 1; transform: rotate(45deg); border: 2px dashed var(--accent); opacity: .8; }
 
-.floats { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.floats { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .float { font-weight: 900; font-size: clamp(1rem, 4vw, 1.6rem); text-shadow: 0 2px 4px #000; animation: rise 1.4s ease-out forwards; }
 .float.damage { color: var(--danger); }
 .float.guarded { color: #8fd8ff; }
@@ -486,6 +486,110 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   padding: 12px; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); border: 1px solid var(--accent);
 }
 .banner span { font-size: .9rem; }
+
+/* ---------- game feel: effects (all transform/opacity; disabled by .reduced-fx) ---------- */
+.fx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.fx i { position: absolute; left: 50%; top: 50%; }
+.particles i { width: 6px; height: 6px; margin: -3px; background: var(--clr); box-shadow: 0 0 6px var(--clr); animation: spark .6s ease-out forwards; }
+.particles.dust i { width: 5px; height: 5px; border-radius: 50%; background: rgba(170, 180, 210, .75); box-shadow: none; animation-duration: .5s; }
+@keyframes spark {
+  from { transform: rotate(var(--a)) translateX(4px) scale(1); opacity: 1; }
+  to { transform: rotate(var(--a)) translateX(var(--dist)) scale(.2); opacity: 0; }
+}
+.travel i { width: 7px; height: 7px; margin: -3.5px; background: var(--clr); box-shadow: 0 0 10px var(--clr); opacity: 0; animation: travel .55s cubic-bezier(.5, 0, .7, 1) var(--delay) forwards; }
+.travel.mote i { border-radius: 50%; width: 6px; height: 6px; animation-duration: .75s; }
+@keyframes travel {
+  0% { opacity: 0; transform: translate(var(--jx), var(--jy)) scale(.6); }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); }
+}
+.ring i { width: 72%; aspect-ratio: 1; border-radius: 50%; opacity: 0; }
+.ring.shield i { border: 3px solid #8fd8ff; background: radial-gradient(circle, transparent 55%, rgba(143, 216, 255, .35)); animation: ring .6s ease-out forwards; }
+.ring.stun i { border: 3px dashed #ffe36b; animation: ring-spin .6s ease-out forwards; }
+@keyframes ring { from { opacity: .95; transform: translate(-50%, -50%) scale(.5); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.35); } }
+@keyframes ring-spin { from { opacity: 1; transform: translate(-50%, -50%) scale(.4) rotate(0); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.35) rotate(140deg); } }
+
+.token.hop { animation: hop .5s cubic-bezier(.3, .7, .3, 1); }
+@keyframes hop { 40% { translate: 0 -26%; scale: 1.06; } 80% { translate: 0 0; scale: 1.14 .84; } 100% { scale: 1; } }
+.token.charge { animation: charge .3s ease-in-out; }
+@keyframes charge { 50% { scale: 1.16; filter: brightness(1.6); } }
+.token.flash .token-art { animation: flash .35s; }
+@keyframes flash { 0%, 40% { filter: brightness(3.2) drop-shadow(0 0 10px #fff); } }
+.token.dodge { animation: dodge .4s ease-out; }
+@keyframes dodge { 35% { translate: 12% -8%; rotate: 9deg; } }
+.token.skid { animation: skid .45s ease-out; }
+@keyframes skid { 30% { rotate: -12deg; } }
+.token.ko-fall { animation: ko-fall .9s cubic-bezier(.4, 0, .6, 1) both; }
+@keyframes ko-fall { 0% { opacity: 1; } 30% { translate: 0 -14%; } 100% { rotate: 90deg; translate: 0 16%; opacity: .25; } }
+
+.arena.shake-1 { --amp: 2px; animation: board-shake .25s; }
+.arena.shake-2 { --amp: 4px; animation: board-shake .35s; }
+.arena.shake-3 { --amp: 7px; animation: board-shake .45s; }
+@keyframes board-shake {
+  20% { translate: var(--amp) calc(var(--amp) * -1); }
+  45% { translate: calc(var(--amp) * -1) var(--amp); }
+  70% { translate: var(--amp) 0; }
+}
+
+/* attack areas light up outward from the attacker (--d = distance), styled per card */
+.tile.area-p0, .tile.area-p1 {
+  animation: area-in .28s ease-out calc(var(--d, 0) * 110ms) both, pulse .5s ease-in-out calc(var(--d, 0) * 110ms + .28s) infinite alternate;
+}
+@keyframes area-in { from { opacity: 0; transform: scale(.55); } }
+.tile[class*="fx-"]::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  animation-delay: calc(var(--d, 0) * 110ms + .1s); animation-fill-mode: both;
+}
+.tile.fx-slash::after { background: linear-gradient(135deg, transparent 38%, rgba(255, 255, 255, .95) 50%, transparent 62%); animation-name: fx-slash; animation-duration: .4s; }
+@keyframes fx-slash { from { opacity: 1; transform: translate(-100%, -100%); } to { opacity: 1; transform: translate(100%, 100%); } }
+.tile.fx-burst::after { background: radial-gradient(circle, rgba(255, 255, 255, .95) 0 18%, transparent 62%); animation-name: fx-burst; animation-duration: .5s; }
+@keyframes fx-burst { from { opacity: 1; transform: scale(.2); } to { opacity: 0; transform: scale(1.7); } }
+.tile.fx-wave::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .85), transparent); animation-name: fx-wave; animation-duration: .55s; }
+@keyframes fx-wave { from { opacity: 1; transform: translateX(calc(var(--sx, 1) * -100%)); } to { opacity: 1; transform: translateX(calc(var(--sx, 1) * 100%)); } }
+.tile.fx-beam::after { background: linear-gradient(90deg, transparent 32%, #fff 50%, transparent 68%); animation-name: fx-beam; animation-duration: .5s; }
+@keyframes fx-beam { 0% { opacity: 0; transform: scaleX(.2); } 30% { opacity: 1; transform: scaleX(1.2); } 100% { opacity: 0; transform: scaleX(.1); } }
+.tile.fx-quake::after { background: repeating-linear-gradient(115deg, transparent 0 10px, rgba(255, 255, 255, .6) 10px 12px); animation-name: fx-quake; animation-duration: .5s; animation-timing-function: steps(5); }
+@keyframes fx-quake { 0% { opacity: 1; transform: translate(-4px, 2px); } 50% { transform: translate(4px, -2px); } 100% { opacity: 0; transform: none; } }
+
+/* HUD: the pale chip trails the life bar so recent damage stays visible */
+.bar.life .chip { position: absolute; inset: 0 auto 0 0; background: #fff; opacity: .55; transition: width .5s ease .45s; }
+.panel.p1 .bar.life .chip { inset: 0 0 0 auto; }
+.float { font-size: calc(clamp(1rem, 4vw, 1.6rem) * var(--size, 1)); }
+.float.miss, .float.energy, .float.stun { font-size: 1rem; }
+
+/* card reveal: dealt face down, then flipped */
+.pile-card.face-down .card { visibility: hidden; }
+.pile-card.face-down::before {
+  content: ''; position: absolute; inset: 0; border: 1px solid var(--line-hi);
+  background: repeating-linear-gradient(45deg, #2b3460 0 6px, #1c2242 6px 12px);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+.pile-card.flipped .card { animation: flip-in .28s ease-out; }
+@keyframes flip-in { from { transform: perspective(400px) rotateY(90deg); } }
+
+/* knockout flash */
+.battle.ko-flash::after { content: ''; position: fixed; inset: 0; background: #fff; pointer-events: none; z-index: 60; animation: ko-flash .7s ease-out forwards; }
+@keyframes ko-flash { from { opacity: .85; } to { opacity: 0; } }
+
+/* result screen */
+.result-fighter.won .emblem { animation: winner-bounce .9s ease-in-out infinite alternate; }
+@keyframes winner-bounce { to { translate: 0 -10px; } }
+.confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 30; }
+.confetti i { position: absolute; top: -24px; left: var(--x); width: 8px; height: 14px; opacity: 0; animation: confetti var(--dur) linear var(--delay) forwards; }
+@keyframes confetti { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 100% { opacity: 1; transform: translate(var(--drift), 110vh) rotate(var(--spin)); } }
+
+/* settings panel */
+.settings { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.setting > span { color: var(--muted); font-size: .9rem; }
+.setting .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.modal-box > .settings { min-width: min(320px, 100%); }
+
+/* reduced effects */
+.reduced-fx .fx, .reduced-fx .confetti, .reduced-fx .tile::after, .reduced-fx .battle.ko-flash::after { display: none !important; }
+.reduced-fx .token, .reduced-fx .token .token-art, .reduced-fx .arena, .reduced-fx .tile,
+.reduced-fx .pile-card .card, .reduced-fx .result-fighter .emblem { animation: none !important; }
 
 @media (max-width: 600px) {
   .screen { padding: 14px 10px 20px; }
