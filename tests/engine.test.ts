@@ -96,8 +96,8 @@ describe('resolution', () => {
     expect(r.steps[0].players[1].hit).toBe('hit');
     expect(r.steps[0].players[1].damageTaken).toBe(25);
     expect(r.state.players[1].life).toBe(75);
-    // 100 - 15 (jab) then +15 recovery at round end.
-    expect(r.state.players[0].energy).toBe(100);
+    // 100 - 15 (jab), then end-of-round recovery.
+    expect(r.state.players[0].energy).toBe(100 - 15 + BALANCE.energyPerRound);
   });
 
   it('guard reduces damage', () => {
@@ -135,10 +135,13 @@ describe('resolution', () => {
   });
 
   it('double KO is a draw', () => {
-    const s = adjacent();
+    // Equal damage (25 vs 25) and equal life: both strike at the same time.
+    const s = match('cinder', 'basalt');
+    s.players[0].pos = { r: 1, c: 1 };
+    s.players[1].pos = { r: 1, c: 2 };
     s.players[0].life = 10;
     s.players[1].life = 10;
-    const r = resolveRound(s, [['cinderJab', 'up', 'down'], ['marinSplash', 'up', 'down']]);
+    const r = resolveRound(s, [['cinderJab', 'up', 'down'], ['basaltQuake', 'up', 'down']]);
     expect(r.state.outcome).toEqual({ winner: null, draw: true });
   });
 
@@ -146,7 +149,7 @@ describe('resolution', () => {
     const s = match();
     s.players[0].energy = 30;
     const r = resolveRound(s, [IDLE, IDLE]);
-    expect(r.state.players[0].energy).toBe(45);
+    expect(r.state.players[0].energy).toBe(30 + BALANCE.energyPerRound);
     expect(r.state.players[1].energy).toBe(100);
     expect(r.state.round).toBe(2);
   });

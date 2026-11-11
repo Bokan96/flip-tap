@@ -54,8 +54,8 @@ Every fighter has one always-on passive ability, made of simple numeric modifier
 | Marin | Riptide | Pushes and pulls move the target 1 extra square |
 | Zephyr | Slipstream | Takes 10 less damage on steps where Zephyr moved |
 | Basalt | Bedrock | 115 max life; can't be pushed or pulled |
-| Volta | Capacitor | 120 max energy; regains 10 extra energy every round |
-| Umbra | Ambush | Attacks deal +5 damage to a target that moved this step |
+| Volta | Capacitor | 120 max energy; regains 7 extra energy every round |
+| Umbra | Ambush | Attacks deal +10 damage to a target that moved this step |
 
 The same modifier system powers match-wide rule changes (for example a daily challenge that adds
 damage to every attack).
@@ -77,7 +77,7 @@ its previous facing and the pattern is mirrored to match **(design choice)**.
      drop below 0. Focus cards placed earlier pay for attacks placed later.
 2. **Reveal and resolve:** slots resolve in order (slot 1, 2, 3). Both players' cards in the same slot
    happen simultaneously, using the procedure below.
-3. **Recover:** at the end of the round both fighters gain **+15 Energy** plus any passive bonus (capped at max). Stuns wear off.
+3. **Recover:** at the end of the round both fighters gain **+10 Energy** plus any passive bonus (capped at max). Stuns wear off.
 4. If the match isn't over, start a new round.
 
 ### Resolving one slot (both players at once)
@@ -89,6 +89,12 @@ does nothing.
    fighters then face each other.
 2. **Hits:** for each player *X*, if the opponent's active card is an attack whose pattern (from the
    opponent's **new** position and facing) covers *X*'s **new** square, *X* is hit.
+   - **Attack priority (design choice):** if *both* players attack in the same step, they don't
+     strike at the same time. The attack with the higher `damage` value strikes first; on equal
+     damage, the fighter with more life strikes first. The first strike is resolved completely
+     (damage, drain, stun, push) before the second attacker acts, from wherever they stand after a
+     push. A fighter knocked out by the first strike never makes their attack. Only if damage
+     *and* life are equal do both attacks land at the same time.
    - Damage = attack `damage` + the attacker's passive bonuses − *X*'s `guard` (if *X*'s own card is
      active) − *X*'s passive reductions, never below 0. A hit with `guard > 0` counts as "guarded".
    - Then: *X*'s counter hurts the attacker, the attacker's drain heals them, a stun marks *X*'s

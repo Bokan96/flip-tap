@@ -171,6 +171,18 @@ export function energyRecovery(p: PlayerState): number {
   return BALANCE.energyPerRound + p.mods.energyPerRound;
 }
 
+/**
+ * Who strikes first when both fighters attack in the same step: the attack with the higher
+ * damage value, or on a tie the fighter with more life. Returns null (simultaneous) if both tie.
+ */
+export function strikeOrder(c0: CardDef, c1: CardDef, life0: number, life1: number): [Seat, Seat] | null {
+  const d0 = c0.damage ?? 0;
+  const d1 = c1.damage ?? 0;
+  if (d0 !== d1) return d0 > d1 ? [0, 1] : [1, 0];
+  if (life0 !== life1) return life0 > life1 ? [0, 1] : [1, 0];
+  return null;
+}
+
 /** Resolve one slot for both players simultaneously. Mutates `state`. */
 export function resolveStep(state: MatchState, cardIds: [string, string], slot: number): StepResult {
   const ps = state.players;
@@ -190,53 +202,103 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
   }
 
-  // 2. Hits, computed from post-movement positions.
-  const areas = [0, 1].map((i) => (active[i] ? attackArea(cards[i], ps[i].pos, ps[i].facing) : [])) as [Pos[], Pos[]];
   const hit: StepPlayerResult['hit'][] = ['none', 'none'];
   const damage = [0, 0];
   const counter = [0, 0];
   const drained = [0, 0];
   const dazed = [false, false];
-  const pushTo: (Pos | null)[] = [null, null];
-  for (const i of [0, 1] as const) {
-    const o = i === 0 ? 1 : 0;
-    const atk = cards[o];
-    if (!active[o] || atk.kind !== 'attack') continue;
-    if (!areas[o].some((p) => samePos(p, ps[i].pos))) {
-      hit[i] = 'miss';
-      continue;
-    }
-    const guard = active[i] ? (cards[i].guard ?? 0) : 0;
-    hit[i] = guard > 0 ? 'guard' : 'hit';
-    damage[i] = hitDamage(atk, ps[o], ps[i], guard, moved[i]);
-    if (active[i] && cards[i].counter) counter[o] += cards[i].counter!;
-    if (atk.drain && damage[i] > 0) drained[o] = Math.floor((damage[i] * atk.drain) / 100);
-    if (atk.stun && damage[i] > 0) dazed[i] = true;
-    if (atk.push && !ps[i].mods.immovable) pushTo[i] = displace(ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
-  }
-
-  // 3. Self effects, then clamp.
   const healed = [0, 0];
-  for (const i of [0, 1] as const) {
-    const p = ps[i];
-    let life = p.life - damage[i] - counter[i] + drained[i];
-    let energy = p.energy;
-    if (active[i]) {
-      healed[i] = cards[i].heal ?? 0;
-      life += healed[i];
-      energy += cards[i].cost;
-    }
-    p.life = clamp(life, 0, p.lifeMax);
-    p.energy = clamp(energy, 0, p.energyMax);
-    p.dazed = dazed[i];
-  }
+  const interrupted = [false, false];
+  let areas: [Pos[], Pos[]] = [[], []];
+  let midLives: [number, number] | null = null;
+  const reface = () => {
+    for (const i of [0, 1] as const) ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
+  };
 
-  // 4. Push and pull (simultaneous), then face each other again.
-  for (const i of [0, 1] as const) {
-    if (pushTo[i]) ps[i].pos = pushTo[i]!;
-  }
-  for (const i of [0, 1] as const) {
-    ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
+  // 2. Attacks. If both fighters attack, they strike one after the other (see strikeOrder);
+  //    otherwise everything happens at once.
+  const bothAttack = active[0] && active[1] && cards[0].kind === 'attack' && cards[1].kind === 'attack';
+  const sequence = bothAttack ? strikeOrder(cards[0], cards[1], ps[0].life, ps[1].life) : null;
+
+  if (sequence) {
+    sequence.forEach((o, k) => {
+      const i = o === 0 ? 1 : 0;
+      const atk = cards[o];
+      if (ps[o].life <= 0) {
+        // Knocked out by the first strike: this attack never happens.
+        interrupted[o] = true;
+        return;
+      }
+      areas[o] = attackArea(atk, ps[o].pos, ps[o].facing);
+      if (!areas[o].some((p) => samePos(p, ps[i].pos))) {
+        hit[i] = 'miss';
+      } else {
+        // The defender is attacking too, so it has no guard or counter this step.
+        hit[i] = 'hit';
+        damage[i] = hitDamage(atk, ps[o], ps[i], 0, moved[i]);
+        ps[i].life = clamp(ps[i].life - damage[i], 0, ps[i].lifeMax);
+        if (atk.drain && damage[i] > 0) {
+          drained[o] = Math.floor((damage[i] * atk.drain) / 100);
+          ps[o].life = clamp(ps[o].life + drained[o], 0, ps[o].lifeMax);
+        }
+        if (atk.stun && damage[i] > 0) dazed[i] = true;
+        if (atk.push && !ps[i].mods.immovable) {
+          ps[i].pos = displace(ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
+          reface();
+        }
+      }
+      if (k === 0) midLives = [ps[0].life, ps[1].life];
+    });
+    for (const i of [0, 1] as const) {
+      const p = ps[i];
+      if (active[i]) {
+        healed[i] = cards[i].heal ?? 0;
+        p.life = clamp(p.life + healed[i], 0, p.lifeMax);
+        p.energy = clamp(p.energy + cards[i].cost, 0, p.energyMax);
+      }
+      p.dazed = dazed[i];
+    }
+  } else {
+    // Hits, computed from post-movement positions.
+    areas = [0, 1].map((i) => (active[i] ? attackArea(cards[i], ps[i].pos, ps[i].facing) : [])) as [Pos[], Pos[]];
+    const pushTo: (Pos | null)[] = [null, null];
+    for (const i of [0, 1] as const) {
+      const o = i === 0 ? 1 : 0;
+      const atk = cards[o];
+      if (!active[o] || atk.kind !== 'attack') continue;
+      if (!areas[o].some((p) => samePos(p, ps[i].pos))) {
+        hit[i] = 'miss';
+        continue;
+      }
+      const guard = active[i] ? (cards[i].guard ?? 0) : 0;
+      hit[i] = guard > 0 ? 'guard' : 'hit';
+      damage[i] = hitDamage(atk, ps[o], ps[i], guard, moved[i]);
+      if (active[i] && cards[i].counter) counter[o] += cards[i].counter!;
+      if (atk.drain && damage[i] > 0) drained[o] = Math.floor((damage[i] * atk.drain) / 100);
+      if (atk.stun && damage[i] > 0) dazed[i] = true;
+      if (atk.push && !ps[i].mods.immovable) pushTo[i] = displace(ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
+    }
+
+    // 3. Self effects, then clamp.
+    for (const i of [0, 1] as const) {
+      const p = ps[i];
+      let life = p.life - damage[i] - counter[i] + drained[i];
+      let energy = p.energy;
+      if (active[i]) {
+        healed[i] = cards[i].heal ?? 0;
+        life += healed[i];
+        energy += cards[i].cost;
+      }
+      p.life = clamp(life, 0, p.lifeMax);
+      p.energy = clamp(energy, 0, p.energyMax);
+      p.dazed = dazed[i];
+    }
+
+    // 4. Push and pull (simultaneous), then face each other again.
+    for (const i of [0, 1] as const) {
+      if (pushTo[i]) ps[i].pos = pushTo[i]!;
+    }
+    reface();
   }
 
   // 5. KO check.
@@ -257,12 +319,13 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     counterTaken: counter[i],
     drained: drained[i],
     dazed: dazed[i],
+    interrupted: interrupted[i],
     healed: healed[i],
     life: ps[i].life,
     energy: ps[i].energy,
   })) as [StepPlayerResult, StepPlayerResult];
 
-  return { slot, players, outcome: state.outcome };
+  return { slot, players, outcome: state.outcome, sequence, midLives };
 }
 
 /** Resolve a whole round. Pure: returns a new state. Throws on illegal plans. */

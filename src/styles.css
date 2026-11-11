@@ -7,8 +7,10 @@
   --text: #eef1ff;
   --muted: #8d95b8;
   --accent: #ffd23d;
-  --p0: #4fc3ff;
-  --p1: #ff6b8a;
+  /* Player colours stay clear of red (attacks) and blue (movement). */
+  --p0: #2fe0bf;
+  --p1: #b98bff;
+  --attack: #ff5f6d;
   --life: #4be08a;
   --energy: #ffd23d;
   --danger: #ff5a5a;
@@ -270,7 +272,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .battle[data-mode="pass"] .pass,
 .battle[data-mode="reveal"] .pile,
 .battle[data-mode="summary"] .summary { display: flex; }
-.battle[data-mode="wait"] .planner > :not(.status) { display: none; }
+.battle[data-mode="wait"] .planner > :not(.status-row) { display: none; }
 .battle:not([data-mode="reveal"]) .step-label { visibility: hidden; }
 
 .arena-wrap { width: 100%; }
@@ -282,9 +284,13 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 }
 .tile { position: relative; overflow: hidden; border-radius: 1px; background: linear-gradient(160deg, #222a48, #171c33); transition: background .2s, box-shadow .2s; }
 .tile.preview { background: rgba(255, 210, 61, .3); box-shadow: inset 0 0 0 2px var(--accent); }
-.tile.area-p0 { background: rgba(79, 195, 255, .5); box-shadow: inset 0 0 0 2px var(--p0), inset 0 0 22px var(--p0); animation: pulse .5s ease-in-out infinite alternate; }
-.tile.area-p1 { background: rgba(255, 107, 138, .5); box-shadow: inset 0 0 0 2px var(--p1), inset 0 0 22px var(--p1); animation: pulse .5s ease-in-out infinite alternate; }
-.tile.area-p0.area-p1 { background: rgba(200, 140, 255, .55); }
+.tile.preview-atk { background: color-mix(in srgb, var(--attack) 35%, transparent); box-shadow: inset 0 0 0 2px var(--attack); }
+.tile.preview-move { background: color-mix(in srgb, var(--move) 35%, transparent); box-shadow: inset 0 0 0 2px var(--move); }
+/* Attack squares are always red; the outline shows whose attack it is. */
+.tile.area-p0, .tile.area-p1 { background: color-mix(in srgb, var(--attack) 45%, transparent); }
+.tile.area-p0 { box-shadow: inset 0 0 0 3px var(--p0), inset 0 0 20px color-mix(in srgb, var(--attack) 70%, transparent); }
+.tile.area-p1 { box-shadow: inset 0 0 0 3px var(--p1), inset 0 0 20px color-mix(in srgb, var(--attack) 70%, transparent); }
+.tile.area-p0.area-p1 { box-shadow: inset 0 0 0 3px var(--p0), inset 0 0 0 6px var(--p1), inset 0 0 20px color-mix(in srgb, var(--attack) 70%, transparent); }
 @keyframes pulse { to { filter: brightness(1.35); } }
 
 .token, .ghost, .float, .fx {
@@ -374,7 +380,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 
 /* ---------- planner (hand) ---------- */
 .planner {
-  width: 100%; flex-direction: column; gap: 10px; align-items: center;
+  position: relative; width: 100%; flex-direction: column; gap: 10px; align-items: center;
   background: rgba(0, 0, 0, .25); border: 1px solid var(--line); padding: 10px;
 }
 .battle[data-seat="0"] .planner { border-top: 3px solid var(--p0); }
@@ -456,15 +462,25 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .slot.drop-bad { outline: 2px solid var(--danger) !important; outline-offset: 3px; }
 .slot.shake { animation: shake .4s; }
 
-.btn.timed { position: relative; overflow: hidden; }
-.btn.timed::after {
-  content: ''; position: absolute; left: 0; bottom: 0; height: 4px; width: calc(var(--t, 1) * 100%);
-  background: rgba(0, 0, 0, .45); transition: width .25s linear;
+/* plan timer: ring countdown beside the title + bar draining across the top of the planner */
+.status-row { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.time-bar {
+  display: none; position: absolute; left: 0; top: -3px; height: 6px; width: calc(var(--t, 1) * 100%);
+  background: var(--accent); box-shadow: 0 0 10px var(--accent); transition: width .25s linear;
 }
-.btn .timer:not(:empty) { margin-left: 8px; font-size: .8em; opacity: .8; }
-.btn.timed.urgent { animation: urgent .5s ease-in-out infinite alternate; }
-.btn.timed.urgent::after { background: var(--danger); }
-@keyframes urgent { to { box-shadow: inset 0 0 0 3px var(--danger); } }
+.planner.timed .time-bar { display: block; }
+.plan-clock { position: relative; width: 42px; height: 42px; flex: none; display: grid; place-items: center; }
+.plan-clock svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.plan-clock circle { fill: none; stroke-width: 4; }
+.plan-clock .track { stroke: rgba(255, 255, 255, .14); }
+.plan-clock .left { stroke: var(--accent); stroke-linecap: butt; transition: stroke-dasharray .25s linear; }
+.plan-clock b { position: relative; font-size: 1.05rem; font-weight: 900; }
+.planner.urgent .time-bar { background: var(--danger); box-shadow: 0 0 14px var(--danger); animation: urgent-bar .5s ease-in-out infinite alternate; }
+.planner.urgent .plan-clock .left { stroke: var(--danger); }
+.planner.urgent .plan-clock b { color: var(--danger); animation: clock-pulse .5s ease-in-out infinite alternate; }
+.planner.urgent { border-color: var(--danger); }
+@keyframes urgent-bar { to { opacity: .45; } }
+@keyframes clock-pulse { to { transform: scale(1.3); } }
 
 .coach { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; padding: 16px; background: rgba(5, 8, 16, .35); }
 .coach-box {
@@ -557,6 +573,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .panel.p1 .bar.life .chip { inset: 0 0 0 auto; }
 .float { font-size: calc(clamp(1rem, 4vw, 1.6rem) * var(--size, 1)); }
 .float.miss, .float.energy, .float.stun { font-size: 1rem; }
+.float.first { color: var(--accent); font-size: .95rem; }
 
 /* card reveal: dealt face down, then flipped */
 .pile-card.face-down .card { visibility: hidden; }
@@ -718,6 +735,8 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 
   .planner { padding: 6px 4px; gap: 6px; }
   .status { font-size: .72rem; }
+  .plan-clock { width: 36px; height: 36px; }
+  .plan-clock b { font-size: .9rem; }
   .actions .btn { padding: 9px 18px; }
 
   .btn.huge { padding: 30px 16px; font-size: 1.45rem; }

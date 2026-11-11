@@ -40,9 +40,9 @@ const signature: CardDef[] = [
   { id: 'cinderBlaze', name: 'Wildfire', kind: 'attack', cost: -55, damage: 45, pattern: ['011', '011', '011'], fx: 'burst' },
 
   // Marin: wide reach in front
-  { id: 'marinSplash', name: 'Splash', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '111', '000'] },
+  { id: 'marinSplash', name: 'Splash', kind: 'attack', cost: -15, damage: 20, pattern: ['000', '111', '000'] },
   { id: 'marinUndertow', name: 'Undertow', kind: 'attack', cost: -25, damage: 25, pattern: ['101', '010', '101'], push: -1, fx: 'wave' },
-  { id: 'marinWall', name: 'Tide Wall', kind: 'attack', cost: -30, damage: 35, pattern: ['001', '001', '001'], push: 1, fx: 'wave' },
+  { id: 'marinWall', name: 'Tide Wall', kind: 'attack', cost: -30, damage: 30, pattern: ['001', '001', '001'], push: 1, fx: 'wave' },
   { id: 'marinFlood', name: 'Flood', kind: 'attack', cost: -45, damage: 40, pattern: ['111', '111', '000'], fx: 'wave' },
 
   // Zephyr: cheap, broad and slippery
@@ -127,7 +127,7 @@ export const FIGHTERS: FighterDef[] = [
     color: '#ffd23d',
     emblem: 'bolt',
     signature: ['voltaZap', 'voltaArc', 'voltaField', 'voltaClap'],
-    passive: { name: 'Capacitor', text: '120 max energy. Regains 10 extra energy every round.', mods: { energyPerRound: 10 } },
+    passive: { name: 'Capacitor', text: '120 max energy. Regains 7 extra energy every round.', mods: { energyPerRound: 7 } },
     energyMax: 120,
   },
   {
@@ -138,7 +138,7 @@ export const FIGHTERS: FighterDef[] = [
     color: '#b07cff',
     emblem: 'moon',
     signature: ['umbraClaw', 'umbraEclipse', 'umbraCreep', 'umbraGrasp'],
-    passive: { name: 'Ambush', text: 'Attacks deal 5 more damage to a target that moved this step.', mods: { vsMovedBonus: 5 } },
+    passive: { name: 'Ambush', text: 'Attacks deal 10 more damage to a target that moved this step.', mods: { vsMovedBonus: 10 } },
   },
 ];
 

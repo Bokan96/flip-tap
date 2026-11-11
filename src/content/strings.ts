@@ -139,6 +139,8 @@ export const STRINGS = {
   descDrain: (pct: number) => (pct >= 100 ? 'Heals you for the damage it deals.' : `Heals you for ${pct}% of the damage it deals.`),
   passive: 'Passive',
   stunned: 'Stunned',
+  firstStrike: 'First strike!',
+  tooLate: 'Too late!',
   dazed: 'Dazed!',
   stepOf: (n: number, total: number) => `Step ${n} / ${total}`,
   energyAfter: 'Energy left after this step',
@@ -180,7 +182,8 @@ export const STRINGS = {
     'Guard reduces incoming damage that step. Each card can be used once per round.',
     'Some attacks push, pull or stun (cancel the target’s next card). Counter cards hurt attackers; drain attacks heal you.',
     'Every fighter has a passive ability that is always on.',
-    'Both fighters regain 15 energy after every round. Bring your opponent’s life to 0 to win.',
+    'If both fighters attack in the same step, the stronger attack lands first (on a tie, the fighter with more life). A fighter knocked out first never gets their attack off.',
+    'Both fighters regain 10 energy after every round. Bring your opponent’s life to 0 to win.',
     'Tap a fighter on the board to see their passive and every card they can play.',
   ],
 };

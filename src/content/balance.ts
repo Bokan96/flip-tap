@@ -5,7 +5,7 @@ export const BALANCE = {
   slotsPerRound: 3,
   lifeMax: 100,
   energyMax: 100,
-  energyPerRound: 15,
+  energyPerRound: 10,
   /** [row, col] start squares for seat 0 and seat 1. */
   startPos: [
     { r: 1, c: 0 },

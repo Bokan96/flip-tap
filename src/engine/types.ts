@@ -135,6 +135,8 @@ export interface StepPlayerResult {
   drained: number;
   /** Got stunned this step: the next card this round is cancelled. */
   dazed: boolean;
+  /** This player's attack never landed because they were knocked out by a faster attack first. */
+  interrupted: boolean;
   healed: number;
   life: number;
   energy: number;
@@ -144,6 +146,13 @@ export interface StepResult {
   slot: number;
   players: [StepPlayerResult, StepPlayerResult];
   outcome: MatchOutcome | null;
+  /**
+   * When both fighters attack, the order they strike in (see rules.strikeOrder);
+   * null when only one attacks or both strike at the same time.
+   */
+  sequence: [Seat, Seat] | null;
+  /** Both fighters' life right after the first strike of a sequence (for the reveal animation). */
+  midLives: [number, number] | null;
 }
 
 export interface RoundResult {

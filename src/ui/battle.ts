@@ -199,11 +199,18 @@ export class BattleView {
         </aside>
       </div>
       <section class="planner">
-        <div class="status"></div>
+        <div class="time-bar"></div>
+        <div class="status-row">
+          <div class="status"></div>
+          <div class="plan-clock hidden" title="${STRINGS.planTimer}">
+            <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="15.5"></circle><circle class="left" cx="18" cy="18" r="15.5" pathLength="100"></circle></svg>
+            <b></b>
+          </div>
+        </div>
         <div class="hand grouped"></div>
         <div class="actions">
           <button class="btn ghost-btn" data-act="clear">${STRINGS.clear}</button>
-          <button class="btn primary" data-act="lock">${STRINGS.lockIn}<span class="timer"></span></button>
+          <button class="btn primary" data-act="lock">${STRINGS.lockIn}</button>
         </div>
       </section>
       <section class="pass"></section>
@@ -312,7 +319,7 @@ export class BattleView {
 
   private clearAreas(): void {
     this.el.querySelectorAll<HTMLElement>('.tile').forEach((t) => {
-      t.classList.remove('area-p0', 'area-p1', 'preview', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake');
+      t.classList.remove('area-p0', 'area-p1', 'preview', 'preview-atk', 'preview-move', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake');
       t.style.removeProperty('--d');
       t.style.removeProperty('--sx');
     });
@@ -471,19 +478,28 @@ export class BattleView {
 
   // ---------- plan timer ----------
 
+  /**
+   * Plan timer: a ring countdown next to the planner title and a bar draining across the top of
+   * the planner, both turning red and pulsing for the last 10 seconds.
+   */
   private startTimer(): void {
     const total = this.opts.noTimer ? 0 : getPlanTimer();
     if (!total) return;
-    const lock = this.q('[data-act="lock"]');
+    const planner = this.q('.planner');
+    const clock = this.q('.plan-clock');
+    const ring = clock.querySelector('.left')!;
     let left = total * 1000;
     let lastSecond = Math.ceil(left / 1000);
-    lock.classList.add('timed');
+    planner.classList.add('timed');
+    clock.classList.remove('hidden');
     const tick = 250;
     const update = () => {
-      lock.style.setProperty('--t', String(left / (total * 1000)));
+      const t = left / (total * 1000);
+      planner.style.setProperty('--t', String(t));
+      ring.setAttribute('stroke-dasharray', `${(t * 100).toFixed(1)} 100`);
       const sec = Math.ceil(left / 1000);
-      lock.querySelector('.timer')!.textContent = String(sec);
-      lock.classList.toggle('urgent', sec <= 10);
+      clock.querySelector('b')!.textContent = String(sec);
+      planner.classList.toggle('urgent', sec <= 10);
       if (sec !== lastSecond && sec <= 10 && sec > 0) play('tick');
       lastSecond = sec;
     };
@@ -504,10 +520,11 @@ export class BattleView {
   private stopTimer(): void {
     if (this.timerId !== null) clearInterval(this.timerId);
     this.timerId = null;
-    const lock = this.el.querySelector<HTMLElement>('[data-act="lock"]');
-    if (!lock) return;
-    lock.classList.remove('timed', 'urgent');
-    lock.querySelector('.timer')!.textContent = '';
+    const planner = this.el.querySelector<HTMLElement>('.planner');
+    if (!planner) return;
+    planner.classList.remove('timed', 'urgent');
+    planner.style.removeProperty('--t');
+    this.q('.plan-clock').classList.add('hidden');
   }
 
   // ---------- coaching (tutorial) ----------
@@ -644,7 +661,9 @@ export class BattleView {
     const c = getCard(card);
     const pos = movePos(before, c);
     const facing = faceTowards(pos, them.pos, slot === 0 ? me.facing : path.facing[slot - 1]);
-    this.showArea(c.kind === 'attack' ? attackArea(c, pos, facing) : [pos], 'preview');
+    // Same colour language as the cards: red = where an attack hits, blue = where a move lands.
+    const cls = c.kind === 'attack' ? 'preview-atk' : c.kind === 'move' ? 'preview-move' : 'preview';
+    this.showArea(c.kind === 'attack' ? attackArea(c, pos, facing) : [pos], cls);
   }
 
   /** Side panel with the focused card shown large and described in words. */
@@ -843,90 +862,130 @@ export class BattleView {
       await this.sleep('move');
     }
 
-    // 3. Attacks wind up, then their squares light up outward from the attacker.
-    const attackers = [0, 1].filter((i) => players[i].area.length > 0);
-    if (attackers.length) {
-      attackers.forEach((i) => retrigger(tokens[i], 'charge'));
+    // Where each token currently stands (pushes move them during the step).
+    const posNow: [Pos, Pos] = [players[0].to, players[1].to];
+    const stacks = [0, 0];
+
+    /** Attackers wind up, then their squares light up outward from them. */
+    const windUp = async (who: number[]) => {
+      who.forEach((i) => retrigger(tokens[i], 'charge'));
       await wait(ms(260));
-      for (const i of attackers) {
+      for (const i of who) {
         const kind = fxKind(getCard(players[i].cardId));
-        this.showArea(players[i].area, `area-p${i}`, players[i].to, kind);
+        this.showArea(players[i].area, `area-p${i}`, posNow[i], kind);
         play(kind);
       }
       await this.sleep('area');
-    }
+    };
 
-    // 4. Impact: a brief freeze, then hits, guards, counters, drains and stuns.
-    const lands = players.some((p) => p.damageTaken > 0 || p.counterTaken > 0);
-    if (lands && fullEffects()) await wait(90);
-    const sounds: SoundId[] = [];
-    let biggest = 0;
-    players.forEach((p, i) => {
-      const o = i === 0 ? 1 : 0;
-      const token = tokens[i];
-      let stack = 0;
-      if (p.hit === 'hit' || (p.hit === 'guard' && p.damageTaken > 0)) {
-        retrigger(token, 'shake');
-        retrigger(token, 'flash');
-        this.fx.particles(p.to, color(o), 10);
-        if (p.hit === 'guard') this.fx.ring(p.to, 'shield');
-        this.floatText(p.to, `-${p.damageTaken}`, p.hit === 'guard' ? 'guarded' : 'damage', stack++, p.damageTaken);
-        biggest = Math.max(biggest, p.damageTaken);
-        sounds.push(p.hit === 'hit' ? 'hit' : 'guard');
-      } else if (p.hit === 'guard') {
-        this.fx.ring(p.to, 'shield');
-        this.floatText(p.to, STRINGS.guarded, 'guarded', stack++);
-        sounds.push('guard');
-      } else if (p.hit === 'miss') {
-        retrigger(token, 'dodge');
-        this.floatText(p.to, STRINGS.miss, 'miss', stack++);
-        sounds.push('miss');
-      }
-      if (p.counterTaken > 0) {
-        // Sparks fly back from the defender into this attacker.
-        this.fx.travel(players[o].to, p.to, '#ffb36b', 4, 'spark');
-        const k = stack++;
-        setTimeout(() => {
+    /**
+     * Impact on `defenders` (hits, guards, counters, stuns, pushes) and the life gained by
+     * `healers` (heals, drains). Returns whether anything happened.
+     */
+    const impact = async (defenders: number[], healers: number[], lives: [number, number] | null): Promise<boolean> => {
+      const lands = defenders.some((i) => players[i].damageTaken > 0 || players[i].counterTaken > 0);
+      if (lands && fullEffects()) await wait(90);
+      const sounds: SoundId[] = [];
+      let biggest = 0;
+      for (const i of defenders) {
+        const p = players[i];
+        const o = i === 0 ? 1 : 0;
+        const token = tokens[i];
+        if (p.hit === 'hit' || (p.hit === 'guard' && p.damageTaken > 0)) {
           retrigger(token, 'shake');
           retrigger(token, 'flash');
-          this.floatText(p.to, `${STRINGS.effectIcons.counter} -${p.counterTaken}`, 'damage', k, p.counterTaken);
-        }, ms(fullEffects() ? 420 : 0));
-        biggest = Math.max(biggest, p.counterTaken);
-        sounds.push('clang');
+          this.fx.particles(posNow[i], color(o), 10);
+          if (p.hit === 'guard') this.fx.ring(posNow[i], 'shield');
+          this.floatText(posNow[i], `-${p.damageTaken}`, p.hit === 'guard' ? 'guarded' : 'damage', stacks[i]++, p.damageTaken);
+          biggest = Math.max(biggest, p.damageTaken);
+          sounds.push(p.hit === 'hit' ? 'hit' : 'guard');
+        } else if (p.hit === 'guard') {
+          this.fx.ring(posNow[i], 'shield');
+          this.floatText(posNow[i], STRINGS.guarded, 'guarded', stacks[i]++);
+          sounds.push('guard');
+        } else if (p.hit === 'miss') {
+          retrigger(token, 'dodge');
+          this.floatText(posNow[i], STRINGS.miss, 'miss', stacks[i]++);
+          sounds.push('miss');
+        }
+        if (p.counterTaken > 0) {
+          // Sparks fly back from the defender into this attacker.
+          this.fx.travel(posNow[o], posNow[i], '#ffb36b', 4, 'spark');
+          const k = stacks[i]++;
+          setTimeout(() => {
+            retrigger(token, 'shake');
+            retrigger(token, 'flash');
+            this.floatText(posNow[i], `${STRINGS.effectIcons.counter} -${p.counterTaken}`, 'damage', k, p.counterTaken);
+          }, ms(fullEffects() ? 420 : 0));
+          biggest = Math.max(biggest, p.counterTaken);
+          sounds.push('clang');
+        }
+        if (p.dazed) {
+          token.classList.add('dazed');
+          this.fx.ring(posNow[i], 'stun');
+          this.floatText(posNow[i], STRINGS.dazed, 'stun', stacks[i]++);
+          sounds.push('zap');
+        }
       }
-      if (p.drained > 0) {
-        this.fx.travel(players[o].to, p.to, '#7dffb0', 6, 'mote');
-        sounds.push('shimmer');
+      for (const j of healers) {
+        const p = players[j];
+        if (p.drained > 0) {
+          this.fx.travel(posNow[j === 0 ? 1 : 0], posNow[j], '#7dffb0', 6, 'mote');
+          sounds.push('shimmer');
+        }
+        if (p.healed > 0 || p.drained > 0) {
+          this.floatText(posNow[j], `+${p.healed + p.drained}`, 'heal', stacks[j]++);
+          if (p.healed > 0) sounds.push('heal');
+        }
       }
-      if (p.healed > 0 || p.drained > 0) {
-        this.floatText(p.to, `+${p.healed + p.drained}`, 'heal', stack++);
-        if (p.healed > 0) sounds.push('heal');
+      [...new Set(sounds)].forEach((id, k) => setTimeout(() => play(id), k * 110));
+      if (biggest > 0) {
+        const strength = biggest >= 40 ? 3 : biggest >= 25 ? 2 : 1;
+        this.fx.shake(strength);
+        haptic(strength === 3 ? 'big' : 'hit');
       }
-      if (p.dazed) {
-        token.classList.add('dazed');
-        this.fx.ring(p.to, 'stun');
-        this.floatText(p.to, STRINGS.dazed, 'stun', stack++);
-        sounds.push('zap');
-      }
-    });
-    [...new Set(sounds)].forEach((id, k) => setTimeout(() => play(id), k * 110));
-    if (biggest > 0) {
-      const strength = biggest >= 40 ? 3 : biggest >= 25 ? 2 : 1;
-      this.fx.shake(strength);
-      haptic(strength === 3 ? 'big' : 'hit');
-    }
-    this.renderHud([players[0].life, players[1].life], [players[0].energy, players[1].energy]);
+      this.renderHud(lives ?? [players[0].life, players[1].life], [players[0].energy, players[1].energy]);
 
-    // 5. Push and pull land just after the hit.
-    const displaced = [0, 1].filter((i) => !samePos(players[i].to, players[i].final));
-    if (displaced.length) {
-      await wait(ms(300));
-      displaced.forEach((i) => {
-        retrigger(tokens[i], 'skid');
-        this.fx.particles(players[i].to, '#9aa3c7', 6, 'dust');
-      });
-      this.placeTokens([players[0].final, players[1].final], [players[0].facing, players[1].facing]);
-      play('thud');
+      // Push and pull land just after the hit.
+      const displaced = defenders.filter((i) => !samePos(players[i].to, players[i].final));
+      if (displaced.length) {
+        await wait(ms(300));
+        displaced.forEach((i) => {
+          retrigger(tokens[i], 'skid');
+          this.fx.particles(posNow[i], '#9aa3c7', 6, 'dust');
+          posNow[i] = players[i].final;
+        });
+        this.placeTokens(posNow, [players[0].facing, players[1].facing]);
+        play('thud');
+      }
+      return sounds.length > 0;
+    };
+
+    // 3-5. Attacks. When both fighters attack, the stronger attack (or, on a tie, the fighter with
+    //      more life) strikes first and the other answers only if still standing.
+    let busy = false;
+    if (step.sequence) {
+      const [first] = step.sequence;
+      for (const [k, o] of step.sequence.entries()) {
+        const d = o === 0 ? 1 : 0;
+        if (players[o].interrupted) {
+          this.floatText(posNow[o], STRINGS.tooLate, 'miss', stacks[o]++);
+          continue;
+        }
+        if (o === first) this.floatText(posNow[o], STRINGS.firstStrike, 'first', stacks[o]++);
+        await windUp([o]);
+        await impact([d], [o], k === 0 ? step.midLives : null);
+        if (k === 0) {
+          await this.sleep('hit');
+          this.clearAreas();
+        }
+      }
+      busy = true;
+    } else {
+      const attackers = [0, 1].filter((i) => players[i].area.length > 0);
+      if (attackers.length) await windUp(attackers);
+      const happened = await impact([0, 1], [0, 1], null);
+      busy = attackers.length > 0 || happened;
     }
 
     // 6. Knockout: flash, and the loser falls.
@@ -940,7 +999,7 @@ export class BattleView {
         if (w === null || w !== i) t.classList.add('ko', 'ko-fall');
       });
     }
-    await this.sleep(attackers.length || sounds.length ? 'hit' : 'quiet');
+    await this.sleep(busy ? 'hit' : 'quiet');
     this.slow = 1;
     this.clearAreas();
   }

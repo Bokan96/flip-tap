@@ -100,59 +100,116 @@ function displaceCol(tc: number, ac: number, attackerFacing: number, n: number):
 
 /** Simulate one round (without end-of-round recovery). Same semantics as rules.resolveRound. */
 export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastResult {
-  const [p0, p1] = state.players;
-  const m0 = p0.mods, m1 = p1.mods;
-  let l0 = p0.life, l1 = p1.life, e0 = p0.energy, e1 = p1.energy;
-  let r0 = p0.pos.r, c0 = p0.pos.c, r1 = p1.pos.r, c1 = p1.pos.c;
-  let f0 = p0.facing as number, f1 = p1.facing as number;
-  let z0 = p0.dazed, z1 = p1.dazed;
+  const P = state.players;
+  const m = [P[0].mods, P[1].mods];
+  const lifeMax = [P[0].lifeMax, P[1].lifeMax];
+  const energyMax = [P[0].energyMax, P[1].energyMax];
+  const life = [P[0].life, P[1].life];
+  const en = [P[0].energy, P[1].energy];
+  const r = [P[0].pos.r, P[1].pos.r];
+  const c = [P[0].pos.c, P[1].pos.c];
+  const f = [P[0].facing as number, P[1].facing as number];
+  const z = [P[0].dazed, P[1].dazed];
+  const card: FastCard[] = [fastCard(plan0[0]), fastCard(plan1[0])];
+  const act = [false, false];
+  const mv = [false, false];
+  const nz = [false, false];
+  const dmg = [0, 0];
+  const ctr = [0, 0];
+  const drn = [0, 0];
+  const nc = [0, 0];
   let outcome = -1;
 
+  const face = () => {
+    if (c[1] > c[0]) {
+      f[0] = 1;
+      f[1] = -1;
+    } else if (c[1] < c[0]) {
+      f[0] = -1;
+      f[1] = 1;
+    }
+  };
+
   for (let slot = 0; slot < plan0.length; slot++) {
-    const a = fastCard(plan0[slot]);
-    const b = fastCard(plan1[slot]);
-    const act0 = !z0 && e0 + a.cost >= 0;
-    const act1 = !z1 && e1 + b.cost >= 0;
-
-    const sr0 = r0, sc0 = c0, sr1 = r1, sc1 = c1;
-    if (act0) { r0 = clamp(r0 + a.dr, 0, rows - 1); c0 = clamp(c0 + a.dc, 0, cols - 1); }
-    if (act1) { r1 = clamp(r1 + b.dr, 0, rows - 1); c1 = clamp(c1 + b.dc, 0, cols - 1); }
-    const mv0 = r0 !== sr0 || c0 !== sc0;
-    const mv1 = r1 !== sr1 || c1 !== sc1;
-    if (c1 > c0) { f0 = 1; f1 = -1; } else if (c1 < c0) { f0 = -1; f1 = 1; }
-
-    let d0 = 0, d1 = 0, k0 = 0, k1 = 0, h0 = 0, h1 = 0;
-    let nz0 = false, nz1 = false;
-    let nc0 = c0, nc1 = c1;
-    if (act1 && b.isAttack && covers(b, r1, c1, f1, r0, c0)) {
-      d0 = damageOf(b, l1, m1, m0, act0 ? a.guard : 0, mv0);
-      if (act0 && a.counter) k1 += a.counter;
-      if (b.drain && d0 > 0) h1 = Math.floor((d0 * b.drain) / 100);
-      if (b.stun && d0 > 0) nz0 = true;
-      if (b.push && !m0.immovable) nc0 = displaceCol(c0, c1, f1, b.push + Math.sign(b.push) * m1.pushBonus);
+    card[0] = fastCard(plan0[slot]);
+    card[1] = fastCard(plan1[slot]);
+    for (let i = 0; i < 2; i++) {
+      act[i] = !z[i] && en[i] + card[i].cost >= 0;
+      nz[i] = false;
+      const sr = r[i];
+      const sc = c[i];
+      if (act[i]) {
+        r[i] = clamp(r[i] + card[i].dr, 0, rows - 1);
+        c[i] = clamp(c[i] + card[i].dc, 0, cols - 1);
+      }
+      mv[i] = r[i] !== sr || c[i] !== sc;
     }
-    if (act0 && a.isAttack && covers(a, r0, c0, f0, r1, c1)) {
-      d1 = damageOf(a, l0, m0, m1, act1 ? b.guard : 0, mv1);
-      if (act1 && b.counter) k0 += b.counter;
-      if (a.drain && d1 > 0) h0 = Math.floor((d1 * a.drain) / 100);
-      if (a.stun && d1 > 0) nz1 = true;
-      if (a.push && !m1.immovable) nc1 = displaceCol(c1, c0, f0, a.push + Math.sign(a.push) * m0.pushBonus);
+    face();
+
+    // Both attack: the stronger card (then the healthier fighter) strikes first.
+    let first = -1;
+    if (act[0] && act[1] && card[0].isAttack && card[1].isAttack) {
+      if (card[0].damage !== card[1].damage) first = card[0].damage > card[1].damage ? 0 : 1;
+      else if (life[0] !== life[1]) first = life[0] > life[1] ? 0 : 1;
     }
 
-    let nl0 = l0 - d0 - k0 + h0, nl1 = l1 - d1 - k1 + h1, ne0 = e0, ne1 = e1;
-    if (act0) { nl0 += a.heal; ne0 += a.cost; }
-    if (act1) { nl1 += b.heal; ne1 += b.cost; }
-    l0 = clamp(nl0, 0, p0.lifeMax); l1 = clamp(nl1, 0, p1.lifeMax);
-    e0 = clamp(ne0, 0, p0.energyMax); e1 = clamp(ne1, 0, p1.energyMax);
-    z0 = nz0; z1 = nz1;
+    if (first >= 0) {
+      for (let k = 0; k < 2; k++) {
+        const o = k === 0 ? first : 1 - first;
+        const i = 1 - o;
+        if (life[o] <= 0) continue;
+        const a = card[o];
+        if (!covers(a, r[o], c[o], f[o], r[i], c[i])) continue;
+        const d = damageOf(a, life[o], m[o], m[i], 0, mv[i]);
+        life[i] = clamp(life[i] - d, 0, lifeMax[i]);
+        if (a.drain && d > 0) life[o] = clamp(life[o] + Math.floor((d * a.drain) / 100), 0, lifeMax[o]);
+        if (a.stun && d > 0) nz[i] = true;
+        if (a.push && !m[i].immovable) {
+          c[i] = displaceCol(c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
+          face();
+        }
+      }
+      for (let i = 0; i < 2; i++) {
+        if (!act[i]) continue;
+        life[i] = clamp(life[i] + card[i].heal, 0, lifeMax[i]);
+        en[i] = clamp(en[i] + card[i].cost, 0, energyMax[i]);
+      }
+    } else {
+      for (let i = 0; i < 2; i++) {
+        dmg[i] = ctr[i] = drn[i] = 0;
+        nc[i] = c[i];
+      }
+      for (let i = 0; i < 2; i++) {
+        const o = 1 - i;
+        const a = card[o];
+        if (!act[o] || !a.isAttack || !covers(a, r[o], c[o], f[o], r[i], c[i])) continue;
+        dmg[i] = damageOf(a, life[o], m[o], m[i], act[i] ? card[i].guard : 0, mv[i]);
+        if (act[i] && card[i].counter) ctr[o] += card[i].counter;
+        if (a.drain && dmg[i] > 0) drn[o] = Math.floor((dmg[i] * a.drain) / 100);
+        if (a.stun && dmg[i] > 0) nz[i] = true;
+        if (a.push && !m[i].immovable) nc[i] = displaceCol(c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
+      }
+      for (let i = 0; i < 2; i++) {
+        let l = life[i] - dmg[i] - ctr[i] + drn[i];
+        let e = en[i];
+        if (act[i]) {
+          l += card[i].heal;
+          e += card[i].cost;
+        }
+        life[i] = clamp(l, 0, lifeMax[i]);
+        en[i] = clamp(e, 0, energyMax[i]);
+      }
+      c[0] = nc[0];
+      c[1] = nc[1];
+      face();
+    }
+    z[0] = nz[0];
+    z[1] = nz[1];
 
-    c0 = nc0; c1 = nc1;
-    if (c1 > c0) { f0 = 1; f1 = -1; } else if (c1 < c0) { f0 = -1; f1 = 1; }
-
-    if (l0 <= 0 || l1 <= 0) {
-      outcome = l0 <= 0 && l1 <= 0 ? 2 : l0 <= 0 ? 1 : 0;
+    if (life[0] <= 0 || life[1] <= 0) {
+      outcome = life[0] <= 0 && life[1] <= 0 ? 2 : life[0] <= 0 ? 1 : 0;
       break;
     }
   }
-  return { life: [l0, l1], energy: [e0, e1], outcome, pos: [r0, c0, r1, c1] };
+  return { life: [life[0], life[1]], energy: [en[0], en[1]], outcome, pos: [r[0], c[0], r[1], c[1]] };
 }

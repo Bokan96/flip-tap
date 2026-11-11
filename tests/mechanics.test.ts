@@ -142,7 +142,7 @@ describe('passives', () => {
     s.players[0].energy = 30;
     s.players[1].energy = 30;
     const r = resolveRound(s, [IDLE, IDLE]);
-    expect(r.state.players[0].energy).toBe(30 + BALANCE.energyPerRound + 10);
+    expect(r.state.players[0].energy).toBe(30 + BALANCE.energyPerRound + 7);
     expect(r.state.players[1].energy).toBe(30 + BALANCE.energyPerRound);
   });
 
@@ -155,7 +155,7 @@ describe('passives', () => {
   it('Ambush adds damage against a target that moved', () => {
     const s = duel('umbra', 'marin', { r: 1, c: 1 }, { r: 0, c: 3 });
     const r = resolveRound(s, [['umbraClaw', 'guard', 'focus'], ['left', 'guard', 'focus']]);
-    expect(r.steps[0].players[1].damageTaken).toBe(25 + 5);
+    expect(r.steps[0].players[1].damageTaken).toBe(25 + 10);
   });
 
   it('Bedrock and Capacitor raise the maximums', () => {
@@ -168,7 +168,7 @@ describe('passives', () => {
 
   it('match modifiers stack with passives', () => {
     const s = createMatch({ fighterId: 'volta' }, { fighterId: 'cinder' }, { mods: { energyPerRound: 10, damageBonus: 5 }, startLife: 50 });
-    expect(s.players[0].mods.energyPerRound).toBe(20);
+    expect(s.players[0].mods.energyPerRound).toBe(17);
     expect(s.players[1].mods.damageBonus).toBe(5);
     expect(s.players[1].life).toBe(50);
     expect(mergeMods({ immovable: true }, { immovable: false }).immovable).toBe(true);
@@ -229,4 +229,56 @@ describe('content and match runner', () => {
     expect(a.outcome).toEqual(b.outcome);
     expect(a.rounds).toBeGreaterThan(0);
   }, 60_000);
+});
+
+describe('attack priority', () => {
+  it('the stronger attack lands first, and a knockout cancels the reply', () => {
+    const s = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
+    s.players[1].life = 40;
+    const r = resolveRound(s, [['cinderBlaze', 'guard', 'focus'], ['marinSplash', 'guard', 'focus']]);
+    const step = r.steps[0];
+    expect(step.sequence).toEqual([0, 1]);
+    expect(step.players[1].interrupted).toBe(true);
+    expect(step.players[0].hit).toBe('none');
+    expect(step.players[0].life).toBe(100);
+    expect(r.state.outcome).toEqual({ winner: 0 });
+  });
+
+  it('on equal damage the fighter with more life strikes first', () => {
+    // Ember Jab and Tremor both deal 25.
+    const s = duel('cinder', 'basalt', { r: 1, c: 1 }, { r: 1, c: 2 });
+    s.players[0].life = 20;
+    s.players[1].life = 30;
+    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['basaltQuake', 'guard', 'focus']]);
+    expect(r.steps[0].sequence).toEqual([1, 0]);
+    expect(r.steps[0].players[0].interrupted).toBe(true);
+    expect(r.state.outcome).toEqual({ winner: 1 });
+  });
+
+  it('equal damage and equal life still strike at the same time', () => {
+    const s = duel('cinder', 'basalt', { r: 1, c: 1 }, { r: 1, c: 2 });
+    s.players[0].life = s.players[1].life = 10;
+    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['basaltQuake', 'guard', 'focus']]);
+    expect(r.steps[0].sequence).toBeNull();
+    expect(r.state.outcome).toEqual({ winner: null, draw: true });
+  });
+
+  it('a push from the first strike can carry the target out of its own attack', () => {
+    // Tide Wall (30) beats Ember Jab (25) and pushes Cinder 2 squares (Riptide), so the Jab misses.
+    const s = duel('marin', 'cinder', { r: 1, c: 1 }, { r: 1, c: 2 });
+    const r = resolveRound(s, [['marinWall', 'guard', 'focus'], ['cinderJab', 'guard', 'focus']]);
+    const step = r.steps[0];
+    expect(step.sequence).toEqual([0, 1]);
+    expect(step.midLives).toEqual([100, 70]);
+    expect(step.players[1].final).toEqual({ r: 1, c: 3 });
+    expect(step.players[0].hit).toBe('miss');
+    expect(step.players[0].life).toBe(100);
+  });
+
+  it('only applies when both fighters attack', () => {
+    const s = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
+    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['guard', 'focus', 'up']]);
+    expect(r.steps[0].sequence).toBeNull();
+    expect(r.steps[0].players[1].hit).toBe('guard');
+  });
 });
