@@ -1,7 +1,9 @@
+import './theme.css';
 import './styles.css';
 import { setMusic } from './audio/music';
 import { play } from './audio/sfx';
 import { ACHIEVEMENTS } from './content/achievements';
+import { ASSETS, assetUrl } from './content/assets';
 import { BALANCE } from './content/balance';
 import { BONUS_CARD_IDS, FIGHTERS, getCard, getFighter } from './content/cards';
 import { STRINGS } from './content/strings';
@@ -34,8 +36,9 @@ import { currentRival, rivalBonus, rivalsFor } from './tournament';
 import { createTutorialMatch, ScriptedPlanSource, TUTORIAL, tutorialHooks } from './tutorial';
 import { BattleView, HumanPlanSource, type BattleOptions } from './ui/battle';
 import { cardHtml, describeCard, passiveHtml } from './ui/card';
-import { emblemHtml } from './ui/emblems';
+import { emblemHtml, portraitHtml } from './ui/emblems';
 import { bindSettings, settingsHtml } from './ui/settingsPanel';
+import { applySkin, themeColor } from './ui/skin';
 import { toast } from './ui/toast';
 
 const app = document.getElementById('app')!;
@@ -95,7 +98,11 @@ function title(): void {
     `<div class="title-wrap">
       ${banner}
       <div class="logo-emblems">${logoEmblems}</div>
-      <h1 class="logo">${STRINGS.gameTitle}</h1>
+      ${
+        ASSETS.logo
+          ? `<h1 class="logo-wrap"><img class="logo-img" src="${assetUrl(ASSETS.logo)}" alt="${STRINGS.gameTitle}"></h1>`
+          : `<h1 class="logo">${STRINGS.gameTitle}</h1>`
+      }
       <p class="tagline">${STRINGS.tagline}</p>
       <nav class="menu">
         <button class="btn primary big" data-mode="tournament">${STRINGS.modeTournament}<small>${STRINGS.modeTournamentHint}</small></button>
@@ -146,7 +153,7 @@ function fighterGrid(): string {
   return `<div class="fighters">${FIGHTERS.map((f) => {
     const champ = ladder(f.id).champion ? `<em class="champ" title="${STRINGS.championBadge}">★</em>` : '';
     return `<button class="fighter" data-fighter="${f.id}" style="--clr:${f.color}">
-      ${champ}${emblemHtml(f)}
+      ${champ}${portraitHtml(f)}
       <b>${f.name}</b><i>${f.title}</i><span>${f.blurb}</span>
       ${passiveHtml(f)}
     </button>`;
@@ -241,9 +248,9 @@ function versusSplash(a: string, b: string, names: [string, string]): Promise<vo
   const fb = getFighter(b);
   const root = screen(
     `<div class="vs-splash">
-      <div class="vs-side left" style="--clr:${fa.color}">${emblemHtml(fa)}<b>${fa.name}</b><span>${names[0]}</span></div>
+      <div class="vs-side left" style="--clr:${fa.color}">${portraitHtml(fa)}<b>${fa.name}</b><span>${names[0]}</span></div>
       <div class="vs-mark">${STRINGS.vs}</div>
-      <div class="vs-side right" style="--clr:${fb.color}">${emblemHtml(fb)}<b>${fb.name}</b><span>${names[1]}</span></div>
+      <div class="vs-side right" style="--clr:${fb.color}">${portraitHtml(fb)}<b>${fb.name}</b><span>${names[1]}</span></div>
     </div>
     <p class="note">${STRINGS.tapToContinue}</p>`,
     'versus',
@@ -362,7 +369,7 @@ function confetti(root: HTMLElement, color: string): void {
   if (!fullEffects()) return;
   const layer = document.createElement('div');
   layer.className = 'confetti';
-  const colors = [color, '#ffd23d', '#ffffff', color];
+  const colors = [color, themeColor('--accent'), '#ffffff', color];
   for (let i = 0; i < 46; i++) {
     const p = document.createElement('i');
     p.style.setProperty('--x', `${Math.random() * 100}vw`);
@@ -390,7 +397,7 @@ function resultScreen(
   celebrate = false,
 ): void {
   const fx = fighters
-    .map((id, i) => `<div class="result-fighter${winner === i ? ' won' : winner === null ? '' : ' lost'}">${emblemHtml(getFighter(id))}</div>`)
+    .map((id, i) => `<div class="result-fighter${winner === i ? ' won' : winner === null ? '' : ' lost'}">${portraitHtml(getFighter(id))}</div>`)
     .join('<span class="vs">vs</span>');
   const root = screen(
     `<div class="result-row">${fx}</div>
@@ -398,7 +405,7 @@ function resultScreen(
      <div class="row">${buttons.map((b, i) => `<button class="btn${b.primary ? ' primary' : ''}" data-i="${i}">${b.label}</button>`).join('')}</div>`,
     'result',
   );
-  if (celebrate) confetti(root, winner === null ? '#ffd23d' : getFighter(fighters[winner]).color);
+  if (celebrate) confetti(root, winner === null ? themeColor('--accent') : getFighter(fighters[winner]).color);
   on(root, '[data-i]', (el) => buttons[Number(el.dataset.i)].fn());
 }
 
@@ -485,9 +492,9 @@ function dailyScreen(): void {
     `<h2>${STRINGS.daily.title}</h2>
      <p class="note">${STRINGS.daily.sameForEveryone}</p>
      <div class="daily-vs">
-       <div style="--clr:${f.color}">${emblemHtml(f)}<b>${f.name}</b><span>${STRINGS.daily.youPlay}</span></div>
+       <div style="--clr:${f.color}">${portraitHtml(f)}<b>${f.name}</b><span>${STRINGS.daily.youPlay}</span></div>
        <span class="vs">vs</span>
-       <div style="--clr:${r.color}">${emblemHtml(r)}<b>${r.name}</b><span>${STRINGS.daily.hardCpu}</span></div>
+       <div style="--clr:${r.color}">${portraitHtml(r)}<b>${r.name}</b><span>${STRINGS.daily.hardCpu}</span></div>
      </div>
      <div class="daily-rule"><small>${STRINGS.daily.rule}</small><b>${c.modifier.name}</b><span>${c.modifier.text}</span></div>
      <p>${STRINGS.daily.streak(dailyStreak(), d.best)}</p>
@@ -582,5 +589,6 @@ function profileScreen(): void {
   });
 }
 
+applySkin();
 applyEffectsClass();
 title();

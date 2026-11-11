@@ -1,3 +1,4 @@
+import { ASSETS, assetUrl } from '../content/assets';
 import { getCard } from '../content/cards';
 import { STRINGS } from '../content/strings';
 import type { FighterDef } from '../engine/types';
@@ -68,17 +69,17 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
   let stat = '';
   if (c.kind === 'attack' && c.pattern) {
     art = attackGrid(c.pattern, opts.facing ?? 1);
-    stat = `<span class="stat dmg" title="Damage">⚔ ${c.damage}</span>`;
+    stat = `<span class="stat dmg" title="${STRINGS.cardTips.damage}">⚔ ${c.damage}</span>`;
   } else if (c.kind === 'move' && c.step) {
     art = moveGrid(c.step);
   } else if (c.kind === 'guard') {
     art = '<span class="big-glyph">⛨</span>';
-    stat = `<span class="stat grd" title="Guard">⛨ ${c.guard}${c.counter ? ` ${STRINGS.effectIcons.counter} ${c.counter}` : ''}</span>`;
+    stat = `<span class="stat grd" title="${STRINGS.cardTips.guard}">⛨ ${c.guard}${c.counter ? ` ${STRINGS.effectIcons.counter} ${c.counter}` : ''}</span>`;
   } else if (c.kind === 'focus') {
     art = '<span class="big-glyph">✦</span>';
   } else if (c.kind === 'heal') {
     art = '<span class="big-glyph">✚</span>';
-    stat = `<span class="stat heal" title="Heal">✚ ${c.heal}</span>`;
+    stat = `<span class="stat heal" title="${STRINGS.cardTips.heal}">✚ ${c.heal}</span>`;
   } else if (c.kind === 'reload') {
     art = '<span class="big-glyph">⟳</span>';
   }
@@ -101,7 +102,8 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     .join(' ');
   const tag = opts.readonly ? 'div' : 'button';
   return `<${tag} class="${cls}" data-card="${c.id}" title="${c.name}" ${opts.disabled ? 'aria-disabled="true"' : ''}>
-    <span class="cost ${costCls}" title="Energy">${STRINGS.cardCost(c.cost)}</span>${badges}
+    ${ASSETS.cards[c.id] ? `<span class="card-art" style="background-image:url('${assetUrl(ASSETS.cards[c.id])}')"></span>` : ''}
+    <span class="cost ${costCls}" title="${STRINGS.cardTips.energy}">${STRINGS.cardCost(c.cost)}</span>${badges}
     <span class="art">${art}</span>
     <span class="name">${c.name}</span>
     ${stat}${opts.spent ? `<span class="spent-tag">${STRINGS.spentTag}</span>` : ''}

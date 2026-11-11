@@ -25,7 +25,8 @@ import { cardHtml, describeCard, groupedCardsHtml, passiveHtml } from './card';
 import { enableDrag } from './drag';
 import { Fx, fxKind, haptic, retrigger, type FxKind } from './fx';
 import { bindSettings, settingsHtml } from './settingsPanel';
-import { emblemHtml } from './emblems';
+import { themeColor } from './skin';
+import { emblemHtml, tokenArtHtml } from './emblems';
 
 export interface BattleSeat {
   name: string;
@@ -167,7 +168,7 @@ export class BattleView {
     }).join('');
     const tokens = this.state.players
       .map((p, i) => `<div class="token p${i}" data-seat="${i}" title="${this.seats[i].name}" style="--clr:${getFighter(p.fighterId).color}">
-          ${emblemHtml(getFighter(p.fighterId), 'token-art')}<span class="facing"></span></div>`)
+          ${tokenArtHtml(getFighter(p.fighterId))}<span class="facing"></span></div>`)
       .join('');
     const pile = (i: number) => `<div class="pile p${i}"><span class="pile-name">${this.seats[i].name}</span><div class="pile-cards"></div></div>`;
     this.el.innerHTML = `
@@ -867,7 +868,7 @@ export class BattleView {
       players.forEach((p, i) => {
         if (!p.moved) return;
         retrigger(tokens[i], 'hop');
-        setTimeout(() => this.fx.particles(p.to, '#9aa3c7', 6, 'dust'), ms(420));
+        setTimeout(() => this.fx.particles(p.to, themeColor('--fx-dust'), 6, 'dust'), ms(420));
       });
       play('step');
       await this.sleep('move');
@@ -920,7 +921,7 @@ export class BattleView {
         }
         if (p.counterTaken > 0) {
           // Sparks fly back from the defender into this attacker.
-          this.fx.travel(posNow[o], posNow[i], '#ffb36b', 4, 'spark');
+          this.fx.travel(posNow[o], posNow[i], themeColor('--fx-counter'), 4, 'spark');
           const k = stacks[i]++;
           setTimeout(() => {
             retrigger(token, 'shake');
@@ -940,7 +941,7 @@ export class BattleView {
       for (const j of healers) {
         const p = players[j];
         if (p.drained > 0) {
-          this.fx.travel(posNow[j === 0 ? 1 : 0], posNow[j], '#7dffb0', 6, 'mote');
+          this.fx.travel(posNow[j === 0 ? 1 : 0], posNow[j], themeColor('--fx-drain'), 6, 'mote');
           sounds.push('shimmer');
         }
         if (p.healed > 0 || p.drained > 0) {
@@ -962,7 +963,7 @@ export class BattleView {
         await wait(ms(300));
         displaced.forEach((i) => {
           retrigger(tokens[i], 'skid');
-          this.fx.particles(posNow[i], '#9aa3c7', 6, 'dust');
+          this.fx.particles(posNow[i], themeColor('--fx-dust'), 6, 'dust');
           posNow[i] = players[i].final;
         });
         this.placeTokens(posNow, [players[0].facing, players[1].facing]);

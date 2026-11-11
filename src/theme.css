@@ -1,0 +1,76 @@
+/*
+ * THEME: every colour, font and shape the game uses. Change values here to restyle the whole
+ * game; styles.css only refers to these tokens. Images (page/board/tile backgrounds, card back,
+ * logo, fighter art, card art) are set in src/content/assets.ts. See docs/RESKIN.md.
+ */
+:root {
+  /* ---------- fonts and shapes ---------- */
+  /* To use a web font, add an @import or @font-face here, then name it below. */
+  --font-body: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  --font-display: var(--font-body); /* logo and headings */
+  --radius: 2px;
+  --cut: 10px; /* size of the clipped corner on buttons */
+
+  /* ---------- surfaces ---------- */
+  --bg: #10131f; /* page */
+  --bg2: #181d2e; /* raised areas */
+  --page-glow: #1a2140; /* top of the page gradient */
+  --panel: #1f2539; /* panels, menus, modals */
+  --panel-hi: #2a3150; /* hovered buttons */
+  --line: #343d5c; /* borders */
+  --line-hi: #56618c; /* stronger borders */
+  --overlay: rgba(8, 10, 20, .8); /* behind menus */
+
+  /* ---------- text ---------- */
+  --text: #eef1ff;
+  --muted: #8d95b8;
+  --on-accent: #1d1600; /* text on yellow buttons and badges */
+  --on-life: #062a14; /* text on green badges */
+
+  /* ---------- signal colours ---------- */
+  --accent: #ffd23d; /* buttons, highlights, selection */
+  --accent-hi: #ffe06e;
+  /* Player colours stay clear of red (attacks) and blue (movement). */
+  --p0: #2fe0bf;
+  --p1: #b98bff;
+  --attack: #ff5f6d; /* attack squares on cards and the board */
+  --move: #3f9bff; /* movement squares */
+  --special: #6fd0ff; /* the "special" card group */
+  --life: #4be08a;
+  --life-lo: #2fbf6c;
+  --energy: #ffd23d;
+  --energy-lo: #e0b020;
+  --danger: #ff5a5a; /* quit button, urgent timer */
+  --danger-soft: #ffb3b3;
+
+  /* ---------- board ---------- */
+  --board: #0a0d18; /* frame and gaps behind the squares */
+  --tile-a: #222a48; /* square gradient */
+  --tile-b: #171c33;
+
+  /* ---------- cards ---------- */
+  --card-a: #283050;
+  --card-b: #181d31;
+  --card-attack-a: #46263f;
+  --card-attack-b: #1d1628;
+  --card-guard-a: #1f4152;
+  --card-guard-b: #142030;
+  --card-focus-a: #34401f; /* focus and heal */
+  --card-focus-b: #18211c;
+  --card-reload-a: #3a4150;
+  --card-reload-b: #1c2029;
+  --card-bonus: #b98aff; /* outline of bonus cards */
+  --card-free: #3d4566; /* cost badge of free cards */
+  --card-back-a: #2b3460; /* face-down cards on the reveal piles */
+  --card-back-b: #1c2242;
+
+  /* ---------- effects ---------- */
+  --fx-hit: #ff8f8f; /* damage stat on cards */
+  --fx-guard: #8fd8ff;
+  --fx-stun: #ffe36b;
+  --fx-counter: #ffb36b;
+  --fx-drain: #7dffb0;
+  --fx-push: #9fd4ff;
+  --fx-reload: #c7ced9;
+  --fx-dust: #aab4d2;
+}

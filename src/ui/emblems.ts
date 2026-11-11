@@ -1,4 +1,4 @@
-import { ASSETS, assetUrl } from '../content/assets';
+import { assetUrl, fighterArt } from '../content/assets';
 import type { FighterDef } from '../engine/types';
 
 /** Simple original geometric emblems used as placeholder fighter art. */
@@ -13,9 +13,25 @@ const SHAPES: Record<string, string> = {
   moon: '<path d="M62 10 A40 40 0 1 0 90 62 A30 30 0 1 1 62 10Z"/><circle cx="70" cy="34" r="5" fill="rgba(255,255,255,.55)"/>',
 };
 
-export function emblemHtml(f: FighterDef, cls = 'emblem'): string {
-  const img = ASSETS.fighters[f.id];
-  if (img) return `<img class="${cls}" src="${assetUrl(img)}" alt="${f.name}">`;
+function picture(f: FighterDef, path: string | undefined, cls: string): string {
+  if (path) return `<img class="${cls}" src="${assetUrl(path)}" alt="${f.name}">`;
   const shape = SHAPES[f.emblem] ?? SHAPES.hex;
   return `<svg class="${cls}" viewBox="0 0 100 100" fill="${f.color}" role="img" aria-label="${f.name}">${shape}</svg>`;
+}
+
+/** Small fighter icon (ASSETS.fighters[id].emblem, else the vector emblem). */
+export function emblemHtml(f: FighterDef, cls = 'emblem'): string {
+  return picture(f, fighterArt(f.id).emblem, cls);
+}
+
+/** Large fighter picture for select/VS/result screens (portrait, else emblem, else vector). */
+export function portraitHtml(f: FighterDef, cls = 'emblem'): string {
+  const art = fighterArt(f.id);
+  return picture(f, art.portrait ?? art.emblem, cls);
+}
+
+/** Picture inside the board token (token, else emblem, else vector). */
+export function tokenArtHtml(f: FighterDef): string {
+  const art = fighterArt(f.id);
+  return picture(f, art.token ?? art.emblem, 'token-art');
 }

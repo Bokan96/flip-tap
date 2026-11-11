@@ -1,6 +1,7 @@
 /** Every piece of UI text. Swap this object to re-theme or translate the game. */
 export const STRINGS = {
   gameTitle: 'Flip Tap',
+  pageDescription: 'Flip Tap: a two-player simultaneous card battle on a tiny grid.',
   tagline: 'Plan three moves. Reveal. Outsmart.',
   modeTournament: 'Tournament',
   modeTournamentHint: 'Beat every rival and earn bonus cards',
@@ -104,6 +105,7 @@ export const STRINGS = {
   bonusCards: 'Bonus cards',
 
   cardCost: (n: number) => (n < 0 ? `${-n}` : n > 0 ? `+${n}` : '0'),
+  cardTips: { damage: 'Damage', guard: 'Guard', heal: 'Heal', energy: 'Energy' },
   kindNames: { move: 'Move', guard: 'Guard', focus: 'Focus', attack: 'Attack', heal: 'Heal', reload: 'Reload' } as Record<string, string>,
   groupNames: { move: 'Move', attack: 'Attack', special: 'Special' } as Record<string, string>,
 
