@@ -686,7 +686,15 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .logo-img { max-width: min(460px, 90%); max-height: 180px; object-fit: contain; }
 img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain; }
 
-@media (max-width: 600px) {
+/* "new version" notice from the offline cache */
+.update-banner {
+  position: fixed; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 90;
+  display: flex; gap: 12px; align-items: center; padding: 10px 12px 10px 16px; width: max-content; max-width: calc(100% - 24px);
+  background: var(--panel); border: 1px solid var(--accent); box-shadow: 0 10px 24px rgba(0, 0, 0, .55); animation: toast-in .35s ease-out;
+}
+.update-banner .btn { padding: 8px 14px; }
+
+@media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
   .screen { padding: 14px 10px 20px; }
   .battle-screen { padding: 6px 8px 10px; gap: 6px; }
   .battle { gap: 6px; }
@@ -767,4 +775,47 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 
   .sum-grid { gap: 4px; }
   .sum-name { writing-mode: vertical-rl; transform: rotate(180deg); font-size: .6rem; }
+}
+
+/* ---------- phones held sideways: board on the left, cards on the right ---------- */
+@media (orientation: landscape) and (max-height: 520px) {
+  .screen { padding-top: 8px; gap: 10px; }
+  .title-wrap { margin-top: 0; gap: 8px; }
+  .logo { font-size: 2.6rem; }
+  .menu .btn.big { padding: 8px 14px; }
+
+  .battle-screen { max-width: none; padding-top: 4px; padding-bottom: 4px; }
+  .battle {
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: 'hud hud' 'board side'; gap: 6px 12px; align-items: center;
+  }
+  .battle > .hud { grid-area: hud; }
+  .battle > .board-row { grid-area: board; }
+  .battle > .planner, .battle > .pass, .battle > .summary { grid-area: side; align-self: start; }
+  /* During the reveal nothing sits on the right, so the board takes the middle and grows. */
+  .battle[data-mode="reveal"] > .board-row { grid-column: 1 / -1; justify-self: center; width: min(100%, 560px); }
+
+  .hud .panel { flex-wrap: nowrap; }
+  .hud .bars { flex-basis: auto; flex: 1; }
+  .board-row { grid-template-columns: 58px minmax(0, 1fr) 84px; }
+  .planner .hand .card { --cell: 8px; width: 58px; height: 69px; padding-top: 15px; }
+  .planner { padding: 5px 6px; gap: 4px; }
+  .actions .btn { padding: 8px 16px; }
+  .btn.huge { padding: 18px 14px; font-size: 1.2rem; }
+  .pass { padding: 12px 8px; gap: 8px; }
+  .pass h2 { font-size: 1rem; }
+  .summary { gap: 6px; }
+}
+
+/* Keep content clear of notches and rounded corners (fullscreen / installed app). Insets are 0 elsewhere. */
+#app {
+  display: block;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Very short landscape screens (e.g. 667×375): slightly smaller hand cards. */
+@media (orientation: landscape) and (max-height: 380px) {
+  .planner .hand .card { height: 64px; padding-top: 14px; }
+  .planner .plan-clock { width: 32px; height: 32px; }
+  .planner .actions .btn { padding: 7px 14px; }
 }

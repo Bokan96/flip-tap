@@ -18,11 +18,18 @@ export const STRINGS = {
     music: 'Music',
     vibration: 'Vibration',
     effects: 'Effects',
+    fullscreen: 'Fullscreen',
     on: 'On',
     off: 'Off',
     full: 'Full',
     reduced: 'Reduced',
   },
+
+  resumeMatch: {
+    title: 'Resume match',
+    hint: (a: string, b: string, round: number) => `${a} vs ${b} · Round ${round}`,
+  },
+  update: { ready: 'A new version is ready.', apply: 'Update' },
 
   pickFighter: (who: string) => `${who}: choose your fighter`,
   player: (n: number) => `Player ${n}`,

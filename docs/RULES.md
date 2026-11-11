@@ -140,6 +140,9 @@ pattern in the same slot avoids the hit.
   twist (for example +10 damage for everyone, or both fighters starting at 50 life) chosen from the
   date, so everyone gets the same challenge. Winning on consecutive days builds a streak. No bonus
   cards are used.
+- **Resume:** every match except the tutorial is saved at the start of each round's planning
+  (never the plans themselves). After a reload, or after closing the installed app, the title screen
+  offers *Resume match*; the round restarts from its planning. Quitting from the menu discards it.
 - **Profile:** stats (matches, wins, damage dealt, best win streak, favourite card), per-fighter
   records and ladder progress, 13 achievements and the bonus card collection. Everything is saved in
   the browser (localStorage) and can be reset from the Profile screen.

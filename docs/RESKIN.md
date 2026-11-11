@@ -13,6 +13,7 @@ engine (`src/engine/`) never needs to change for a reskin. Work through the sect
 | Colours, fonts, shapes | [`src/theme.css`](../src/theme.css) |
 | Images, sounds, music | files in `public/assets/`, listed in [`src/content/assets.ts`](../src/content/assets.ts) |
 | Browser tab icon | `index.html` (`<link rel="icon">`) |
+| Installed-app name and icons | [`public/manifest.webmanifest`](../public/manifest.webmanifest), `public/icons/` ([`scripts/icon.html`](../scripts/icon.html)) |
 
 ## 1. Name and text
 - **`strings.ts`** holds every word the player sees: game title, tagline, menus, rules, tutorial tips,
@@ -113,11 +114,19 @@ everywhere; music files should loop cleanly. Anything left out uses the built-in
 | `ko`, `win` | knockout / victory |
 | `tick` | the last 10 seconds of the plan timer |
 
-## 6. Browser icon and app name
-- The tab icon is an inline SVG in `index.html` (`<link rel="icon" …>`); replace it with your own,
-  for example `<link rel="icon" href="/flip-tap/favicon.png">` with the file in `public/`.
-- The installable-app name and home-screen icons are defined in the web app manifest (added with
-  the installable app in the next phase; this guide will list the file).
+## 6. Browser icon, app name and home-screen icons
+- **Tab icon:** an inline SVG in `index.html` (`<link rel="icon" …>`). Replace it with your own, for
+  example `<link rel="icon" href="/favicon.png">` with the file in `public/`.
+- **Installed app:** `public/manifest.webmanifest` holds the name shown under the home-screen icon
+  (`name`, `short_name`), the splash colours (`background_color`, `theme_color`) and the icon list.
+  Also update `apple-mobile-web-app-title` in `index.html` for iPhones.
+- **Icons:** `public/icons/` has `icon-192.png`, `icon-512.png`, `icon-maskable-512.png` (art kept in
+  the middle 80%, since phones may crop it to a circle) and `apple-touch-icon.png` (180×180).
+  Either drop in your own PNGs with the same names, or edit the SVG in `scripts/icon.html` and run
+  `node scripts/make-icons.mjs` (uses a local Chrome; pass its path if it isn't in the default place).
+- **Offline files:** the build lists everything the app needs offline in `precache.json`
+  automatically. If you add files to `public/` that the game loads at runtime (images, sounds,
+  fonts), add them to `PUBLIC_FILES` in `vite.config.ts` so they work offline too.
 
 ## 7. Check your reskin
 1. `npm run dev` and play: title, a tutorial round, a hot-seat round, fighter select, profile.

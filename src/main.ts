@@ -13,6 +13,7 @@ import { createMatch, type MatchModifier, type SeatConfig } from './engine/setup
 import type { MatchLog, MatchOutcome, MatchState, Seat } from './engine/types';
 import { unlockAchievements } from './meta/achievements';
 import { dailyChallenge } from './meta/daily';
+import { clearSavedMatch, loadSavedMatch, saveMatch, type SavedMatch } from './meta/savedMatch';
 import {
   collection,
   dailyStreak,
@@ -31,6 +32,7 @@ import {
   type MatchMode,
 } from './meta/profile';
 import { CpuPlanSource, type PlanSource } from './net/transport';
+import { registerServiceWorker } from './pwa';
 import { applyEffectsClass, fullEffects } from './settings';
 import { currentRival, rivalBonus, rivalsFor } from './tournament';
 import { createTutorialMatch, ScriptedPlanSource, TUTORIAL, tutorialHooks } from './tutorial';
@@ -89,6 +91,14 @@ function title(): void {
           <button class="btn primary" data-act="tutorial">${STRINGS.tutorial.playTutorial}</button>
           <button class="btn ghost-btn" data-act="no-tutorial">${STRINGS.tutorial.noThanks}</button>
         </div></div>`;
+  const saved = loadSavedMatch();
+  const resume = saved
+    ? `<button class="btn primary big" data-act="resume">${STRINGS.resumeMatch.title}<small>${STRINGS.resumeMatch.hint(
+        getFighter(saved.fighters[0]).name,
+        getFighter(saved.fighters[1]).name,
+        saved.state.round,
+      )}</small></button>`
+    : '';
   const today = dailyChallenge();
   const dailyDone = profile().daily.results[today.date] === 'win';
   const dailyHint = dailyDone
@@ -105,7 +115,8 @@ function title(): void {
       }
       <p class="tagline">${STRINGS.tagline}</p>
       <nav class="menu">
-        <button class="btn primary big" data-mode="tournament">${STRINGS.modeTournament}<small>${STRINGS.modeTournamentHint}</small></button>
+        ${resume}
+        <button class="btn${saved ? '' : ' primary'} big" data-mode="tournament">${STRINGS.modeTournament}<small>${STRINGS.modeTournamentHint}</small></button>
         <button class="btn big daily-btn${dailyDone ? ' done' : ''}" data-act="daily">${STRINGS.daily.title}<small>${dailyHint}</small></button>
         <button class="btn big" data-mode="cpu">${STRINGS.modeCpu}<small>${STRINGS.modeCpuHint}</small></button>
         <button class="btn big" data-mode="hotseat">${STRINGS.modeHotseat}<small>${STRINGS.modeHotseatHint}</small></button>
@@ -120,6 +131,7 @@ function title(): void {
   );
   on(root, '[data-mode]', (el) => pickFighters(el.dataset.mode as 'cpu' | 'hotseat' | 'tournament'));
   on(root, '[data-act="daily"]', dailyScreen);
+  if (saved) on(root, '[data-act="resume"]', () => resumeMatch(saved));
   on(root, '[data-act="howto"]', howTo);
   on(root, '[data-act="profile"]', profileScreen);
   on(root, '[data-act="settings"]', openSettings);
@@ -282,6 +294,10 @@ interface BattleSetup {
   state?: MatchState;
   opponent?: PlanSource;
   options?: BattleOptions;
+  /** Tournament fighter or daily date, kept with a saved match. */
+  context?: string | null;
+  /** Continue this saved match instead of starting fresh. */
+  resume?: SavedMatch;
   onEnd: (outcome: MatchOutcome, log: MatchLog) => void;
   onQuit?: () => void;
 }
@@ -293,16 +309,33 @@ function runBattle(setup: BattleSetup): void {
   const opponent =
     setup.opponent ??
     (setup.mode === 'hotseat' ? new HumanPlanSource(() => view!) : new CpuPlanSource(setup.difficulty ?? 'normal', randomSeed()));
-  void versusSplash(setup.p0.fighterId, setup.p1.fighterId, setup.names).then(() => {
+  // Every mode except the tutorial is saved at each round start, so it can be resumed.
+  const save =
+    setup.mode === 'tutorial'
+      ? undefined
+      : (state: MatchState, lastPlans: SavedMatch['lastPlans'], log: MatchLog) =>
+          saveMatch({
+            version: 1,
+            mode: setup.mode as SavedMatch['mode'],
+            fighters: [setup.p0.fighterId, setup.p1.fighterId],
+            difficulty: setup.difficulty,
+            context: setup.context ?? null,
+            state,
+            lastPlans,
+            log,
+          });
+  const intro = setup.resume ? Promise.resolve() : versusSplash(setup.p0.fighterId, setup.p1.fighterId, setup.names);
+  void intro.then(() => {
     const container = screen('', 'battle-screen');
     view = new BattleView(
       container,
-      setup.state ?? createMatch(setup.p0, setup.p1, setup.modifier),
+      setup.resume?.state ?? setup.state ?? createMatch(setup.p0, setup.p1, setup.modifier),
       [
         { name: setup.names[0], source: human },
         { name: setup.names[1], source: opponent },
       ],
       (outcome, _state, log) => {
+        clearSavedMatch();
         // The mode's own handler runs first (it may record a ladder win or daily result).
         setup.onEnd(outcome, log);
         recordMatch({ mode: setup.mode, fighterId: setup.p0.fighterId, outcome, log });
@@ -314,10 +347,28 @@ function runBattle(setup: BattleSetup): void {
           }, 700 + i * 900),
         );
       },
-      setup.onQuit ?? title,
-      setup.options,
+      () => {
+        clearSavedMatch();
+        (setup.onQuit ?? title)();
+      },
+      {
+        ...setup.options,
+        onRoundStart: save,
+        resume: setup.resume ? { lastPlans: setup.resume.lastPlans, log: setup.resume.log } : undefined,
+      },
     );
   });
+}
+
+/** Pick a saved match back up in the mode it was played in. */
+function resumeMatch(saved: SavedMatch): void {
+  const [a, b] = saved.fighters;
+  if (saved.difficulty) difficulty = saved.difficulty;
+  if (saved.mode === 'tournament' && saved.context) return tournamentMatch(saved.context, saved);
+  if (saved.mode === 'daily' && saved.context) return dailyMatch(saved.context, saved);
+  if (saved.mode === 'cpu' || saved.mode === 'hotseat') return startMatch(saved.mode, a, b, saved);
+  clearSavedMatch();
+  title();
 }
 
 /** Guided first match against a scripted training dummy. */
@@ -345,10 +396,11 @@ function startTutorial(): void {
   });
 }
 
-function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string): void {
+function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string, resume?: SavedMatch): void {
   const names: [string, string] = [STRINGS.player(1), mode === 'hotseat' ? STRINGS.player(2) : STRINGS.cpu];
   runBattle({
     mode,
+    resume,
     p0: { fighterId: a, bonusCards: mode === 'cpu' ? loadout() : [] },
     p1: { fighterId: b },
     names,
@@ -445,13 +497,15 @@ function tournamentHub(fighterId: string): void {
   on(root, '[data-act="fight"]', () => tournamentMatch(fighterId));
 }
 
-function tournamentMatch(fighterId: string): void {
-  const rival = currentRival(fighterId);
+function tournamentMatch(fighterId: string, resume?: SavedMatch): void {
+  const rival = resume?.fighters[1] ?? currentRival(fighterId);
   if (!rival) return tournamentHub(fighterId);
   const rivals = rivalsFor(fighterId);
   const names: [string, string] = [STRINGS.player(1), getFighter(rival).name];
   runBattle({
     mode: 'tournament',
+    context: fighterId,
+    resume,
     p0: { fighterId, bonusCards: loadout() },
     p1: { fighterId: rival, bonusCards: rivalBonus(ladder(fighterId).wins) },
     names,
@@ -510,11 +564,13 @@ function dailyScreen(): void {
 }
 
 /** `date` is fixed when the match starts, so a match that crosses midnight counts for its own day. */
-function dailyMatch(date: string): void {
+function dailyMatch(date: string, resume?: SavedMatch): void {
   const c = dailyChallenge(date);
   const names: [string, string] = [STRINGS.player(1), getFighter(c.rival).name];
   runBattle({
     mode: 'daily',
+    context: date,
+    resume,
     p0: { fighterId: c.fighter },
     p1: { fighterId: c.rival },
     names,
@@ -589,6 +645,20 @@ function profileScreen(): void {
   });
 }
 
+/** Offer a newly downloaded version (installed app / offline cache). */
+function showUpdate(apply: () => void): void {
+  if (document.querySelector('.update-banner')) return;
+  const el = document.createElement('div');
+  el.className = 'update-banner';
+  el.innerHTML = `<span>${STRINGS.update.ready}</span><button class="btn primary">${STRINGS.update.apply}</button>`;
+  el.querySelector('button')!.addEventListener('click', () => {
+    play('click');
+    apply();
+  });
+  document.body.appendChild(el);
+}
+
 applySkin();
 applyEffectsClass();
+registerServiceWorker(showUpdate);
 title();

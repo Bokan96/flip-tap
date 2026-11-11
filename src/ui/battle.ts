@@ -49,6 +49,10 @@ export interface BattleOptions {
   noTimer?: boolean;
   /** Short label under the round counter, e.g. the daily challenge's rule twist. */
   tag?: string;
+  /** Continue a saved match: the previous round's plans and the log so far. */
+  resume?: { lastPlans: [Plan, Plan] | null; log: MatchLog };
+  /** Called at the start of every round, before anyone plans (used to save the match). */
+  onRoundStart?: (state: MatchState, lastPlans: [Plan, Plan] | null, log: MatchLog) => void;
 }
 
 /** Free cards the plan timer uses to finish a plan, in order of preference. */
@@ -104,6 +108,10 @@ export class BattleView {
     private opts: BattleOptions = {},
   ) {
     this.state = initial;
+    if (opts.resume) {
+      this.lastPlans = opts.resume.lastPlans;
+      this.log = opts.resume.log;
+    }
     this.el = document.createElement('div');
     this.el.className = 'battle';
     this.root.replaceChildren(this.el);
@@ -135,6 +143,7 @@ export class BattleView {
 
   private async loop(): Promise<void> {
     while (!this.state.outcome) {
+      this.opts.onRoundStart?.(this.state, this.lastPlans, this.log);
       this.setRoundLabel();
       const plans: Plan[] = [];
       const bothHuman = this.seats.every((s) => s.source.kind === 'human');

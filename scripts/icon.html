@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  App icon artwork, rendered to PNG by scripts/make-icons.mjs (?size=512&kind=any|maskable).
+  "maskable" keeps everything inside the central safe zone and fills the whole square.
+  Reskin: replace the SVG below (or the PNGs in public/icons/) with your own art.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* Art is pinned to the top-left: headless Chrome may lay out a wider page than the icon size. */
+      html, body { margin: 0; overflow: hidden; background: #10131f; }
+      svg { display: block; position: absolute; left: 0; top: 0; }
+    </style>
+  </head>
+  <body>
+    <svg id="art" viewBox="0 0 100 100">
+      <defs>
+        <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#2fe0bf" />
+          <stop offset="1" stop-color="#b98bff" />
+        </linearGradient>
+        <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0" stop-color="#ffd23d" stop-opacity=".35" />
+          <stop offset="1" stop-color="#ffd23d" stop-opacity="0" />
+        </radialGradient>
+      </defs>
+      <rect width="100" height="100" fill="#10131f" />
+      <circle cx="50" cy="50" r="40" fill="url(#glow)" />
+      <rect x="9" y="9" width="82" height="82" rx="10" fill="none" stroke="url(#frame)" stroke-width="5" />
+      <polygon points="58,16 27,56 46,56 40,86 74,42 54,42" fill="#ffd23d" />
+    </svg>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const size = Number(q.get('size') || 512);
+      const maskable = q.get('kind') === 'maskable';
+      const art = document.getElementById('art');
+      art.setAttribute('width', size);
+      art.setAttribute('height', size);
+      // Maskable icons may be cropped to a circle: shrink the art into the central 80%.
+      if (maskable) art.setAttribute('viewBox', '-12 -12 124 124');
+    </script>
+  </body>
+</html>

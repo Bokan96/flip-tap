@@ -60,6 +60,18 @@ function rows(): Row[] {
       },
     });
   }
+  if (document.fullscreenEnabled) {
+    list.push({
+      key: 'fullscreen',
+      label: S.fullscreen,
+      options: onOff,
+      current: () => (document.fullscreenElement ? 'on' : 'off'),
+      apply: (v) => {
+        if (v === 'on') void document.documentElement.requestFullscreen().catch(() => undefined);
+        else if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+      },
+    });
+  }
   list.push(
     {
       key: 'effects',
