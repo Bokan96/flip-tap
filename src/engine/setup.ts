@@ -1,4 +1,5 @@
 import { BALANCE } from '../content/balance';
+import { arenaStart, arenaState, DEFAULT_ARENA } from '../content/arenas';
 import { BASIC_CARD_IDS, getFighter } from '../content/cards';
 import type { MatchState, Mods, PlayerState, Seat } from './types';
 
@@ -50,7 +51,7 @@ export function buildDeck(fighterId: string, bonusCards: string[] = []): string[
   return [...BASIC_CARD_IDS, ...f.signature, ...bonusCards.filter((id) => !BASIC_CARD_IDS.includes(id))];
 }
 
-function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier): PlayerState {
+function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier, arenaId: string): PlayerState {
   const f = getFighter(cfg.fighterId);
   const lifeMax = f.lifeMax ?? BALANCE.lifeMax;
   const energyMax = f.energyMax ?? BALANCE.energyMax;
@@ -60,7 +61,7 @@ function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier): PlayerSt
     energy: Math.min(energyMax, mod.startEnergy ?? energyMax),
     lifeMax,
     energyMax,
-    pos: { ...BALANCE.startPos[seat] },
+    pos: arenaStart(arenaId, seat),
     facing: seat === 0 ? 1 : -1,
     deck: buildDeck(f.id, cfg.bonusCards),
     mods: mergeMods(f.passive?.mods, mod.mods),
@@ -69,10 +70,11 @@ function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier): PlayerSt
   };
 }
 
-export function createMatch(p0: SeatConfig, p1: SeatConfig, modifier: MatchModifier = {}): MatchState {
+export function createMatch(p0: SeatConfig, p1: SeatConfig, modifier: MatchModifier = {}, arenaId = DEFAULT_ARENA): MatchState {
   return {
     round: 1,
     outcome: null,
-    players: [createPlayer(0, p0, modifier), createPlayer(1, p1, modifier)],
+    arena: arenaState(arenaId),
+    players: [createPlayer(0, p0, modifier, arenaId), createPlayer(1, p1, modifier, arenaId)],
   };
 }

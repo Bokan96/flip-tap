@@ -170,22 +170,28 @@ export class BattleView {
   // ---------- static layout ----------
 
   private renderShell(): void {
-    const tiles = Array.from({ length: BALANCE.rows * BALANCE.cols }, (_, i) => {
-      const r = Math.floor(i / BALANCE.cols);
-      const c = i % BALANCE.cols;
-      return `<div class="tile" data-r="${r}" data-c="${c}"></div>`;
+    const A = this.state.arena;
+    const tiles = Array.from({ length: A.rows * A.cols }, (_, i) => {
+      const r = Math.floor(i / A.cols);
+      const c = i % A.cols;
+      if (A.blocked.includes(i)) return `<div class="tile blocked" data-r="${r}" data-c="${c}" title="${STRINGS.tileNames.blocked}"></div>`;
+      const kind = A.tiles[i];
+      const icon = kind ? `<span class="tile-icon">${STRINGS.tileIcons[kind]}</span>` : '';
+      return `<div class="tile${kind ? ` tile-${kind}` : ''}" data-r="${r}" data-c="${c}"${kind ? ` title="${STRINGS.tileNames[kind]}"` : ''}>${icon}</div>`;
     }).join('');
     const tokens = this.state.players
       .map((p, i) => `<div class="token p${i}" data-seat="${i}" title="${this.seats[i].name}" style="--clr:${getFighter(p.fighterId).color}">
           ${tokenArtHtml(getFighter(p.fighterId))}<span class="facing"></span></div>`)
       .join('');
     const pile = (i: number) => `<div class="pile p${i}"><span class="pile-name">${this.seats[i].name}</span><div class="pile-cards"></div></div>`;
+    this.el.style.setProperty('--aspect', String(A.cols / A.rows));
     this.el.innerHTML = `
       <header class="hud">
         <div class="panel p0" data-seat="0"></div>
         <div class="hud-center">
           <div class="round-label"></div>
           <div class="step-label"></div>
+          <div class="fatigue-tag hidden"></div>
           ${this.opts.tag ? `<div class="match-tag">${this.opts.tag}</div>` : ''}
           <button class="icon-btn" data-act="menu" aria-label="${STRINGS.menuTitle}">☰</button>
         </div>
@@ -197,9 +203,9 @@ export class BattleView {
           ${pile(0)}
         </aside>
         <div class="arena-wrap">
-          <div class="arena" style="--rows:${BALANCE.rows};--cols:${BALANCE.cols}">
+          <div class="arena" style="--rows:${A.rows};--cols:${A.cols};aspect-ratio:${A.cols} / ${A.rows}">
             ${tiles}
-            <svg class="path" viewBox="0 0 ${BALANCE.cols} ${BALANCE.rows}" preserveAspectRatio="none"><polyline points=""></polyline></svg>
+            <svg class="path" viewBox="0 0 ${A.cols} ${A.rows}" preserveAspectRatio="none"><polyline points=""></polyline></svg>
             ${'<div class="ghost hidden"></div>'.repeat(BALANCE.slotsPerRound)}
             ${tokens}
             <div class="fx-layer"></div>
@@ -265,7 +271,14 @@ export class BattleView {
   }
 
   private setRoundLabel(): void {
-    this.q('.round-label').textContent = STRINGS.round(this.state.round);
+    const round = this.state.round;
+    this.q('.round-label').textContent = STRINGS.round(round);
+    // Warn one round ahead, then show the fatigue rule while it applies.
+    const tag = this.q('.fatigue-tag');
+    const after = BALANCE.fatigueAfterRound;
+    tag.textContent = round > after ? STRINGS.fatigueTag(BALANCE.fatigueDamage) : round === after ? STRINGS.fatigueSoon : '';
+    tag.classList.toggle('hidden', round < after);
+    tag.classList.toggle('active', round > after);
   }
 
   // ---------- HUD ----------
@@ -611,7 +624,7 @@ export class BattleView {
     let facing = me.facing;
     const out = { pos: [] as Pos[], facing: [] as (1 | -1)[] };
     for (const id of this.plan) {
-      if (id) pos = movePos(pos, getCard(id));
+      if (id) pos = movePos(this.state.arena, pos, getCard(id));
       facing = faceTowards(pos, them.pos, facing);
       out.pos.push({ ...pos });
       out.facing.push(facing);
@@ -671,11 +684,11 @@ export class BattleView {
     const them = this.state.players[this.planSeat === 0 ? 1 : 0];
     const before = slot === 0 ? me.pos : path.pos[slot - 1];
     const c = getCard(card);
-    const pos = movePos(before, c);
+    const pos = movePos(this.state.arena, before, c);
     const facing = faceTowards(pos, them.pos, slot === 0 ? me.facing : path.facing[slot - 1]);
     // Same colour language as the cards: red = where an attack hits, blue = where a move lands.
     const cls = c.kind === 'attack' ? 'preview-atk' : c.kind === 'move' ? 'preview-move' : 'preview';
-    this.showArea(c.kind === 'attack' ? attackArea(c, pos, facing) : [pos], cls);
+    this.showArea(c.kind === 'attack' ? attackArea(this.state.arena, c, pos, facing) : [pos], cls);
   }
 
   /** Side panel with the focused card shown large and described in words. */
@@ -819,6 +832,26 @@ export class BattleView {
     this.lastPlans = [[...plans[0]], [...plans[1]]];
     this.log.rounds.push({ plans: this.lastPlans, result });
     this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed'));
+    if (result.fatigue > 0) {
+      const tokens = [this.q('.token.p0'), this.q('.token.p1')];
+      this.state.players.forEach((p, i) => {
+        this.floatText(p.pos, STRINGS.fatigueFloat(result.fatigue), 'damage fatigue', 0, result.fatigue);
+        retrigger(tokens[i], 'shake');
+      });
+      play('hit');
+      this.renderHud();
+      await this.sleep('hit');
+      // Knocked out by fatigue alone: the round's steps had no knockout to animate.
+      const o = result.state.outcome;
+      if (o && !result.steps.some((s) => s.outcome)) {
+        play('ko');
+        haptic('ko');
+        if (fullEffects()) retrigger(this.el, 'ko-flash');
+        tokens.forEach((t, i) => {
+          if (o.winner === null || o.winner !== i) t.classList.add('ko', 'ko-fall');
+        });
+      }
+    }
     if (!result.state.outcome) {
       for (const p of this.state.players) this.floatText(p.pos, STRINGS.energyBack(energyRecovery(p)), 'energy');
       this.renderHud();
@@ -1007,6 +1040,18 @@ export class BattleView {
       const happened = await impact([0, 1], [0, 1], null);
       busy = attackers.length > 0 || happened;
     }
+
+    // Arena squares: thorns hurt, springs restore energy, for whoever ended the step on one.
+    players.forEach((p, i) => {
+      if (p.tile === 'spikes') {
+        this.floatText(p.final, `-${BALANCE.tiles.spikes}`, 'damage', stacks[i]++, BALANCE.tiles.spikes);
+        retrigger(tokens[i], 'shake');
+        play('thud');
+      } else if (p.tile === 'well') {
+        this.floatText(p.final, `+${BALANCE.tiles.well}⚡`, 'energy', stacks[i]++);
+        play('shimmer');
+      }
+    });
 
     // 6. Knockout: flash, and the loser falls.
     if (step.outcome) {

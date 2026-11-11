@@ -1,3 +1,4 @@
+import { ARENAS } from '../content/arenas';
 import { FIGHTERS } from '../content/cards';
 import { MODIFIERS, type DailyModifier } from '../content/modifiers';
 import { Rng } from '../engine/rng';
@@ -8,6 +9,7 @@ export interface DailyChallenge {
   fighter: string;
   rival: string;
   modifier: DailyModifier;
+  arena: string;
 }
 
 /** FNV-1a: turns the date into a seed, so everyone gets the same challenge on the same day. */
@@ -24,5 +26,6 @@ export function dailyChallenge(date = dateKey()): DailyChallenge {
   const rng = new Rng(hash(`daily:${date}`));
   const fighter = rng.pick(FIGHTERS).id;
   const rival = rng.pick(FIGHTERS.filter((f) => f.id !== fighter)).id;
-  return { date, fighter, rival, modifier: rng.pick(MODIFIERS) };
+  const modifier = rng.pick(MODIFIERS);
+  return { date, fighter, rival, modifier, arena: rng.pick(ARENAS).id };
 }

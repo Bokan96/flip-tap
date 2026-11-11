@@ -47,6 +47,10 @@
   --board: #0a0d18; /* frame and gaps behind the squares */
   --tile-a: #222a48; /* square gradient */
   --tile-b: #171c33;
+  --rock-a: #2c2f3a; /* blocked squares (pillars) */
+  --rock-b: #1f222b;
+  --hazard-spikes: #ff6f5e; /* thorn squares */
+  --hazard-well: #ffd23d; /* spring squares */
 
   /* ---------- cards ---------- */
   --card-a: #283050;

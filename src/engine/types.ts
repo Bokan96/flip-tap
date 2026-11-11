@@ -104,8 +104,23 @@ export interface PlayerState {
 
 export type MatchOutcome = { winner: Seat } | { winner: null; draw: true };
 
+/** Effects some arena squares have on a fighter who ends a step there. */
+export type TileKind = 'spikes' | 'well';
+
+/** The board a match is played on (see content/arenas.ts). Plain data, so it saves as JSON. */
+export interface ArenaState {
+  id: string;
+  rows: number;
+  cols: number;
+  /** Square indices (r * cols + c) nobody can stand on. */
+  blocked: number[];
+  /** Square effects by square index. */
+  tiles: Record<number, TileKind>;
+}
+
 export interface MatchState {
   round: number;
+  arena: ArenaState;
   players: [PlayerState, PlayerState];
   outcome: MatchOutcome | null;
 }
@@ -143,6 +158,8 @@ export interface StepPlayerResult {
   interrupted: boolean;
   /** This player's Reload card resolved: all spent attacks are usable again. */
   reloaded: boolean;
+  /** The square effect this player ended the step on, if any. */
+  tile: TileKind | null;
   healed: number;
   life: number;
   energy: number;
@@ -165,6 +182,8 @@ export interface RoundResult {
   steps: StepResult[];
   /** State after the round, including end-of-round energy recovery. */
   state: MatchState;
+  /** Fatigue damage both fighters took at the end of this round (0 before it starts). */
+  fatigue: number;
 }
 
 /** Everything that happened in a match, round by round (used for stats and achievements). */

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { arenaState } from '../src/content/arenas';
 import { BALANCE } from '../src/content/balance';
 import { CARDS, FIGHTERS } from '../src/content/cards';
 import { choosePlan, enumeratePlans } from '../src/engine/ai';
@@ -12,6 +13,7 @@ const match = (a = 'cinder', b = 'marin', bonusA: string[] = [], bonusB: string[
   createMatch({ fighterId: a, bonusCards: bonusA }, { fighterId: b, bonusCards: bonusB });
 
 const IDLE: Plan = ['guard', 'up', 'down'];
+const CLASSIC = arenaState('classic');
 
 describe('content', () => {
   it('every fighter signature card exists and patterns are 3x3', () => {
@@ -29,8 +31,9 @@ describe('content', () => {
 describe('setup', () => {
   it('starts both fighters full at opposite ends', () => {
     const s = match();
-    expect(s.players[0].pos).toEqual(BALANCE.startPos[0]);
-    expect(s.players[1].pos).toEqual(BALANCE.startPos[1]);
+    expect(s.players[0].pos).toEqual({ r: 1, c: 0 });
+    expect(s.players[1].pos).toEqual({ r: 1, c: 3 });
+    expect(s.arena.id).toBe('classic');
     expect(s.players[0].life).toBe(100);
     expect(s.players[1].energy).toBe(100);
     expect(s.players[0].facing).toBe(1);
@@ -68,18 +71,18 @@ describe('plan validation', () => {
 describe('attack areas', () => {
   it('mirrors patterns for a fighter facing left', () => {
     const jab = CARDS.cinderJab; // self + front
-    expect(attackArea(jab, { r: 1, c: 1 }, 1)).toEqual([
+    expect(attackArea(CLASSIC, jab, { r: 1, c: 1 }, 1)).toEqual([
       { r: 1, c: 1 },
       { r: 1, c: 2 },
     ]);
-    expect(attackArea(jab, { r: 1, c: 1 }, -1)).toEqual([
+    expect(attackArea(CLASSIC, jab, { r: 1, c: 1 }, -1)).toEqual([
       { r: 1, c: 1 },
       { r: 1, c: 0 },
     ]);
   });
 
   it('clips to the board', () => {
-    expect(attackArea(CARDS.zephyrSpiral, { r: 0, c: 0 }, 1)).toHaveLength(4);
+    expect(attackArea(CLASSIC, CARDS.zephyrSpiral, { r: 0, c: 0 }, 1)).toHaveLength(4);
   });
 });
 
@@ -173,7 +176,7 @@ describe('fast simulator', () => {
       const b = rng.pick(FIGHTERS).id;
       const s = match(a, b, ['bulwark', 'renew', 'leapLeft', 'overload'], ['surge', 'leapRight', 'stormCall']);
       for (const p of s.players) {
-        p.pos = { r: rng.int(BALANCE.rows), c: rng.int(BALANCE.cols) };
+        p.pos = { r: rng.int(s.arena.rows), c: rng.int(s.arena.cols) };
         p.life = 1 + rng.int(100);
         p.energy = rng.int(101);
       }

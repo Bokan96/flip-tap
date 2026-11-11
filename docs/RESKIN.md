@@ -7,7 +7,8 @@ engine (`src/engine/`) never needs to change for a reskin. Work through the sect
 |---|---|
 | All on-screen text | [`src/content/strings.ts`](../src/content/strings.ts) |
 | Fighters, cards, passives | [`src/content/cards.ts`](../src/content/cards.ts) |
-| Rule numbers (board size, life, energy…) | [`src/content/balance.ts`](../src/content/balance.ts) |
+| Rule numbers (life, energy, fatigue, square effects…) | [`src/content/balance.ts`](../src/content/balance.ts) |
+| Arenas (board sizes, pillars, thorns, springs) | [`src/content/arenas.ts`](../src/content/arenas.ts) |
 | Achievements, daily rule twists | [`src/content/achievements.ts`](../src/content/achievements.ts), [`src/content/modifiers.ts`](../src/content/modifiers.ts) |
 | Tutorial script | [`src/tutorial.ts`](../src/tutorial.ts) (texts are in `strings.ts → tutorial`) |
 | Colours, fonts, shapes | [`src/theme.css`](../src/theme.css) |
@@ -50,6 +51,7 @@ Keep card `id`s stable once players have saves: bonus cards and stats are stored
 | `--attack`, `--move`, `--special` | attack squares, movement squares, special card group |
 | `--life`, `--energy` (+ `-lo` ends) | the two HUD bars |
 | `--board`, `--tile-a`, `--tile-b` | board frame and squares |
+| `--rock-a`, `--rock-b`, `--hazard-spikes`, `--hazard-well` | pillars, thorn squares, spring squares |
 | `--card-*` | card backgrounds per kind, bonus outline, card back |
 | `--fx-*` | guard, stun, counter, drain, push, reload, dust effects |
 | `--font-body`, `--font-display` | text and headings/logo |

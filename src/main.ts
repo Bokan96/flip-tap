@@ -3,6 +3,7 @@ import './styles.css';
 import { setMusic } from './audio/music';
 import { play } from './audio/sfx';
 import { ACHIEVEMENTS } from './content/achievements';
+import { ARENAS, DEFAULT_ARENA, getArena } from './content/arenas';
 import { ASSETS, assetUrl } from './content/assets';
 import { BALANCE } from './content/balance';
 import { BONUS_CARD_IDS, FIGHTERS, getCard, getFighter } from './content/cards';
@@ -45,6 +46,7 @@ import { toast } from './ui/toast';
 
 const app = document.getElementById('app')!;
 let difficulty: Difficulty = 'normal';
+let arenaId = DEFAULT_ARENA;
 
 function screen(html: string, cls = ''): HTMLElement {
   app.innerHTML = `<div class="screen ${cls}">${html}</div>`;
@@ -197,6 +199,21 @@ function difficultyPicker(): string {
     .join('')}</div>`;
 }
 
+function arenaPicker(): string {
+  return `<div class="difficulty arena-pick"><span>${STRINGS.arena}:</span>${ARENAS.map(
+    (a) => `<button class="chip${a.id === arenaId ? ' on' : ''}" data-arena="${a.id}" title="${a.text}">${a.name}</button>`,
+  ).join('')}</div><p class="note arena-note">${getArena(arenaId).text}</p>`;
+}
+
+function bindArena(root: HTMLElement): void {
+  on(root, '[data-arena]', (el) => {
+    arenaId = el.dataset.arena!;
+    root.querySelectorAll('[data-arena]').forEach((c) => c.classList.toggle('on', c === el));
+    const note = root.querySelector('.arena-note');
+    if (note) note.textContent = getArena(arenaId).text;
+  });
+}
+
 function bindDifficulty(root: HTMLElement): void {
   on(root, '[data-diff]', (el) => {
     difficulty = el.dataset.diff as Difficulty;
@@ -240,12 +257,15 @@ function pickFighters(mode: 'cpu' | 'hotseat' | 'tournament'): void {
     const first = picks.length === 0;
     const root = screen(
       `<h2>${STRINGS.pickFighter(who)}</h2>
+       ${mode === 'cpu' && first ? difficultyPicker() : ''}
+       ${mode !== 'tournament' && first ? arenaPicker() : ''}
+       ${mode === 'cpu' && first ? loadoutHtml(false) : ''}
        ${fighterGrid()}
-       ${mode === 'cpu' && first ? difficultyPicker() + loadoutHtml(false) : ''}
        <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>`,
       'select',
     );
     bindDifficulty(root);
+    bindArena(root);
     bindLoadout(root);
     on(root, '[data-act="back"]', title);
     root.querySelectorAll<HTMLElement>('[data-fighter]').forEach((el) =>
@@ -309,6 +329,7 @@ interface BattleSetup {
   /** CPU difficulty for seat 1, or null when seat 1 isn't the regular CPU. */
   difficulty: Difficulty | null;
   modifier?: MatchModifier;
+  arenaId?: string;
   /** Custom start state and seat 1 source (tutorial). */
   state?: MatchState;
   opponent?: PlanSource;
@@ -348,7 +369,7 @@ function runBattle(setup: BattleSetup): void {
     const container = screen('', 'battle-screen');
     view = new BattleView(
       container,
-      setup.resume?.state ?? setup.state ?? createMatch(setup.p0, setup.p1, setup.modifier),
+      setup.resume?.state ?? setup.state ?? createMatch(setup.p0, setup.p1, setup.modifier, setup.arenaId),
       [
         { name: setup.names[0], source: human },
         { name: setup.names[1], source: opponent },
@@ -423,6 +444,7 @@ function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string, resume?: Save
     p0: { fighterId: a, bonusCards: mode === 'cpu' ? loadout() : [] },
     p1: { fighterId: b },
     names,
+    arenaId,
     difficulty: mode === 'cpu' ? difficulty : null,
     onEnd: (outcome) => {
       const celebrate = outcome.winner === 0 || (mode === 'hotseat' && outcome.winner !== null);
@@ -570,6 +592,7 @@ function dailyScreen(): void {
        <div style="--clr:${r.color}">${portraitHtml(r)}<b>${r.name}</b><span>${STRINGS.daily.hardCpu}</span></div>
      </div>
      <div class="daily-rule"><small>${STRINGS.daily.rule}</small><b>${c.modifier.name}</b><span>${c.modifier.text}</span></div>
+     <div class="daily-rule arena"><small>${STRINGS.arena}</small><b>${getArena(c.arena).name}</b><span>${getArena(c.arena).text}</span></div>
      <p>${STRINGS.daily.streak(dailyStreak(), d.best)}</p>
      ${beaten ? `<p class="champion-line">✓ ${STRINGS.daily.done}</p>` : ''}
      <div class="row">
@@ -595,6 +618,7 @@ function dailyMatch(date: string, resume?: SavedMatch): void {
     names,
     difficulty: 'hard',
     modifier: c.modifier.modifier,
+    arenaId: c.arena,
     options: { tag: c.modifier.name },
     onQuit: dailyScreen,
     onEnd: (outcome) => {

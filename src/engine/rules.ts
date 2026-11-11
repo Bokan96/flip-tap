@@ -1,6 +1,7 @@
 import { BALANCE } from '../content/balance';
 import { getCard } from '../content/cards';
 import type {
+  ArenaState,
   CardDef,
   Facing,
   MatchOutcome,
@@ -13,6 +14,7 @@ import type {
   Seat,
   StepPlayerResult,
   StepResult,
+  TileKind,
 } from './types';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -21,6 +23,7 @@ export function cloneState(s: MatchState): MatchState {
   return {
     round: s.round,
     outcome: s.outcome,
+    arena: { ...s.arena, blocked: [...s.arena.blocked], tiles: { ...s.arena.tiles } },
     players: s.players.map((p) => ({ ...p, pos: { ...p.pos }, deck: [...p.deck], mods: { ...p.mods }, spent: [...p.spent] })) as [
       PlayerState,
       PlayerState,
@@ -32,8 +35,18 @@ export function samePos(a: Pos, b: Pos): boolean {
   return a.r === b.r && a.c === b.c;
 }
 
-/** Squares an attack covers from `pos` while facing `facing`, clipped to the board. */
-export function attackArea(card: CardDef, pos: Pos, facing: Facing): Pos[] {
+/** Is this square on the board and not blocked? */
+export function isOpen(arena: ArenaState, r: number, c: number): boolean {
+  return r >= 0 && r < arena.rows && c >= 0 && c < arena.cols && !arena.blocked.includes(r * arena.cols + c);
+}
+
+/** The square effect at `pos`, if any. */
+export function tileAt(arena: ArenaState, pos: Pos): TileKind | null {
+  return arena.tiles[pos.r * arena.cols + pos.c] ?? null;
+}
+
+/** Squares an attack covers from `pos` while facing `facing`, clipped to open squares. */
+export function attackArea(arena: ArenaState, card: CardDef, pos: Pos, facing: Facing): Pos[] {
   if (card.kind !== 'attack' || !card.pattern) return [];
   const out: Pos[] = [];
   card.pattern.forEach((row, i) => {
@@ -41,18 +54,18 @@ export function attackArea(card: CardDef, pos: Pos, facing: Facing): Pos[] {
       if (row[j] !== '1') continue;
       const r = pos.r + (i - 1);
       const c = pos.c + (j - 1) * facing;
-      if (r >= 0 && r < BALANCE.rows && c >= 0 && c < BALANCE.cols) out.push({ r, c });
+      if (isOpen(arena, r, c)) out.push({ r, c });
     }
   });
   return out;
 }
 
-export function movePos(pos: Pos, card: CardDef): Pos {
+/** Where a move card takes you: clamped to the board; a move onto a blocked square does nothing. */
+export function movePos(arena: ArenaState, pos: Pos, card: CardDef): Pos {
   if (!card.step) return { ...pos };
-  return {
-    r: clamp(pos.r + card.step[0], 0, BALANCE.rows - 1),
-    c: clamp(pos.c + card.step[1], 0, BALANCE.cols - 1),
-  };
+  const r = clamp(pos.r + card.step[0], 0, arena.rows - 1);
+  const c = clamp(pos.c + card.step[1], 0, arena.cols - 1);
+  return isOpen(arena, r, c) ? { r, c } : { ...pos };
 }
 
 export function faceTowards(me: Pos, them: Pos, current: Facing): Facing {
@@ -171,17 +184,16 @@ export function hitDamage(
 }
 
 /**
- * Where a push (n > 0) or pull (n < 0) leaves the target. Pushes go away from the attacker
- * (along the attacker's facing when they share a column); pulls never pass the attacker's column.
+ * Where a push (n > 0) or pull (n < 0) leaves the target, one square at a time along its row.
+ * Pushes go away from the attacker (along the attacker's facing when they share a column); pulls
+ * never pass the attacker's column. Both stop at the edge or in front of a blocked square.
  */
-export function displace(target: Pos, attacker: Pos, attackerFacing: Facing, n: number): Pos {
-  if (n > 0) {
-    const dir = target.c === attacker.c ? attackerFacing : Math.sign(target.c - attacker.c);
-    return { r: target.r, c: clamp(target.c + dir * n, 0, BALANCE.cols - 1) };
-  }
-  const gap = attacker.c - target.c;
-  const steps = Math.min(-n, Math.abs(gap));
-  return { r: target.r, c: target.c + Math.sign(gap) * steps };
+export function displace(arena: ArenaState, target: Pos, attacker: Pos, attackerFacing: Facing, n: number): Pos {
+  const dir = n > 0 ? (target.c === attacker.c ? attackerFacing : Math.sign(target.c - attacker.c)) : Math.sign(attacker.c - target.c);
+  let steps = n > 0 ? n : Math.min(-n, Math.abs(attacker.c - target.c));
+  let c = target.c;
+  while (steps-- > 0 && isOpen(arena, target.r, c + dir)) c += dir;
+  return { r: target.r, c };
 }
 
 /** A card's push (or pull, if negative) plus the attacker's bonus squares. */
@@ -219,7 +231,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
 
   // 1. Movement (simultaneous), then face each other.
   for (const i of [0, 1] as const) {
-    if (active[i]) ps[i].pos = movePos(ps[i].pos, cards[i]);
+    if (active[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i]);
   }
   const moved = [0, 1].map((i) => !samePos(from[i], ps[i].pos));
   const to = [{ ...ps[0].pos }, { ...ps[1].pos }];
@@ -254,7 +266,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
         interrupted[o] = true;
         return;
       }
-      areas[o] = attackArea(atk, ps[o].pos, ps[o].facing);
+      areas[o] = attackArea(state.arena, atk, ps[o].pos, ps[o].facing);
       if (!areas[o].some((p) => samePos(p, ps[i].pos))) {
         hit[i] = 'miss';
       } else {
@@ -268,7 +280,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
         }
         if (atk.stun && damage[i] > 0) dazed[i] = true;
         if (atk.push && !ps[i].mods.immovable) {
-          ps[i].pos = displace(ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
+          ps[i].pos = displace(state.arena, ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
           reface();
         }
       }
@@ -285,7 +297,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     }
   } else {
     // Hits, computed from post-movement positions.
-    areas = [0, 1].map((i) => (active[i] ? attackArea(cards[i], ps[i].pos, ps[i].facing) : [])) as [Pos[], Pos[]];
+    areas = [0, 1].map((i) => (active[i] ? attackArea(state.arena, cards[i], ps[i].pos, ps[i].facing) : [])) as [Pos[], Pos[]];
     const pushTo: (Pos | null)[] = [null, null];
     for (const i of [0, 1] as const) {
       const o = i === 0 ? 1 : 0;
@@ -301,7 +313,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       if (active[i] && cards[i].counter) counter[o] += cards[i].counter!;
       if (atk.drain && damage[i] > 0) drained[o] = Math.floor((damage[i] * atk.drain) / 100);
       if (atk.stun && damage[i] > 0) dazed[i] = true;
-      if (atk.push && !ps[i].mods.immovable) pushTo[i] = displace(ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
+      if (atk.push && !ps[i].mods.immovable) pushTo[i] = displace(state.arena, ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
     }
 
     // 3. Self effects, then clamp.
@@ -324,6 +336,15 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       if (pushTo[i]) ps[i].pos = pushTo[i]!;
     }
     reface();
+  }
+
+  // Square effects for whoever ends the step on one.
+  const tile: (TileKind | null)[] = [null, null];
+  for (const i of [0, 1] as const) {
+    const p = ps[i];
+    tile[i] = tileAt(state.arena, p.pos);
+    if (tile[i] === 'spikes') p.life = clamp(p.life - BALANCE.tiles.spikes, 0, p.lifeMax);
+    else if (tile[i] === 'well') p.energy = clamp(p.energy + BALANCE.tiles.well, 0, p.energyMax);
   }
 
   // Ammo: fired attacks are spent; Reload makes them all usable again.
@@ -358,6 +379,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     dazed: dazed[i],
     interrupted: interrupted[i],
     reloaded: reloaded[i],
+    tile: tile[i],
     healed: healed[i],
     life: ps[i].life,
     energy: ps[i].energy,
@@ -379,10 +401,17 @@ export function resolveRound(state: MatchState, plans: [Plan, Plan]): RoundResul
     steps.push(resolveStep(next, [plans[0][slot], plans[1][slot]], slot));
     if (next.outcome) break;
   }
+  // Fatigue: late in a match both fighters wear down every round.
+  let fatigue = 0;
+  if (!next.outcome && state.round > BALANCE.fatigueAfterRound) {
+    fatigue = BALANCE.fatigueDamage;
+    for (const p of next.players) p.life = Math.max(0, p.life - fatigue);
+    next.outcome = outcomeFor(next.players);
+  }
   for (const p of next.players) p.dazed = false;
   if (!next.outcome) {
     for (const p of next.players) p.energy = Math.min(p.energyMax, p.energy + energyRecovery(p));
     next.round += 1;
   }
-  return { steps, state: next };
+  return { steps, state: next, fatigue };
 }

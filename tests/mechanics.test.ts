@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { ARENAS, arenaState } from '../src/content/arenas';
 import { BALANCE } from '../src/content/balance';
 import { BONUS_CARD_IDS, CARDS, FIGHTERS } from '../src/content/cards';
 import { fastSimulate } from '../src/engine/fastsim';
 import { runMatch } from '../src/engine/match';
 import { enumeratePlans, SIM_PROFILE } from '../src/engine/ai';
 import { Rng } from '../src/engine/rng';
-import { displace, planError, resolveRound } from '../src/engine/rules';
+import { displace, isOpen, planError, resolveRound } from '../src/engine/rules';
 import { createMatch, mergeMods } from '../src/engine/setup';
 import type { MatchState, Plan, Pos } from '../src/engine/types';
 
@@ -46,8 +47,9 @@ describe('push and pull', () => {
     const s = duel('umbra', 'cinder', { r: 1, c: 1 }, { r: 0, c: 2 });
     const r = resolveRound(s, [['umbraGrasp', 'guard', 'focus'], ['guard', 'focus', 'up']]);
     expect(r.steps[0].players[1].final).toEqual({ r: 0, c: 1 });
-    expect(displace({ r: 0, c: 3 }, { r: 1, c: 1 }, 1, -5)).toEqual({ r: 0, c: 1 });
-    expect(displace({ r: 0, c: 1 }, { r: 1, c: 1 }, 1, -1)).toEqual({ r: 0, c: 1 });
+    const classic = arenaState('classic');
+    expect(displace(classic, { r: 0, c: 3 }, { r: 1, c: 1 }, 1, -5)).toEqual({ r: 0, c: 1 });
+    expect(displace(classic, { r: 0, c: 1 }, { r: 1, c: 1 }, 1, -1)).toEqual({ r: 0, c: 1 });
   });
 
   it('Riptide pushes one extra square', () => {
@@ -175,7 +177,7 @@ describe('passives', () => {
   });
 });
 
-describe('fast simulator with every card and modifier', () => {
+describe('fast simulator with every card, modifier and arena', () => {
   function randomPlan(rng: Rng, s: MatchState, seat: 0 | 1): Plan {
     const p = s.players[seat];
     for (;;) {
@@ -192,9 +194,12 @@ describe('fast simulator with every card and modifier', () => {
         { fighterId: rng.pick(FIGHTERS).id, bonusCards: pickBonus() },
         { fighterId: rng.pick(FIGHTERS).id, bonusCards: pickBonus() },
         { mods: { damageBonus: rng.int(3) * 5, damageReduction: rng.int(2) * 5 } },
+        rng.pick(ARENAS).id,
       );
+      s.round = 1 + rng.int(14); // late rounds exercise fatigue
       for (const p of s.players) {
-        p.pos = { r: rng.int(BALANCE.rows), c: rng.int(BALANCE.cols) };
+        do p.pos = { r: rng.int(s.arena.rows), c: rng.int(s.arena.cols) };
+        while (!isOpen(s.arena, p.pos.r, p.pos.c));
         p.life = 1 + rng.int(p.lifeMax);
         p.energy = rng.int(p.energyMax + 1);
         p.dazed = rng.int(5) === 0;
@@ -204,7 +209,8 @@ describe('fast simulator with every card and modifier', () => {
       const real = resolveRound(s, plans);
       const fast = fastSimulate(s, plans[0], plans[1]);
       const last = real.steps[real.steps.length - 1].players;
-      expect(fast.life).toEqual([last[0].life, last[1].life]);
+      // Life includes end-of-round fatigue; energy is compared before the end-of-round refill.
+      expect(fast.life).toEqual([real.state.players[0].life, real.state.players[1].life]);
       expect(fast.energy).toEqual([last[0].energy, last[1].energy]);
       expect(fast.pos).toEqual([last[0].final.r, last[0].final.c, last[1].final.r, last[1].final.c]);
       const o = real.state.outcome;

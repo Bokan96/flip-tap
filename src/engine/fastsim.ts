@@ -76,8 +76,6 @@ function covers(card: FastCard, r: number, c: number, facing: number, tr: number
   return false;
 }
 
-const rows = BALANCE.rows;
-const cols = BALANCE.cols;
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
 /** Same as rules.hitDamage. */
@@ -89,19 +87,28 @@ function damageOf(card: FastCard, attackerLife: number, am: Mods, dm: Mods, guar
   return d > 0 ? d : 0;
 }
 
-/** Same as rules.displace, columns only. */
-function displaceCol(tc: number, ac: number, attackerFacing: number, n: number): number {
-  if (n > 0) {
-    const dir = tc === ac ? attackerFacing : Math.sign(tc - ac);
-    return clamp(tc + dir * n, 0, cols - 1);
-  }
-  const gap = ac - tc;
-  const steps = Math.min(-n, Math.abs(gap));
-  return tc + Math.sign(gap) * steps;
-}
 
-/** Simulate one round (without end-of-round recovery). Same semantics as rules.resolveRound. */
+/**
+ * Simulate one round. Same semantics as rules.resolveRound, including fatigue, but without the
+ * end-of-round energy recovery.
+ */
 export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastResult {
+  const A = state.arena;
+  const rows = A.rows;
+  const cols = A.cols;
+  const blocked = A.blocked;
+  const tiles = A.tiles;
+  /** Same as rules.isOpen. */
+  const open = (rr: number, cc: number) =>
+    rr >= 0 && rr < rows && cc >= 0 && cc < cols && (blocked.length === 0 || !blocked.includes(rr * cols + cc));
+  /** Same as rules.displace (columns only, stops at edges and blocked squares). */
+  const displaceCol = (tr: number, tc: number, ac: number, attackerFacing: number, n: number) => {
+    const dir = n > 0 ? (tc === ac ? attackerFacing : Math.sign(tc - ac)) : Math.sign(ac - tc);
+    let steps = n > 0 ? n : Math.min(-n, Math.abs(ac - tc));
+    let cc = tc;
+    while (steps-- > 0 && open(tr, cc + dir)) cc += dir;
+    return cc;
+  };
   const P = state.players;
   const m = [P[0].mods, P[1].mods];
   const lifeMax = [P[0].lifeMax, P[1].lifeMax];
@@ -146,9 +153,13 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       nz[i] = false;
       const sr = r[i];
       const sc = c[i];
-      if (act[i]) {
-        r[i] = clamp(r[i] + card[i].dr, 0, rows - 1);
-        c[i] = clamp(c[i] + card[i].dc, 0, cols - 1);
+      if (act[i] && (card[i].dr || card[i].dc)) {
+        const nr = clamp(r[i] + card[i].dr, 0, rows - 1);
+        const ncc = clamp(c[i] + card[i].dc, 0, cols - 1);
+        if (open(nr, ncc)) {
+          r[i] = nr;
+          c[i] = ncc;
+        }
       }
       mv[i] = r[i] !== sr || c[i] !== sc;
     }
@@ -173,7 +184,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (a.drain && d > 0) life[o] = clamp(life[o] + Math.floor((d * a.drain) / 100), 0, lifeMax[o]);
         if (a.stun && d > 0) nz[i] = true;
         if (a.push && !m[i].immovable) {
-          c[i] = displaceCol(c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
+          c[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
           face();
         }
       }
@@ -195,7 +206,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (act[i] && card[i].counter) ctr[o] += card[i].counter;
         if (a.drain && dmg[i] > 0) drn[o] = Math.floor((dmg[i] * a.drain) / 100);
         if (a.stun && dmg[i] > 0) nz[i] = true;
-        if (a.push && !m[i].immovable) nc[i] = displaceCol(c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
+        if (a.push && !m[i].immovable) nc[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
       }
       for (let i = 0; i < 2; i++) {
         let l = life[i] - dmg[i] - ctr[i] + drn[i];
@@ -211,6 +222,12 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       c[1] = nc[1];
       face();
     }
+    // Square effects (same as rules.resolveStep).
+    for (let i = 0; i < 2; i++) {
+      const t = tiles[r[i] * cols + c[i]];
+      if (t === 'spikes') life[i] = clamp(life[i] - BALANCE.tiles.spikes, 0, lifeMax[i]);
+      else if (t === 'well') en[i] = clamp(en[i] + BALANCE.tiles.well, 0, energyMax[i]);
+    }
     z[0] = nz[0];
     z[1] = nz[1];
     for (let i = 0; i < 2; i++) {
@@ -225,6 +242,12 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       outcome = life[0] <= 0 && life[1] <= 0 ? 2 : life[0] <= 0 ? 1 : 0;
       break;
     }
+  }
+  // Fatigue at the end of late rounds (same as rules.resolveRound).
+  if (outcome === -1 && state.round > BALANCE.fatigueAfterRound) {
+    life[0] = Math.max(0, life[0] - BALANCE.fatigueDamage);
+    life[1] = Math.max(0, life[1] - BALANCE.fatigueDamage);
+    if (life[0] <= 0 || life[1] <= 0) outcome = life[0] <= 0 && life[1] <= 0 ? 2 : life[0] <= 0 ? 1 : 0;
   }
   return { life: [life[0], life[1]], energy: [en[0], en[1]], outcome, pos: [r[0], c[0], r[1], c[1]] };
 }

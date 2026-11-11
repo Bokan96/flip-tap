@@ -18,13 +18,14 @@ export interface RunOptions {
   seed: number;
   maxRounds?: number;
   modifier?: MatchModifier;
+  arenaId?: string;
 }
 
 /** Play a whole match between two AIs without any UI. Deterministic for a given seed. */
 export function runMatch(p0: SeatConfig, p1: SeatConfig, opts: RunOptions): MatchRecord {
   const rng = new Rng(opts.seed);
   const maxRounds = opts.maxRounds ?? 40;
-  let state = createMatch(p0, p1, opts.modifier);
+  let state = createMatch(p0, p1, opts.modifier, opts.arenaId);
   const history: MatchRecord['history'] = [];
   while (!state.outcome && state.round <= maxRounds) {
     const plans: [Plan, Plan] = [choosePlanWith(state, 0, opts.profiles[0], rng), choosePlanWith(state, 1, opts.profiles[1], rng)];

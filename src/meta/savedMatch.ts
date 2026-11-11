@@ -1,3 +1,4 @@
+import { arenaState } from '../content/arenas';
 import { getCard, getFighter } from '../content/cards';
 import type { Difficulty } from '../engine/ai';
 import type { MatchLog, MatchState, Plan } from '../engine/types';
@@ -35,6 +36,7 @@ export function loadSavedMatch(): SavedMatch | null {
   const m = readJson<SavedMatch>(KEY);
   if (!m || m.version !== 1 || !m.state || m.state.outcome) return null;
   try {
+    m.state.arena ??= arenaState(); // saved before arenas existed
     for (const p of m.state.players) {
       getFighter(p.fighterId);
       p.deck.forEach(getCard);

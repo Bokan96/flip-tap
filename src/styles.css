@@ -686,6 +686,23 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .logo-img { max-width: min(460px, 90%); max-height: 180px; object-fit: contain; }
 img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain; }
 
+/* ---------- arenas: blocked squares, thorns, springs, fatigue ---------- */
+.tile.blocked {
+  background: repeating-linear-gradient(45deg, var(--rock-a) 0 7px, var(--rock-b) 7px 14px);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 0 14px rgba(0, 0, 0, .6);
+}
+.tile .tile-icon {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  font-size: clamp(.7rem, 3.4vw, 1.3rem); letter-spacing: -2px; opacity: .65;
+}
+.tile.tile-spikes { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hazard-spikes) 60%, transparent); }
+.tile.tile-spikes .tile-icon { color: var(--hazard-spikes); }
+.tile.tile-well { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hazard-well) 60%, transparent); }
+.tile.tile-well .tile-icon { color: var(--hazard-well); }
+.fatigue-tag { font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.fatigue-tag.active { color: var(--danger); animation: pulse .8s ease-in-out infinite alternate; }
+.float.fatigue { color: var(--danger); font-size: .95rem; }
+
 /* "Install app" button on the title screen (only shown where installing is possible) */
 .install-btn { width: min(340px, 100%); display: flex; flex-direction: column; gap: 2px; padding: 10px; border-color: var(--accent); color: var(--accent); background: transparent; }
 .install-btn small { color: var(--muted); font-size: .72rem; text-transform: none; letter-spacing: 0; font-weight: 400; }
@@ -797,7 +814,11 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   .battle > .board-row { grid-area: board; }
   .battle > .planner, .battle > .pass, .battle > .summary { grid-area: side; align-self: start; }
   /* During the reveal nothing sits on the right, so the board takes the middle and grows. */
-  .battle[data-mode="reveal"] > .board-row { grid-column: 1 / -1; justify-self: center; width: min(100%, 560px); }
+  /* Width is also capped by the screen height so taller arenas (4 rows) still fit. */
+  .battle[data-mode="reveal"] > .board-row {
+    grid-column: 1 / -1; justify-self: center;
+    width: min(100%, 560px, calc((100dvh - 70px) * var(--aspect, 1.333) + 154px));
+  }
 
   .hud .panel { flex-wrap: nowrap; }
   .hud .bars { flex-basis: auto; flex: 1; }

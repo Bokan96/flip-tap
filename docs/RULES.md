@@ -12,8 +12,15 @@ All tunable numbers live in [`src/content/balance.ts`](../src/content/balance.ts
 [`src/content/cards.ts`](../src/content/cards.ts).
 
 ## Board and fighters
-- The arena is a grid of **3 rows × 4 columns**.
-- Player 1 starts at row 2, column 1 (middle-left). Player 2 starts at row 2, column 4 (middle-right).
+- Matches are played in an **arena** ([`src/content/arenas.ts`](../src/content/arenas.ts)). The default,
+  **Classic**, is a grid of **3 rows × 4 columns**; Player 1 starts at row 2, column 1 and Player 2 at
+  row 2, column 4.
+- Other arenas change the size (Long Hall 3×5, Grand Court 4×5) or add special squares:
+  - **Pillars (blocked squares):** nobody can stand on them. A move onto one does nothing, a push or
+    pull stops in front of one, and attacks don't cover them.
+  - **Thorns:** a fighter who ends a step on one loses 10 life.
+  - **Springs:** a fighter who ends a step on one gains 10 energy.
+- Every arena is point-symmetric, so neither side has an advantage **(design choice)**.
 - Both fighters may stand on the same square.
 - Each fighter has **Life** (max 100) and **Energy** (max 100). Both start full.
 
@@ -85,8 +92,10 @@ its previous facing and the pattern is mirrored to match **(design choice)**.
      drop below 0. Focus cards placed earlier pay for attacks placed later.
 2. **Reveal and resolve:** slots resolve in order (slot 1, 2, 3). Both players' cards in the same slot
    happen simultaneously, using the procedure below.
-3. **Recover:** at the end of the round both fighters gain **+10 Energy** plus any passive bonus (capped at max). Stuns wear off.
-4. If the match isn't over, start a new round.
+3. **Fatigue (design choice):** from round 11 on, both fighters lose **5 Life** at the end of every
+   round. This can knock out one or both fighters (both at once is a draw).
+4. **Recover:** at the end of the round both fighters gain **+10 Energy** plus any passive bonus (capped at max). Stuns wear off.
+5. If the match isn't over, start a new round.
 
 ### Resolving one slot (both players at once)
 Let *A* and *B* be the two players. A card is **active** if its owner was not stunned on the
@@ -110,6 +119,7 @@ does nothing.
 3. **Self effects:** every active card applies its own `cost` and `heal`, and Life and Energy are
    clamped to `0..max`.
 4. **Push and pull:** queued displacements happen at the same time. Both fighters face each other again.
+   Then **square effects**: a fighter ending the step on thorns or a spring is hurt or recharged.
 5. **KO check:** if exactly one fighter has 0 Life, the other wins. If both reach 0 on the same step,
    the match is a **draw**. A KO ends the round immediately, and the remaining slots don't resolve.
 
