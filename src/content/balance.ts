@@ -13,4 +13,6 @@ export const BALANCE = {
   ],
   /** Each card may appear at most once in a plan. */
   uniqueCardsPerPlan: true,
+  /** How many bonus cards a player can bring into a match. */
+  bonusSlots: 3,
 } as const;

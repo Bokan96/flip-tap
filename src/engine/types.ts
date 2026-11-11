@@ -151,3 +151,8 @@ export interface RoundResult {
   /** State after the round, including end-of-round energy recovery. */
   state: MatchState;
 }
+
+/** Everything that happened in a match, round by round (used for stats and achievements). */
+export interface MatchLog {
+  rounds: { plans: [Plan, Plan]; result: RoundResult }[];
+}

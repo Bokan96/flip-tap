@@ -17,7 +17,7 @@ import {
   resolveRound,
   samePos,
 } from '../engine/rules';
-import type { MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult } from '../engine/types';
+import type { MatchLog, MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult } from '../engine/types';
 import type { PlanSource } from '../net/transport';
 import { fullEffects, getPlanTimer, speedMultiplier } from '../settings';
 import { cardHtml, describeCard, groupedCardsHtml, passiveHtml } from './card';
@@ -45,6 +45,8 @@ export interface BattleOptions {
   hooks?: BattleHooks;
   /** Ignore the plan timer setting (e.g. in the tutorial). */
   noTimer?: boolean;
+  /** Short label under the round counter, e.g. the daily challenge's rule twist. */
+  tag?: string;
 }
 
 /** Free cards the plan timer uses to finish a plan, in order of preference. */
@@ -82,6 +84,7 @@ export class BattleView {
   private destroyed = false;
   /** Both players' plans from the previous round (shown in the deck viewer). */
   private lastPlans: [Plan, Plan] | null = null;
+  private log: MatchLog = { rounds: [] };
   private timerId: number | null = null;
   private coachHighlight: string | null = null;
   private fx!: Fx;
@@ -92,7 +95,7 @@ export class BattleView {
     private root: HTMLElement,
     initial: MatchState,
     private seats: [BattleSeat, BattleSeat],
-    private onEnd: (outcome: MatchOutcome, state: MatchState) => void,
+    private onEnd: (outcome: MatchOutcome, state: MatchState, log: MatchLog) => void,
     private onQuit: () => void,
     private opts: BattleOptions = {},
   ) {
@@ -148,7 +151,7 @@ export class BattleView {
       await this.animateRound(plans as [Plan, Plan]);
       if (this.destroyed) return;
     }
-    this.onEnd(this.state.outcome!, this.state);
+    this.onEnd(this.state.outcome!, this.state, this.log);
   }
 
   // ---------- static layout ----------
@@ -170,6 +173,7 @@ export class BattleView {
         <div class="hud-center">
           <div class="round-label"></div>
           <div class="step-label"></div>
+          ${this.opts.tag ? `<div class="match-tag">${this.opts.tag}</div>` : ''}
           <button class="icon-btn" data-act="menu" aria-label="${STRINGS.menuTitle}">☰</button>
         </div>
         <div class="panel p1" data-seat="1"></div>
@@ -777,6 +781,7 @@ export class BattleView {
     const roundNo = this.state.round;
     this.state = result.state;
     this.lastPlans = [[...plans[0]], [...plans[1]]];
+    this.log.rounds.push({ plans: this.lastPlans, result });
     this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed'));
     if (!result.state.outcome) {
       for (const p of this.state.players) this.floatText(p.pos, STRINGS.energyBack(energyRecovery(p)), 'energy');

@@ -2,14 +2,14 @@ import { choosePlanWith, type AiProfile } from './ai';
 import { Rng } from './rng';
 import { resolveRound } from './rules';
 import { createMatch, type MatchModifier, type SeatConfig } from './setup';
-import type { MatchOutcome, MatchState, Plan, RoundResult } from './types';
+import type { MatchLog, MatchOutcome, MatchState, Plan } from './types';
 
 export interface MatchRecord {
   /** A match that hits the round limit counts as a draw. */
   outcome: MatchOutcome;
   timedOut: boolean;
   rounds: number;
-  history: { plans: [Plan, Plan]; result: RoundResult }[];
+  history: MatchLog['rounds'];
   final: MatchState;
 }
 

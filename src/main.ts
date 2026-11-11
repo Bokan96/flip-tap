@@ -1,22 +1,42 @@
 import './styles.css';
 import { setMusic } from './audio/music';
 import { play } from './audio/sfx';
-import { FIGHTERS, getFighter } from './content/cards';
+import { ACHIEVEMENTS } from './content/achievements';
+import { BALANCE } from './content/balance';
+import { BONUS_CARD_IDS, FIGHTERS, getCard, getFighter } from './content/cards';
 import { STRINGS } from './content/strings';
 import type { Difficulty } from './engine/ai';
 import { randomSeed } from './engine/rng';
-import { createMatch } from './engine/setup';
-import type { MatchOutcome, Seat } from './engine/types';
+import { createMatch, type MatchModifier, type SeatConfig } from './engine/setup';
+import type { MatchLog, MatchOutcome, MatchState, Seat } from './engine/types';
+import { unlockAchievements } from './meta/achievements';
+import { dailyChallenge } from './meta/daily';
+import {
+  collection,
+  dailyStreak,
+  favouriteCard,
+  isTutorialDone,
+  ladder,
+  loadout,
+  profile,
+  recordDaily,
+  recordLadderWin,
+  recordMatch,
+  resetLadder,
+  resetProfile,
+  setTutorialDone,
+  toggleLoadout,
+  type MatchMode,
+} from './meta/profile';
 import { CpuPlanSource, type PlanSource } from './net/transport';
-import { isChampion, loadProgress, recordWin, resetProgress, rivalBonus, rivalsFor, type TournamentProgress } from './tournament';
-import { createTutorialMatch, isTutorialDone, ScriptedPlanSource, setTutorialDone, TUTORIAL, tutorialHooks } from './tutorial';
-import { BattleView, HumanPlanSource } from './ui/battle';
+import { applyEffectsClass, fullEffects } from './settings';
+import { currentRival, rivalBonus, rivalsFor } from './tournament';
+import { createTutorialMatch, ScriptedPlanSource, TUTORIAL, tutorialHooks } from './tutorial';
+import { BattleView, HumanPlanSource, type BattleOptions } from './ui/battle';
 import { cardHtml, describeCard, passiveHtml } from './ui/card';
 import { emblemHtml } from './ui/emblems';
-import { applyEffectsClass, fullEffects } from './settings';
 import { bindSettings, settingsHtml } from './ui/settingsPanel';
-
-type Mode = 'cpu' | 'hotseat' | 'tournament';
+import { toast } from './ui/toast';
 
 const app = document.getElementById('app')!;
 let difficulty: Difficulty = 'normal';
@@ -33,11 +53,10 @@ function modal(html: string, bind: (box: HTMLElement) => void = () => undefined)
   el.className = 'modal';
   el.innerHTML = `<div class="modal-box">${html}<button class="btn" data-close>${STRINGS.close}</button></div>`;
   app.appendChild(el);
-  const close = () => el.remove();
   el.addEventListener('click', (e) => {
     if (e.target === el || (e.target as HTMLElement).closest('[data-close]')) {
       play('click');
-      close();
+      el.remove();
     }
   });
   bind(el.querySelector('.modal-box')!);
@@ -67,6 +86,11 @@ function title(): void {
           <button class="btn primary" data-act="tutorial">${STRINGS.tutorial.playTutorial}</button>
           <button class="btn ghost-btn" data-act="no-tutorial">${STRINGS.tutorial.noThanks}</button>
         </div></div>`;
+  const today = dailyChallenge();
+  const dailyDone = profile().daily.results[today.date] === 'win';
+  const dailyHint = dailyDone
+    ? STRINGS.daily.beatenToday(dailyStreak())
+    : STRINGS.daily.hint(getFighter(today.fighter).name, getFighter(today.rival).name, today.modifier.name);
   const root = screen(
     `<div class="title-wrap">
       ${banner}
@@ -75,24 +99,28 @@ function title(): void {
       <p class="tagline">${STRINGS.tagline}</p>
       <nav class="menu">
         <button class="btn primary big" data-mode="tournament">${STRINGS.modeTournament}<small>${STRINGS.modeTournamentHint}</small></button>
+        <button class="btn big daily-btn${dailyDone ? ' done' : ''}" data-act="daily">${STRINGS.daily.title}<small>${dailyHint}</small></button>
         <button class="btn big" data-mode="cpu">${STRINGS.modeCpu}<small>${STRINGS.modeCpuHint}</small></button>
         <button class="btn big" data-mode="hotseat">${STRINGS.modeHotseat}<small>${STRINGS.modeHotseatHint}</small></button>
       </nav>
       <div class="row">
         <button class="btn ghost-btn" data-act="howto">${STRINGS.howToPlay}</button>
+        <button class="btn ghost-btn" data-act="profile">${STRINGS.profile.title}</button>
         <button class="btn ghost-btn" data-act="settings">${STRINGS.settings.title}</button>
       </div>
     </div>`,
     'title',
   );
-  on(root, '[data-mode]', (el) => pickFighters(el.dataset.mode as Mode));
+  on(root, '[data-mode]', (el) => pickFighters(el.dataset.mode as 'cpu' | 'hotseat' | 'tournament'));
+  on(root, '[data-act="daily"]', dailyScreen);
   on(root, '[data-act="howto"]', howTo);
+  on(root, '[data-act="profile"]', profileScreen);
+  on(root, '[data-act="settings"]', openSettings);
   on(root, '[data-act="tutorial"]', startTutorial);
   on(root, '[data-act="no-tutorial"]', () => {
     setTutorialDone();
     root.querySelector('.banner')?.remove();
   });
-  on(root, '[data-act="settings"]', openSettings);
 }
 
 function howTo(): void {
@@ -101,7 +129,7 @@ function howTo(): void {
     `<h2>${STRINGS.howToPlay}</h2>
      <ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol>
      <div class="hand demo">${example}</div>
-     <p class="note">The number in the corner is the card's energy cost. On every grid the outlined centre square is you. Move cards mark where you will step in blue; attack cards mark the squares they hit in red, with an arrow showing the side you face. Icons in the top corner show special effects: ⇥ push, ⇤ pull, ✷ stun, ↺ counter, ♥ drain.</p>
+     <p class="note">${STRINGS.howToNote}</p>
      <div class="row">
        <button class="btn primary" data-act="tutorial">${STRINGS.tutorial.playTutorial}</button>
        <button class="btn" data-act="back">${STRINGS.back}</button>
@@ -112,16 +140,17 @@ function howTo(): void {
   on(root, '[data-act="tutorial"]', startTutorial);
 }
 
-// ---------- fighter selection ----------
+// ---------- fighter selection and loadout ----------
 
-function fighterGrid(selected?: string, locked: string[] = []): string {
-  return `<div class="fighters">${FIGHTERS.map(
-    (f) => `<button class="fighter${f.id === selected ? ' selected' : ''}" data-fighter="${f.id}" style="--clr:${f.color}" ${locked.includes(f.id) ? 'disabled' : ''}>
-      ${emblemHtml(f)}
+function fighterGrid(): string {
+  return `<div class="fighters">${FIGHTERS.map((f) => {
+    const champ = ladder(f.id).champion ? `<em class="champ" title="${STRINGS.championBadge}">★</em>` : '';
+    return `<button class="fighter" data-fighter="${f.id}" style="--clr:${f.color}">
+      ${champ}${emblemHtml(f)}
       <b>${f.name}</b><i>${f.title}</i><span>${f.blurb}</span>
       ${passiveHtml(f)}
-    </button>`,
-  ).join('')}</div>`;
+    </button>`;
+  }).join('')}</div>`;
 }
 
 function difficultyPicker(): string {
@@ -137,18 +166,49 @@ function bindDifficulty(root: HTMLElement): void {
   });
 }
 
-function pickFighters(mode: Mode): void {
+/** Equip up to BALANCE.bonusSlots bonus cards from the collection. */
+function loadoutHtml(showEmpty: boolean): string {
+  const owned = collection();
+  if (!owned.length) return showEmpty ? `<p class="note loadout">${STRINGS.loadout.empty}</p>` : '';
+  const equipped = loadout();
+  return `<div class="loadout">
+    <h3>${STRINGS.loadout.title(equipped.length, BALANCE.bonusSlots)}</h3>
+    <div class="loadout-cards">${owned
+      .map((id) => `<div class="loadout-card${equipped.includes(id) ? ' on' : ''}" data-equip="${id}">${cardHtml(id, { small: true, readonly: true })}</div>`)
+      .join('')}</div>
+    <p class="note">${STRINGS.loadout.hint}</p>
+  </div>`;
+}
+
+function bindLoadout(root: HTMLElement): void {
+  root.querySelector('.loadout')?.addEventListener('click', (e) => {
+    const card = (e.target as HTMLElement).closest<HTMLElement>('[data-equip]');
+    if (!card) return;
+    if (!toggleLoadout(card.dataset.equip!)) {
+      play('deny');
+      toast('!', STRINGS.loadout.fullTitle, STRINGS.loadout.full);
+      return;
+    }
+    play('place');
+    root.querySelector('.loadout')!.outerHTML = loadoutHtml(false);
+    bindLoadout(root);
+  });
+}
+
+function pickFighters(mode: 'cpu' | 'hotseat' | 'tournament'): void {
   const picks: string[] = [];
   const step = () => {
     const who = mode === 'hotseat' ? STRINGS.player(picks.length + 1) : picks.length === 0 ? STRINGS.player(1) : STRINGS.cpu;
+    const first = picks.length === 0;
     const root = screen(
       `<h2>${STRINGS.pickFighter(who)}</h2>
        ${fighterGrid()}
-       ${mode !== 'hotseat' && picks.length === 0 ? difficultyPicker() : ''}
+       ${mode === 'cpu' && first ? difficultyPicker() + loadoutHtml(false) : ''}
        <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>`,
       'select',
     );
     bindDifficulty(root);
+    bindLoadout(root);
     on(root, '[data-act="back"]', title);
     root.querySelectorAll<HTMLElement>('[data-fighter]').forEach((el) =>
       el.addEventListener('click', async () => {
@@ -203,63 +263,97 @@ function versusSplash(a: string, b: string, names: [string, string]): Promise<vo
 
 // ---------- matches ----------
 
-function seatsFor(mode: Mode, view: () => BattleView): [PlanSource, PlanSource] {
-  const human = new HumanPlanSource(view);
-  if (mode === 'hotseat') return [human, new HumanPlanSource(view)];
-  return [human, new CpuPlanSource(difficulty, randomSeed())];
+interface BattleSetup {
+  mode: MatchMode;
+  p0: SeatConfig;
+  p1: SeatConfig;
+  names: [string, string];
+  /** CPU difficulty for seat 1, or null when seat 1 isn't the regular CPU. */
+  difficulty: Difficulty | null;
+  modifier?: MatchModifier;
+  /** Custom start state and seat 1 source (tutorial). */
+  state?: MatchState;
+  opponent?: PlanSource;
+  options?: BattleOptions;
+  onEnd: (outcome: MatchOutcome, log: MatchLog) => void;
+  onQuit?: () => void;
 }
 
-function runBattle(
-  mode: Mode,
-  p0: { fighterId: string; bonusCards?: string[] },
-  p1: { fighterId: string; bonusCards?: string[] },
-  onEnd: (outcome: MatchOutcome) => void,
-  onQuit: () => void = title,
-): void {
+/** Run a match; afterwards update stats, unlock achievements and show their toasts. */
+function runBattle(setup: BattleSetup): void {
   let view: BattleView | null = null;
-  const [s0, s1] = seatsFor(mode, () => view!);
-  const names: [string, string] = [STRINGS.player(1), mode === 'hotseat' ? STRINGS.player(2) : STRINGS.cpu];
-  void versusSplash(p0.fighterId, p1.fighterId, names).then(() => {
+  const human = new HumanPlanSource(() => view!);
+  const opponent =
+    setup.opponent ??
+    (setup.mode === 'hotseat' ? new HumanPlanSource(() => view!) : new CpuPlanSource(setup.difficulty ?? 'normal', randomSeed()));
+  void versusSplash(setup.p0.fighterId, setup.p1.fighterId, setup.names).then(() => {
     const container = screen('', 'battle-screen');
     view = new BattleView(
       container,
-      createMatch(p0, p1),
+      setup.state ?? createMatch(setup.p0, setup.p1, setup.modifier),
       [
-        { name: names[0], source: s0 },
-        { name: names[1], source: s1 },
+        { name: setup.names[0], source: human },
+        { name: setup.names[1], source: opponent },
       ],
-      (outcome) => onEnd(outcome),
-      onQuit,
+      (outcome, _state, log) => {
+        // The mode's own handler runs first (it may record a ladder win or daily result).
+        setup.onEnd(outcome, log);
+        recordMatch({ mode: setup.mode, fighterId: setup.p0.fighterId, outcome, log });
+        const fresh = unlockAchievements({ mode: setup.mode, difficulty: setup.difficulty, outcome, log });
+        fresh.forEach((a, i) =>
+          setTimeout(() => {
+            play('reveal');
+            toast(a.icon, STRINGS.achievementUnlocked, a.name);
+          }, 700 + i * 900),
+        );
+      },
+      setup.onQuit ?? title,
+      setup.options,
     );
   });
 }
 
 /** Guided first match against a scripted training dummy. */
 function startTutorial(): void {
-  let view: BattleView | null = null;
   const names: [string, string] = [STRINGS.player(1), STRINGS.tutorial.dummy];
-  void versusSplash(TUTORIAL.player, TUTORIAL.dummy, names).then(() => {
-    const container = screen('', 'battle-screen');
-    view = new BattleView(
-      container,
-      createTutorialMatch(),
-      [
-        { name: names[0], source: new HumanPlanSource(() => view!) },
-        { name: names[1], source: new ScriptedPlanSource() },
-      ],
-      (outcome) => {
-        setTutorialDone();
-        if (outcome.winner === 0) play('win');
-        const heading = outcome.winner === 0 ? STRINGS.tutorial.done : outcomeText(outcome, names);
-        resultScreen(heading, outcome.winner, [TUTORIAL.player, TUTORIAL.dummy], [
-          { label: STRINGS.modeCpu, primary: true, fn: () => pickFighters('cpu') },
-          { label: STRINGS.retry, fn: startTutorial },
-          { label: STRINGS.menu, fn: title },
-        ], `<p class="note">${STRINGS.tutorial.doneHint}</p>`, outcome.winner === 0);
-      },
-      title,
-      { hooks: tutorialHooks(), noTimer: true },
-    );
+  runBattle({
+    mode: 'tutorial',
+    p0: { fighterId: TUTORIAL.player },
+    p1: { fighterId: TUTORIAL.dummy },
+    names,
+    difficulty: null,
+    state: createTutorialMatch(),
+    opponent: new ScriptedPlanSource(),
+    options: { hooks: tutorialHooks(), noTimer: true },
+    onEnd: (outcome) => {
+      setTutorialDone();
+      if (outcome.winner === 0) play('win');
+      const heading = outcome.winner === 0 ? STRINGS.tutorial.done : outcomeText(outcome, names);
+      resultScreen(heading, outcome.winner, [TUTORIAL.player, TUTORIAL.dummy], [
+        { label: STRINGS.modeCpu, primary: true, fn: () => pickFighters('cpu') },
+        { label: STRINGS.retry, fn: startTutorial },
+        { label: STRINGS.menu, fn: title },
+      ], `<p class="note">${STRINGS.tutorial.doneHint}</p>`, outcome.winner === 0);
+    },
+  });
+}
+
+function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string): void {
+  const names: [string, string] = [STRINGS.player(1), mode === 'hotseat' ? STRINGS.player(2) : STRINGS.cpu];
+  runBattle({
+    mode,
+    p0: { fighterId: a, bonusCards: mode === 'cpu' ? loadout() : [] },
+    p1: { fighterId: b },
+    names,
+    difficulty: mode === 'cpu' ? difficulty : null,
+    onEnd: (outcome) => {
+      const celebrate = outcome.winner === 0 || (mode === 'hotseat' && outcome.winner !== null);
+      if (celebrate) play('win');
+      resultScreen(outcomeText(outcome, names), outcome.winner, [a, b], [
+        { label: STRINGS.rematch, primary: true, fn: () => startMatch(mode, a, b) },
+        { label: STRINGS.menu, fn: title },
+      ], '', celebrate);
+    },
   });
 }
 
@@ -287,18 +381,6 @@ function outcomeText(outcome: MatchOutcome, names: [string, string]): string {
   return outcome.winner === null ? STRINGS.draw : STRINGS.wins(names[outcome.winner]);
 }
 
-function startMatch(mode: Mode, a: string, b: string): void {
-  runBattle(mode, { fighterId: a }, { fighterId: b }, (outcome) => {
-    const names: [string, string] = [STRINGS.player(1), mode === 'hotseat' ? STRINGS.player(2) : STRINGS.cpu];
-    if (outcome.winner === 0 || mode === 'hotseat') play('win');
-    const celebrate = outcome.winner === 0 || (mode === 'hotseat' && outcome.winner !== null);
-    resultScreen(outcomeText(outcome, names), outcome.winner, [a, b], [
-      { label: STRINGS.rematch, primary: true, fn: () => startMatch(mode, a, b) },
-      { label: STRINGS.menu, fn: title },
-    ], '', celebrate);
-  });
-}
-
 function resultScreen(
   heading: string,
   winner: Seat | null,
@@ -323,65 +405,178 @@ function resultScreen(
 // ---------- tournament ----------
 
 function tournamentHub(fighterId: string): void {
-  const progress = loadProgress(fighterId);
   const rivals = rivalsFor(fighterId);
-  const ladder = rivals
+  const { wins, champion } = ladder(fighterId);
+  const complete = wins >= rivals.length;
+  const steps = rivals
     .map((id, i) => {
       const f = getFighter(id);
-      const state = i < progress.wins ? 'beaten' : i === progress.wins ? 'current' : 'locked';
+      const state = i < wins ? 'beaten' : i === wins ? 'current' : 'locked';
       return `<li class="${state}" style="--clr:${f.color}">${emblemHtml(f)}<b>${state === 'locked' ? '???' : f.name}</b></li>`;
     })
     .join('');
-  const bonus = progress.bonus.length
-    ? `<h3>${STRINGS.bonusCards}</h3><div class="hand">${progress.bonus.map((id) => cardHtml(id)).join('')}</div>`
-    : '';
-  const champion = isChampion(progress);
   const root = screen(
-    `<h2>${STRINGS.tournamentTitle}: ${getFighter(fighterId).name}</h2>
-     <p>${champion ? STRINGS.champion : STRINGS.tournamentProgress(progress.wins, rivals.length)}</p>
-     <ol class="ladder">${ladder}</ol>
-     ${champion ? '' : difficultyPicker()}
-     ${bonus}
+    `<h2>${STRINGS.tournamentTitle}: ${getFighter(fighterId).name}${champion ? ' <span class="champ inline">★</span>' : ''}</h2>
+     <p>${complete ? STRINGS.champion : STRINGS.tournamentProgress(wins, rivals.length)}</p>
+     <ol class="ladder">${steps}</ol>
+     ${complete ? '' : difficultyPicker()}
+     ${loadoutHtml(true)}
      <div class="row">
-       ${champion ? '' : `<button class="btn primary" data-act="fight">${STRINGS.nextRival}</button>`}
-       <button class="btn ghost-btn" data-act="reset">${STRINGS.resetProgress}</button>
+       ${complete ? '' : `<button class="btn primary" data-act="fight">${STRINGS.nextRival}</button>`}
+       ${wins > 0 ? `<button class="btn ghost-btn" data-act="reset">${STRINGS.restartLadder}</button>` : ''}
        <button class="btn ghost-btn" data-act="menu">${STRINGS.menu}</button>
      </div>`,
     'tournament',
   );
   bindDifficulty(root);
+  bindLoadout(root);
   on(root, '[data-act="menu"]', title);
   on(root, '[data-act="reset"]', () => {
-    resetProgress(fighterId);
+    resetLadder(fighterId);
     tournamentHub(fighterId);
   });
-  on(root, '[data-act="fight"]', () => tournamentMatch(progress));
+  on(root, '[data-act="fight"]', () => tournamentMatch(fighterId));
 }
 
-function tournamentMatch(progress: TournamentProgress): void {
-  const rival = rivalsFor(progress.fighterId)[progress.wins];
-  runBattle(
-    'tournament',
-    { fighterId: progress.fighterId, bonusCards: progress.bonus },
-    { fighterId: rival, bonusCards: rivalBonus(progress) },
-    (outcome) => {
-      const names: [string, string] = [STRINGS.player(1), getFighter(rival).name];
-      if (outcome.winner === 0) {
-        play('win');
-        const card = recordWin(progress);
-        const extra = card ? `<p>${STRINGS.newBonus}</p><div class="hand">${cardHtml(card)}</div><p class="note">${describeCard(card)}</p>` : '';
-        resultScreen(outcomeText(outcome, names), 0, [progress.fighterId, rival], [
-          { label: STRINGS.continue, primary: true, fn: () => tournamentHub(progress.fighterId) },
-        ], extra, true);
-      } else {
-        resultScreen(outcomeText(outcome, names), outcome.winner, [progress.fighterId, rival], [
-          { label: STRINGS.retry, primary: true, fn: () => tournamentMatch(progress) },
-          { label: STRINGS.menu, fn: () => tournamentHub(progress.fighterId) },
+function tournamentMatch(fighterId: string): void {
+  const rival = currentRival(fighterId);
+  if (!rival) return tournamentHub(fighterId);
+  const rivals = rivalsFor(fighterId);
+  const names: [string, string] = [STRINGS.player(1), getFighter(rival).name];
+  runBattle({
+    mode: 'tournament',
+    p0: { fighterId, bonusCards: loadout() },
+    p1: { fighterId: rival, bonusCards: rivalBonus(ladder(fighterId).wins) },
+    names,
+    difficulty,
+    onQuit: () => tournamentHub(fighterId),
+    onEnd: (outcome) => {
+      if (outcome.winner !== 0) {
+        resultScreen(outcomeText(outcome, names), outcome.winner, [fighterId, rival], [
+          { label: STRINGS.retry, primary: true, fn: () => tournamentMatch(fighterId) },
+          { label: STRINGS.menu, fn: () => tournamentHub(fighterId) },
         ]);
+        return;
       }
+      play('win');
+      const { card, champion } = recordLadderWin(fighterId, rivals.length);
+      const extra =
+        (champion ? `<p class="champion-line">★ ${STRINGS.newChampion(getFighter(fighterId).name)}</p>` : '') +
+        (card ? `<p>${STRINGS.newBonus}</p><div class="hand">${cardHtml(card)}</div><p class="note">${describeCard(card)}</p>` : '');
+      resultScreen(outcomeText(outcome, names), 0, [fighterId, rival], [
+        { label: STRINGS.continue, primary: true, fn: () => tournamentHub(fighterId) },
+      ], extra, true);
     },
-    () => tournamentHub(progress.fighterId),
+  });
+}
+
+// ---------- daily challenge ----------
+
+function dailyScreen(): void {
+  const c = dailyChallenge();
+  const f = getFighter(c.fighter);
+  const r = getFighter(c.rival);
+  const d = profile().daily;
+  const beaten = d.results[c.date] === 'win';
+  const root = screen(
+    `<h2>${STRINGS.daily.title}</h2>
+     <p class="note">${STRINGS.daily.sameForEveryone}</p>
+     <div class="daily-vs">
+       <div style="--clr:${f.color}">${emblemHtml(f)}<b>${f.name}</b><span>${STRINGS.daily.youPlay}</span></div>
+       <span class="vs">vs</span>
+       <div style="--clr:${r.color}">${emblemHtml(r)}<b>${r.name}</b><span>${STRINGS.daily.hardCpu}</span></div>
+     </div>
+     <div class="daily-rule"><small>${STRINGS.daily.rule}</small><b>${c.modifier.name}</b><span>${c.modifier.text}</span></div>
+     <p>${STRINGS.daily.streak(dailyStreak(), d.best)}</p>
+     ${beaten ? `<p class="champion-line">✓ ${STRINGS.daily.done}</p>` : ''}
+     <div class="row">
+       <button class="btn primary" data-act="play">${beaten ? STRINGS.daily.playAgain : STRINGS.daily.play}</button>
+       <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>
+     </div>`,
+    'daily',
   );
+  on(root, '[data-act="back"]', title);
+  on(root, '[data-act="play"]', () => dailyMatch(c.date));
+}
+
+/** `date` is fixed when the match starts, so a match that crosses midnight counts for its own day. */
+function dailyMatch(date: string): void {
+  const c = dailyChallenge(date);
+  const names: [string, string] = [STRINGS.player(1), getFighter(c.rival).name];
+  runBattle({
+    mode: 'daily',
+    p0: { fighterId: c.fighter },
+    p1: { fighterId: c.rival },
+    names,
+    difficulty: 'hard',
+    modifier: c.modifier.modifier,
+    options: { tag: c.modifier.name },
+    onQuit: dailyScreen,
+    onEnd: (outcome) => {
+      const won = outcome.winner === 0;
+      recordDaily(won ? 'win' : outcome.winner === null ? 'draw' : 'loss', date);
+      if (won) play('win');
+      const extra = `<p>${STRINGS.daily.streak(dailyStreak(), profile().daily.best)}</p>`;
+      resultScreen(outcomeText(outcome, names), outcome.winner, [c.fighter, c.rival], [
+        won ? { label: STRINGS.menu, primary: true, fn: title } : { label: STRINGS.retry, primary: true, fn: () => dailyMatch(date) },
+        { label: STRINGS.daily.title, fn: dailyScreen },
+      ], extra, won);
+    },
+  });
+}
+
+// ---------- profile ----------
+
+function profileScreen(): void {
+  const p = profile();
+  const s = p.stats;
+  const P = STRINGS.profile;
+  const pct = (w: number, n: number) => (n ? `${Math.round((100 * w) / n)}%` : P.none);
+  const fav = favouriteCard();
+  const stat = (label: string, value: string | number) => `<div class="stat-tile"><b>${value}</b><span>${label}</span></div>`;
+  const fighters = FIGHTERS.map((f) => {
+    const rec = s.byFighter[f.id] ?? { played: 0, won: 0 };
+    const l = ladder(f.id);
+    return `<li style="--clr:${f.color}">${emblemHtml(f, 'hud-emblem')}
+      <b>${f.name}${l.champion ? ' <span class="champ inline">★</span>' : ''}</b>
+      <span>${P.record(rec.won, rec.played)}</span>
+      <span>${P.ladder(l.wins, rivalsFor(f.id).length)}</span></li>`;
+  }).join('');
+  const unlocked = ACHIEVEMENTS.filter((a) => p.achievements[a.id]).length;
+  const achievements = ACHIEVEMENTS.map(
+    (a) => `<li class="${p.achievements[a.id] ? 'got' : ''}"><i>${a.icon}\uFE0E</i><div><b>${a.name}</b><span>${a.text}</span></div></li>`,
+  ).join('');
+  const cards = BONUS_CARD_IDS.map((id) =>
+    p.collection.includes(id) ? cardHtml(id, { small: true, readonly: true }) : '<span class="card small placeholder unknown">?</span>',
+  ).join('');
+  const root = screen(
+    `<h2>${P.title}</h2>
+     <div class="stat-grid">
+       ${stat(P.matches, s.matches)}
+       ${stat(P.wins, s.wins)}
+       ${stat(P.winRate, pct(s.wins, s.matches))}
+       ${stat(P.bestStreak, s.bestStreak)}
+       ${stat(P.damage, s.damageDealt)}
+       ${stat(P.favourite, fav ? getCard(fav).name : P.none)}
+     </div>
+     <h3>${P.fighters}</h3>
+     <ul class="fighter-records">${fighters}</ul>
+     <h3>${P.achievements(unlocked, ACHIEVEMENTS.length)}</h3>
+     <ul class="achievements">${achievements}</ul>
+     <h3>${P.collection(p.collection.length, BONUS_CARD_IDS.length)}</h3>
+     <div class="hand collection">${cards}</div>
+     <div class="row">
+       <button class="btn" data-act="back">${STRINGS.back}</button>
+       <button class="btn danger" data-act="reset">${P.reset}</button>
+     </div>`,
+    'profile',
+  );
+  on(root, '[data-act="back"]', title);
+  on(root, '[data-act="reset"]', () => {
+    if (!confirm(P.resetConfirm)) return;
+    resetProfile();
+    profileScreen();
+  });
 }
 
 applyEffectsClass();

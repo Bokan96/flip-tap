@@ -26,24 +26,6 @@ export const TUTORIAL = {
   loopFrom: 2,
 };
 
-const DONE_KEY = 'fliptap.tutorialDone';
-
-export function isTutorialDone(): boolean {
-  try {
-    return localStorage.getItem(DONE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-export function setTutorialDone(): void {
-  try {
-    localStorage.setItem(DONE_KEY, '1');
-  } catch {
-    /* storage unavailable */
-  }
-}
-
 export function createTutorialMatch(): MatchState {
   const state = createMatch({ fighterId: TUTORIAL.player }, { fighterId: TUTORIAL.dummy });
   state.players[1].life = TUTORIAL.dummyLife;

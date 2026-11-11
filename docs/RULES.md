@@ -115,10 +115,20 @@ pattern in the same slot avoids the hit.
 - **Hot-seat:** two people share a device. Player 1 plans, then hands over the device ("pass" screen
   hides the plan), then Player 2 plans, then both are revealed.
 - **Tournament (single player):** pick a fighter and beat the other 5 fighters in a fixed order.
-  - After each win you gain **1 random bonus card** from the bonus pool.
-  - Each opponent enters with as many bonus cards as you have won matches.
-  - Losing lets you retry the same opponent. Beating everyone crowns you champion.
-  - Progress is saved in the browser (localStorage).
+  - Each win earns **1 random bonus card** you don't own yet. Bonus cards form one collection
+    shared by all fighters.
+  - You can equip up to **3 bonus cards** (`BALANCE.bonusSlots`), which join your deck in
+    Tournament and Versus CPU. Hot-seat always uses basic and signature cards only.
+  - Each rival brings as many random bonus cards as you have ladder wins (up to 3).
+  - Losing lets you retry. Beating all five makes that fighter a **champion** (★), which stays
+    even if you restart the ladder.
+- **Daily challenge:** one match per day against the Hard CPU, with the fighter, rival and a rule
+  twist (for example +10 damage for everyone, or both fighters starting at 50 life) chosen from the
+  date, so everyone gets the same challenge. Winning on consecutive days builds a streak. No bonus
+  cards are used.
+- **Profile:** stats (matches, wins, damage dealt, best win streak, favourite card), per-fighter
+  records and ladder progress, 13 achievements and the bonus card collection. Everything is saved in
+  the browser (localStorage) and can be reset from the Profile screen.
 - **Online (planned):** the engine is deterministic and action-based, so two browsers can run in
   lockstep over WebRTC (PeerJS) and exchange only each round's plans.
 
