@@ -219,6 +219,14 @@ describe('fast simulator with every card, modifier and arena', () => {
       expect(fast.life).toEqual([real.state.players[0].life, real.state.players[1].life]);
       expect(fast.energy).toEqual([last[0].energy, last[1].energy]);
       expect(fast.pos).toEqual([last[0].final.r, last[0].final.c, last[1].final.r, last[1].final.c]);
+      // What carries into the next round (the AI scores these).
+      const ps = real.state.players;
+      expect(fast.facing).toEqual([ps[0].facing, ps[1].facing]);
+      expect(fast.spent).toEqual(ps.map((p) => (p.mods.ammo ? p.spent.length : -1)));
+      const key = (at: number, owner: number, dmg: number) => `${at}:${owner}:${dmg}`;
+      const fastTraps: string[] = [];
+      for (let k = 0; k < fast.traps.length; k += 3) fastTraps.push(key(fast.traps[k], fast.traps[k + 1], fast.traps[k + 2]));
+      expect(fastTraps.sort()).toEqual(real.state.arena.traps.map((t) => key(t.at, t.owner, t.damage)).sort());
       const o = real.state.outcome;
       expect(fast.outcome).toBe(o === null ? -1 : o.winner === null ? 2 : o.winner);
     }

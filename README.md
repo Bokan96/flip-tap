@@ -4,7 +4,7 @@ A small two-player **simultaneous-planning card battle** for the browser. Each r
 secretly plan three cards (move, guard, focus, attack, …). The cards are then revealed and resolved
 step by step on a 3×4 grid. Dodge, predict, and land your attacks.
 
-Modes: **Tournament** (beat 5 rivals, earn bonus cards), **Versus CPU** (3 difficulties) and
+Modes: **Tournament** (beat 5 rivals, earn bonus cards), **Versus CPU** (4 difficulties, up to an Expert that learns your habits) and
 **Hot-seat** (two players on one device). Full rules: [docs/RULES.md](docs/RULES.md).
 
 ## Develop
@@ -45,7 +45,9 @@ synthesized with WebAudio (`src/audio/sfx.ts`).
 src/engine/   pure, deterministic rules (no DOM)
   rules.ts      plan validation + round resolution
   fastsim.ts    allocation-free copy of the rules for AI search (kept in sync by tests)
-  ai.ts         CPU: searches every legal plan against likely opponent replies
+  ai.ts         CPU: searches every legal plan against likely opponent replies (Expert solves
+                the round as a small game); runs in a Web Worker (aiWorker.ts)
+  playerModel.ts  the Expert CPU's model of your habits
   setup.ts      match creation
 src/net/      PlanSource abstraction (human / CPU / future remote peer)
 src/ui/       DOM rendering, planner, reveal animation

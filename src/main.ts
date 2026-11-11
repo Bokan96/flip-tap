@@ -8,7 +8,7 @@ import { ASSETS, assetUrl } from './content/assets';
 import { BALANCE } from './content/balance';
 import { BONUS_CARD_IDS, FIGHTERS, getCard, getFighter } from './content/cards';
 import { STRINGS } from './content/strings';
-import type { Difficulty } from './engine/ai';
+import { DIFFICULTIES, type Difficulty } from './engine/ai';
 import { randomSeed } from './engine/rng';
 import { createMatch, type MatchModifier, type SeatConfig } from './engine/setup';
 import type { MatchLog, MatchOutcome, MatchState, Seat } from './engine/types';
@@ -184,9 +184,9 @@ function howTo(): void {
 // ---------- fighter selection and loadout ----------
 
 function difficultyPicker(): string {
-  return `<div class="difficulty"><span>${STRINGS.difficulty}:</span>${(['easy', 'normal', 'hard'] as Difficulty[])
-    .map((d) => `<button class="chip${d === difficulty ? ' on' : ''}" data-diff="${d}">${STRINGS.difficultyNames[d]}</button>`)
-    .join('')}</div>`;
+  return `<div class="difficulty"><span>${STRINGS.difficulty}:</span>${DIFFICULTIES.map(
+    (d) => `<button class="chip${d === difficulty ? ' on' : ''}" data-diff="${d}">${STRINGS.difficultyNames[d]}</button>`,
+  ).join('')}</div><p class="note diff-note">${STRINGS.difficultyHints[difficulty]}</p>`;
 }
 
 function arenaPicker(): string {
@@ -208,6 +208,8 @@ function bindDifficulty(root: HTMLElement): void {
   on(root, '[data-diff]', (el) => {
     difficulty = el.dataset.diff as Difficulty;
     root.querySelectorAll('[data-diff]').forEach((c) => c.classList.toggle('on', c === el));
+    const note = root.querySelector('.diff-note');
+    if (note) note.textContent = STRINGS.difficultyHints[difficulty];
   });
 }
 

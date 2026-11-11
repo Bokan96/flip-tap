@@ -149,6 +149,11 @@ export class BattleView {
       this.setRoundLabel();
       const plans: Plan[] = [];
       const bothHuman = this.seats.every((s) => s.source.kind === 'human');
+      // The CPU starts thinking right away (in a worker), so it is usually done by the time you lock in.
+      const early = ([0, 1] as Seat[]).map((seat) => {
+        const src = this.seats[seat].source;
+        return src.kind === 'cpu' ? src.requestPlan(this.state, seat, this.log) : null;
+      });
       for (const seat of [0, 1] as Seat[]) {
         const src = this.seats[seat].source;
         if (src.kind === 'human' && bothHuman) await this.passScreen(seat);
@@ -156,7 +161,7 @@ export class BattleView {
           this.setMode('wait');
           this.q('.status').textContent = STRINGS.cpuThinking;
         }
-        const plan = await src.requestPlan(this.state, seat);
+        const plan = await (early[seat] ?? src.requestPlan(this.state, seat, this.log));
         if (this.destroyed) return;
         const err = planError(this.state.players[seat], plan);
         if (err) throw new Error(err);

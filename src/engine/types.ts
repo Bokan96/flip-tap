@@ -80,6 +80,14 @@ export interface Passive {
   mods: Partial<Mods>;
 }
 
+/** How a fighter leans when the CPU plays it (small nudges; leave out for neutral). */
+export interface Personality {
+  /** Above 0 values damage dealt over damage taken, below 0 the reverse (about -0.3 to 0.3). */
+  aggression?: number;
+  /** Extra weight on the worst case when choosing a plan (about 0 to 0.2). */
+  caution?: number;
+}
+
 export interface FighterDef {
   id: string;
   name: string;
@@ -95,6 +103,8 @@ export interface FighterDef {
   /** How tricky the fighter is to play well: 1 (simple) to 3 (advanced). */
   complexity: 1 | 2 | 3;
   passive?: Passive;
+  /** CPU personality for this fighter. */
+  ai?: Personality;
   lifeMax?: number;
   energyMax?: number;
 }

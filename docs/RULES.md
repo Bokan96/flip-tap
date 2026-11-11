@@ -180,6 +180,27 @@ scores, matchup table and per-card usage. Re-run it after changing numbers in `c
 
 ## CPU opponent (original design)
 The AI enumerates every affordable 3-card plan it could make. It scores each plan against a sample of
-plausible opponent plans by simulating the round with the real rules engine. The score covers the
-life swing, energy, and a bonus for a KO / penalty for being KO'd. It then picks a high-scoring plan,
-and lower difficulties add more randomness.
+plausible opponent plans by simulating the round with a fast copy of the rules engine (`fastsim.ts`).
+
+**Scoring a simulated round** (`src/engine/ai.ts`, weights per difficulty in `PROFILES`):
+- a KO is worth ±1000 and a draw −150;
+- otherwise, life swing, with extra weight on life below 40 (one bad round from a KO);
+- energy after next round's refill, where the first 50 points matter most;
+- Ferro's loaded shots, and the most dangerous lasting trap next to the enemy.
+
+**Difficulties:**
+- **Easy, Normal and Hard** guess the opponent's likely replies, then pick a strong plan against
+  them. Lower difficulties add more randomness and score more short-sightedly.
+- **Expert** narrows both sides down to their strongest plans and solves the round as a small
+  simultaneous game (regret matching plus a few "best reply" refinements). It then plays that
+  game's mixed strategy, so its plans are hard to predict. As the match goes on it builds a model
+  of the opponent's habits (`playerModel.ts`: favourite cards per step, recent rounds weighted
+  more, and what they do at low life) and leans toward the plans that punish them.
+
+**Personalities:** each fighter can nudge the CPU with `ai: { aggression, caution }` in `cards.ts`.
+For example, Cinder chases damage and Zephyr plays safe. Balance simulations ignore personalities.
+
+**Where it runs:** in the browser, the search runs in a Web Worker (`aiWorker.ts`) that starts as soon
+as the round begins, so the page never freezes. `npm run balance` and `sim/ai.sim.ts` (CPU vs CPU
+duels: `npm run duel`, e.g. with `A=expert B=hard`) run it directly. In duels over every fighter pairing,
+Expert scores about 70% against Hard.

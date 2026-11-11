@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { it } from 'vitest';
 import { BONUS_CARD_IDS, FIGHTERS, getCard } from '../src/content/cards';
-import { SIM_PROFILE } from '../src/engine/ai';
+import { SIM_PROFILE, type AiProfile } from '../src/engine/ai';
 import { runMatch } from '../src/engine/match';
 import { Rng } from '../src/engine/rng';
 
@@ -16,6 +16,11 @@ const MATCHES = Number(process.env.MATCHES ?? 40);
 const BONUS = Number(process.env.BONUS ?? 0);
 const SEED = Number(process.env.SEED ?? 1);
 const ARENA = process.env.ARENA ?? 'classic';
+/** WEIGHTS="trap=0.2,ammo=0" tries other CPU scoring weights (the report is then not written to docs/). */
+const WEIGHTS = process.env.WEIGHTS ?? '';
+const PROFILE: AiProfile = WEIGHTS
+  ? { ...SIM_PROFILE, weights: { ...SIM_PROFILE.weights, ...Object.fromEntries(WEIGHTS.split(',').map((kv) => [kv.split('=')[0], Number(kv.split('=')[1])])) } }
+  : SIM_PROFILE;
 
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : '–');
 
@@ -42,7 +47,7 @@ it('balance report', () => {
         const rec = runMatch(
           { fighterId: a, bonusCards: bonus() },
           { fighterId: b, bonusCards: bonus() },
-          { profiles: [SIM_PROFILE, SIM_PROFILE], seed: rng.int(2 ** 31), arenaId: ARENA },
+          { profiles: [PROFILE, PROFILE], seed: rng.int(2 ** 31), arenaId: ARENA },
         );
         total++;
         rounds += rec.rounds;
@@ -109,7 +114,11 @@ it('balance report', () => {
   }
   const report = lines.join('\n') + '\n';
   // Only the default run (Classic, no bonus cards) updates docs/BALANCE.md; other runs write next to it.
-  const file = ARENA === 'classic' && !BONUS ? '../docs/BALANCE.md' : `../sim/balance-${ARENA}${BONUS ? `-bonus${BONUS}` : ''}.md`;
+  const tag = process.env.TAG ? `-${process.env.TAG}` : '';
+  const file =
+    ARENA === 'classic' && !BONUS && !WEIGHTS && !tag
+      ? '../docs/BALANCE.md'
+      : `../sim/balance-${ARENA}${BONUS ? `-bonus${BONUS}` : ''}${WEIGHTS ? '-weights' : ''}${tag}.md`;
   writeFileSync(new URL(file, import.meta.url), report);
   console.log(report);
 });

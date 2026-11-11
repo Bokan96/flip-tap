@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "balance": "vitest run --config vitest.sim.config.ts"
+    "balance": "vitest run --config vitest.sim.config.ts sim/balance.sim.ts",
+    "duel": "vitest run --config vitest.sim.config.ts sim/ai.sim.ts --silent=false"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

@@ -33,7 +33,8 @@ export function matchAchievements(m: MatchFacts): string[] {
   if (won && last && last.players[ME].life <= 10) out.push('lastStand');
   if (steps.reduce((sum, s) => sum + s.players[ME].drained, 0) >= 50) out.push('thief');
   if (won && last && last.players[THEM].counterTaken > 0) out.push('payback');
-  if (won && m.difficulty === 'hard') out.push('hardWay');
+  if (won && (m.difficulty === 'hard' || m.difficulty === 'expert')) out.push('hardWay');
+  if (won && m.difficulty === 'expert') out.push('mastermind');
   return out;
 }
 

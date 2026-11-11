@@ -1,4 +1,5 @@
 import { choosePlanWith, type AiProfile } from './ai';
+import type { RoundRecord } from './playerModel';
 import { Rng } from './rng';
 import { resolveRound } from './rules';
 import { createMatch, type MatchModifier, type SeatConfig } from './setup';
@@ -27,10 +28,15 @@ export function runMatch(p0: SeatConfig, p1: SeatConfig, opts: RunOptions): Matc
   const maxRounds = opts.maxRounds ?? 40;
   let state = createMatch(p0, p1, opts.modifier, opts.arenaId);
   const history: MatchRecord['history'] = [];
+  const seen: RoundRecord[] = [];
   while (!state.outcome && state.round <= maxRounds) {
-    const plans: [Plan, Plan] = [choosePlanWith(state, 0, opts.profiles[0], rng), choosePlanWith(state, 1, opts.profiles[1], rng)];
+    const plans: [Plan, Plan] = [
+      choosePlanWith(state, 0, opts.profiles[0], rng, seen),
+      choosePlanWith(state, 1, opts.profiles[1], rng, seen),
+    ];
     const result = resolveRound(state, plans);
     history.push({ plans, result });
+    seen.push({ plans, life: [state.players[0].life, state.players[1].life] });
     state = result.state;
   }
   return {

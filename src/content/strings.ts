@@ -53,7 +53,13 @@ export const STRINGS = {
   player: (n: number) => `Player ${n}`,
   cpu: 'CPU',
   difficulty: 'Difficulty',
-  difficultyNames: { easy: 'Easy', normal: 'Normal', hard: 'Hard' } as Record<string, string>,
+  difficultyNames: { easy: 'Easy', normal: 'Normal', hard: 'Hard', expert: 'Expert' } as Record<string, string>,
+  difficultyHints: {
+    easy: 'Makes plenty of mistakes. Good for learning.',
+    normal: 'A fair fight.',
+    hard: 'Plans ahead and rarely blunders.',
+    expert: 'Mixes up its plans and learns your habits as the match goes on.',
+  } as Record<string, string>,
   start: 'Start',
 
   round: (n: number) => `Round ${n}`,

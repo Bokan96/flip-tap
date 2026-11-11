@@ -71,7 +71,7 @@ const signature: CardDef[] = [
   { id: 'ferroSnap', name: 'Snap Shot', kind: 'attack', cost: -10, damage: 25, pattern: ['000', '011', '000'], fx: 'beam' },
   { id: 'ferroScatter', name: 'Scattershot', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '011', '001'], fx: 'burst' },
   { id: 'ferroSlug', name: 'Slug', kind: 'attack', cost: -25, damage: 40, pattern: ['000', '001', '000'], push: 1, fx: 'beam' },
-  { id: 'ferroCannon', name: 'Hand Cannon', kind: 'attack', cost: -45, damage: 55, pattern: ['011', '011', '011'], fx: 'burst' },
+  { id: 'ferroCannon', name: 'Hand Cannon', kind: 'attack', cost: -45, damage: 50, pattern: ['011', '011', '011'], fx: 'burst' },
   { id: 'ferroReload', name: 'Reload', kind: 'reload', cost: 0 },
 
   // Briar: sets traps, then pulls rivals onto them
@@ -111,6 +111,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['cinderJab', 'cinderRing', 'cinderPillar', 'cinderBlaze'],
     role: 'Burst',
     complexity: 1,
+    ai: { aggression: 0.25 },
     passive: { name: 'Kindle', text: 'Attacks deal 10 more damage while at 50 life or less.', mods: { lowLifeThreshold: 50, lowLifeBonus: 10 } },
   },
   {
@@ -123,6 +124,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['marinSplash', 'marinUndertow', 'marinWall', 'marinFlood'],
     role: 'Control',
     complexity: 2,
+    ai: { caution: 0.05 },
     passive: { name: 'Riptide', text: 'Pushes and pulls move the target 1 extra square.', mods: { pushBonus: 1 } },
   },
   {
@@ -135,6 +137,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['zephyrGust', 'zephyrShear', 'zephyrSpiral', 'zephyrEdge'],
     role: 'Evasive',
     complexity: 2,
+    ai: { aggression: -0.1, caution: 0.1 },
     passive: { name: 'Slipstream', text: 'Takes 10 less damage on steps where it moved.', mods: { movedReduction: 10 } },
   },
   {
@@ -147,6 +150,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['basaltToss', 'basaltQuake', 'basaltSpikes', 'basaltCrush'],
     role: 'Tank',
     complexity: 1,
+    ai: { aggression: -0.15, caution: 0.05 },
     passive: { name: 'Bedrock', text: '115 max life. Can’t be pushed or pulled.', mods: { immovable: true } },
     lifeMax: 115,
   },
@@ -160,6 +164,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['voltaZap', 'voltaArc', 'voltaField', 'voltaClap'],
     role: 'Tempo',
     complexity: 2,
+    ai: { aggression: 0.1 },
     passive: { name: 'Capacitor', text: '120 max energy. Regains 7 extra energy every round.', mods: { energyPerRound: 7 } },
     energyMax: 120,
   },
@@ -173,6 +178,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['umbraClaw', 'umbraEclipse', 'umbraCreep', 'umbraGrasp'],
     role: 'Ambusher',
     complexity: 2,
+    ai: { aggression: 0.15 },
     passive: { name: 'Ambush', text: 'Attacks deal 10 more damage to a target that moved this step.', mods: { vsMovedBonus: 10 } },
   },
   {
@@ -185,6 +191,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['ferroSnap', 'ferroScatter', 'ferroSlug', 'ferroCannon', 'ferroReload'],
     role: 'Gunner',
     complexity: 3,
+    ai: { aggression: 0.1 },
     passive: { name: 'Magazine', text: 'Each attack fires once, then needs a Reload.', mods: { ammo: true } },
   },
   {
@@ -197,6 +204,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['briarSnare', 'briarField', 'briarLash', 'briarBloom'],
     role: 'Trapper',
     complexity: 3,
+    ai: { caution: 0.1 },
     passive: { name: 'Deep Roots', text: 'Your traps deal 10 more damage.', mods: { trapBonus: 10 } },
   },
   {
@@ -209,6 +217,7 @@ export const FIGHTERS: FighterDef[] = [
     signature: ['vexHex', 'vexSwap', 'vexSmolder', 'vexFlare'],
     role: 'Trickster',
     complexity: 3,
+    ai: { aggression: 0.15 },
     passive: { name: 'Fever', text: 'Your burns deal 5 more damage each step.', mods: { burnBonus: 5 } },
   },
 ];

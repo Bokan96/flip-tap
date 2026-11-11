@@ -71,6 +71,12 @@ export interface FastResult {
   outcome: number;
   /** Final positions: [r0, c0, r1, c1]. */
   pos: [number, number, number, number];
+  /** Final facing (1 = right, -1 = left). */
+  facing: [number, number];
+  /** Ammo fighters: how many attacks are spent at the end of the round (-1 for everyone else). */
+  spent: [number, number];
+  /** Traps still on the board for the next round, flattened as [square, owner, damage, ...]. */
+  traps: number[];
 }
 
 function covers(card: FastCard, r: number, c: number, facing: number, tr: number, tc: number): boolean {
@@ -129,8 +135,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   // Spent attacks, tracked only for ammo fighters (null otherwise).
   const spent: (string[] | null)[] = [m[0].ammo ? [...P[0].spent] : null, m[1].ammo ? [...P[1].spent] : null];
   const ids = ['', ''];
-  // Traps on the board (copied: they fire and get placed during the round).
-  const traps = A.traps.map((t) => ({ at: t.at, owner: t.owner as number, damage: t.damage }));
+  // Traps on the board (copied: they fire and get placed during the round). `keep` = still there next round.
+  const traps = A.traps.map((t) => ({ at: t.at, owner: t.owner as number, damage: t.damage, keep: t.until > state.round }));
   const burn = [P[0].burn, P[1].burn];
   const burnNow = [0, 0];
   const burnHit = [0, 0];
@@ -285,7 +291,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (!open(tr, tcc)) continue;
         const at = tr * cols + tcc;
         for (let q = traps.length - 1; q >= 0; q--) if (traps[q].at === at && traps[q].owner === i) traps.splice(q, 1);
-        traps.push({ at, owner: i, damage: tc.trap + m[i].trapBonus });
+        traps.push({ at, owner: i, damage: tc.trap + m[i].trapBonus, keep: true });
       }
     }
     z[0] = nz[0];
@@ -309,5 +315,15 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
     life[1] = Math.max(0, life[1] - BALANCE.fatigueDamage);
     if (life[0] <= 0 || life[1] <= 0) outcome = life[0] <= 0 && life[1] <= 0 ? 2 : life[0] <= 0 ? 1 : 0;
   }
-  return { life: [life[0], life[1]], energy: [en[0], en[1]], outcome, pos: [r[0], c[0], r[1], c[1]] };
+  const left: number[] = [];
+  for (const t of traps) if (t.keep) left.push(t.at, t.owner, t.damage);
+  return {
+    life: [life[0], life[1]],
+    energy: [en[0], en[1]],
+    outcome,
+    pos: [r[0], c[0], r[1], c[1]],
+    facing: [f[0], f[1]],
+    spent: [spent[0] ? spent[0].length : -1, spent[1] ? spent[1].length : -1],
+    traps: left,
+  };
 }
