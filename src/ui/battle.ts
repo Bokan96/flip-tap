@@ -53,7 +53,24 @@ export interface BattleOptions {
   resume?: { lastPlans: [Plan, Plan] | null; log: MatchLog };
   /** Called at the start of every round, before anyone plans (used to save the match). */
   onRoundStart?: (state: MatchState, lastPlans: [Plan, Plan] | null, log: MatchLog) => void;
+  /** Replay viewer: recorded plans play out with playback controls instead of the recap buttons. */
+  replay?: ReplayControls;
 }
+
+/** Playback state and controls for the replay viewer (owned by whoever builds the view). */
+export interface ReplayControls {
+  /** Rounds in the whole replay. */
+  rounds: number;
+  /** One of REPLAY_SPEEDS. The view changes these two and reports them with onChange. */
+  speed: number;
+  paused: boolean;
+  onChange(speed: number, paused: boolean): void;
+  /** Restart playback at the start of this round (1-based); past the last round = the result. */
+  seek(round: number): void;
+  exit(): void;
+}
+
+export const REPLAY_SPEEDS = [1, 2, 4];
 
 /** Free cards the plan timer uses to finish a plan, in order of preference. */
 const AUTO_FILL = ['guard', 'up', 'down', 'left', 'right', 'focus'];
@@ -100,6 +117,8 @@ export class BattleView {
   private replayRun = 0;
   /** Traps currently drawn on the board (to spot newly placed ones). */
   private shownTraps: Trap[] = [];
+  /** The round being revealed or recapped. */
+  private shownRound = 0;
 
   constructor(
     private root: HTMLElement,
@@ -115,19 +134,48 @@ export class BattleView {
       this.log = opts.resume.log;
     }
     this.el = document.createElement('div');
-    this.el.className = 'battle';
+    this.el.className = opts.replay ? 'battle replay' : 'battle';
+    // A replay goes straight to the reveal layout (no zoom from the planning layout).
+    if (opts.replay) this.el.dataset.mode = 'reveal';
     this.root.replaceChildren(this.el);
     this.renderShell();
     this.renderHud();
-    this.setMode('idle');
+    this.setMode(opts.replay ? 'reveal' : 'idle');
+    if (opts.replay) this.bindReplayControls();
     // Start after construction so plan sources can reference this view.
     setTimeout(() => void this.loop(), 0);
   }
 
   /** Sleep that respects the speed setting and holds while a menu or deck viewer is open. */
-  private async sleep(key: keyof typeof TIMING): Promise<void> {
-    await wait(TIMING[key] * speedMultiplier() * this.slow);
-    while (this.paused && !this.destroyed) await wait(100);
+  private sleep(key: keyof typeof TIMING): Promise<void> {
+    return this.hold(TIMING[key]);
+  }
+
+  /** Animation time factor: the speed setting, slow motion and the replay speed. */
+  private pace(): number {
+    return (speedMultiplier() * this.slow) / (this.opts.replay?.speed ?? 1);
+  }
+
+  private async hold(ms: number): Promise<void> {
+    await wait(ms * this.pace());
+    while ((this.paused || this.opts.replay?.paused) && !this.destroyed) await wait(100);
+    // A view that was closed (quit, or a replay jumping to another round) never wakes up again.
+    if (this.destroyed) await new Promise(() => undefined);
+  }
+
+  /** A short beat inside an animation (paced, but doesn't hold for pause). */
+  private async tick(ms: number): Promise<void> {
+    await wait(ms * this.pace());
+    if (this.destroyed) await new Promise(() => undefined);
+  }
+
+  /** Stop everything (the screen is about to be replaced). */
+  destroy(): void {
+    this.destroyed = true;
+    this.paused = false;
+    this.replayRun++;
+    this.stopTimer();
+    duckMusic(false);
   }
 
   private setMode(mode: Mode): void {
@@ -177,7 +225,7 @@ export class BattleView {
       for (const seat of [0, 1] as Seat[]) {
         const src = this.seats[seat].source;
         if (src.kind === 'human' && bothHuman) await this.passScreen(seat);
-        if (src.kind !== 'human') {
+        if (src.kind === 'cpu' || src.kind === 'remote') {
           this.setMode('wait');
           this.q('.status').textContent = STRINGS.cpuThinking;
         }
@@ -516,16 +564,13 @@ export class BattleView {
          <button class="btn primary" data-modal="close">${STRINGS.resume}</button>
          ${settingsHtml()}
          <details class="menu-rules"><summary>${STRINGS.howToPlay}</summary><ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol></details>
-         <button class="btn danger" data-m="quit">${STRINGS.quit}</button>
+         <button class="btn danger" data-m="quit">${this.opts.replay ? STRINGS.replays.exit : STRINGS.quit}</button>
        </div>`,
       (box) => {
         bindSettings(box);
         box.querySelector('[data-m="quit"]')!.addEventListener('click', () => {
           play('click');
-          this.destroyed = true;
-          this.paused = false;
-          this.stopTimer();
-          duckMusic(false);
+          this.destroy();
           this.onQuit();
         });
       },
@@ -887,7 +932,8 @@ export class BattleView {
       traps: this.state.arena.traps.map((t) => ({ ...t })),
     };
     this.resetPlayCards();
-    this.q('.summary').innerHTML = this.summaryBar(STRINGS.round(this.state.round), '');
+    this.shownRound = this.state.round;
+    this.q('.summary').innerHTML = this.summaryBar(this.barTitle(this.state.round), this.opts.replay ? this.replayButtons() : '');
     this.q('.step-label').textContent = '';
     this.setMode('reveal');
     play('reveal');
@@ -940,7 +986,7 @@ export class BattleView {
     const players = step.players;
     const tokens = [this.q('.token.p0'), this.q('.token.p1')];
     const color = (i: number) => getFighter(this.state.players[i].fighterId).color;
-    const ms = (n: number) => n * speedMultiplier() * this.slow;
+    const ms = (n: number) => n * this.pace();
     if (step.outcome) this.slow = 1.8;
 
     // 1. This step's cards (still face down) step forward, then flip over.
@@ -955,7 +1001,7 @@ export class BattleView {
     }
     this.markStep(step.slot);
     play('place');
-    await wait(ms(240));
+    await this.tick(240);
     dealt.forEach((c) => {
       c.classList.remove('face-down');
       c.classList.add('flipped');
@@ -995,7 +1041,7 @@ export class BattleView {
     /** Attackers wind up, then their squares light up outward from them. */
     const windUp = async (who: number[]) => {
       who.forEach((i) => retrigger(tokens[i], 'charge'));
-      await wait(ms(260));
+      await this.tick(260);
       for (const i of who) {
         const kind = fxKind(getCard(players[i].cardId));
         this.showArea(players[i].area, `area-p${i}`, posNow[i], kind);
@@ -1010,7 +1056,7 @@ export class BattleView {
      */
     const impact = async (defenders: number[], healers: number[], lives: [number, number] | null): Promise<boolean> => {
       const lands = defenders.some((i) => players[i].damageTaken > 0 || players[i].counterTaken > 0);
-      if (lands && fullEffects()) await wait(90);
+      if (lands && fullEffects()) await this.tick(90 / this.pace());
       const sounds: SoundId[] = [];
       let biggest = 0;
       for (const i of defenders) {
@@ -1074,7 +1120,7 @@ export class BattleView {
       // Push and pull land just after the hit.
       const displaced = defenders.filter((i) => !samePos(players[i].to, players[i].final));
       if (displaced.length) {
-        await wait(ms(300));
+        await this.tick(300);
         displaced.forEach((i) => {
           retrigger(tokens[i], 'skid');
           this.fx.particles(posNow[i], themeColor('--fx-dust'), 6, 'dust');
@@ -1145,7 +1191,7 @@ export class BattleView {
 
     // 6. Knockout: flash, and the loser falls.
     if (step.outcome) {
-      await wait(ms(250));
+      await this.tick(250);
       play('ko');
       haptic('ko');
       if (fullEffects()) retrigger(this.el, 'ko-flash');
@@ -1260,6 +1306,56 @@ export class BattleView {
     this.el.querySelectorAll<HTMLElement>('.play-card').forEach((c) => c.classList.toggle('now', Number(c.dataset.step) === step));
   }
 
+  private barTitle(round: number): string {
+    return this.opts.replay ? STRINGS.replays.roundOf(round, this.opts.replay.rounds) : STRINGS.round(round);
+  }
+
+  /** Replay viewer buttons: previous round, play/pause, next round, speed and exit. */
+  private replayButtons(): string {
+    const r = this.opts.replay!;
+    const R = STRINGS.replays;
+    const ctl = (act: string, label: string, glyph: string, cls = '') =>
+      `<button class="btn icon-ctl${cls}" data-rp="${act}" aria-label="${label}" title="${label}">${glyph}</button>`;
+    return (
+      ctl('prev', R.prev, '⏮\uFE0E') +
+      ctl('pause', r.paused ? R.play : R.pause, r.paused ? '▶\uFE0E' : '❚❚', ' primary') +
+      ctl('next', R.next, '⏭\uFE0E') +
+      ctl('speed', R.speed, `${r.speed}×`) +
+      ctl('exit', R.exit, '✕')
+    );
+  }
+
+  private bindReplayControls(): void {
+    const r = this.opts.replay!;
+    this.el.style.setProperty('--pace', String(1 / r.speed));
+    const summary = this.q('.summary');
+    summary.innerHTML = this.summaryBar(this.barTitle(this.state.round), this.replayButtons());
+    summary.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-rp]');
+      if (!btn || this.destroyed) return;
+      play('click');
+      const round = this.shownRound || this.state.round;
+      switch (btn.dataset.rp) {
+        case 'prev':
+          return r.seek(Math.max(1, round - 1));
+        case 'next':
+          return r.seek(round + 1);
+        case 'exit':
+          this.destroy();
+          return r.exit();
+        case 'pause':
+          r.paused = !r.paused;
+          break;
+        case 'speed':
+          r.speed = REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(r.speed) + 1) % REPLAY_SPEEDS.length];
+          this.el.style.setProperty('--pace', String(1 / r.speed));
+          break;
+      }
+      r.onChange(r.speed, r.paused);
+      summary.querySelector('.row')!.innerHTML = this.replayButtons();
+    });
+  }
+
   /** The bar under the cards: a title and (in the recap) the buttons. Same size in both, so nothing jumps. */
   private summaryBar(title: string, buttons: string): string {
     return `<h3>${title}</h3><div class="row">${
@@ -1286,6 +1382,12 @@ export class BattleView {
       });
     }
     this.markStep(null);
+    if (this.opts.replay) {
+      // Replays roll on by themselves: hold the end of the round a moment (longer after the last).
+      this.setMode('summary');
+      await this.hold(result.state.outcome ? 2600 : 1300);
+      return;
+    }
     const label = result.state.outcome ? STRINGS.seeResult : STRINGS.nextRound;
     summary.innerHTML = this.summaryBar(
       STRINGS.roundSummary(roundNo),

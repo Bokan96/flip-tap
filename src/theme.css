@@ -33,6 +33,10 @@
   /* Player colours stay clear of red (attacks) and blue (movement). */
   --p0: #2fe0bf;
   --p1: #b98bff;
+  /* The same two hues a step darker, for chart lines and bars on panels (checked for contrast and
+     colour-blind separation; keep them in the same lightness range if you change them). */
+  --chart-p0: #04ac91;
+  --chart-p1: #a476e8;
   --attack: #ff5f6d; /* attack squares on cards and the board */
   --move: #3f9bff; /* movement squares */
   --special: #6fd0ff; /* the "special" card group */

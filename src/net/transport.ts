@@ -10,7 +10,8 @@ import type { MatchLog, MatchState, Plan, Seat } from '../engine/types';
  * (later) received from a remote peer.
  */
 export interface PlanSource {
-  readonly kind: 'human' | 'cpu' | 'remote';
+  /** 'replay' plays back recorded plans (see meta/replay.ts). */
+  readonly kind: 'human' | 'cpu' | 'remote' | 'replay';
   /** `log` is the match so far (the CPU reads the opponent's habits from it). */
   requestPlan(state: MatchState, seat: Seat, log?: MatchLog): Promise<Plan>;
 }

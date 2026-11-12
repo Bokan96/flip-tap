@@ -368,7 +368,11 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   left: calc(4px + var(--c) * (100% - 8px) / var(--cols)); top: calc(4px + var(--r) * (100% - 8px) / var(--rows));
   display: grid; place-items: center; pointer-events: none;
 }
-.token { transition: left .5s cubic-bezier(.3, .7, .3, 1), top .5s cubic-bezier(.3, .7, .3, 1), transform .2s; z-index: 2; pointer-events: auto; cursor: pointer; }
+/* --pace shortens moves when a replay plays faster. */
+.token {
+  transition: left calc(.5s * var(--pace, 1)) cubic-bezier(.3, .7, .3, 1), top calc(.5s * var(--pace, 1)) cubic-bezier(.3, .7, .3, 1), transform .2s;
+  z-index: 2; pointer-events: auto; cursor: pointer;
+}
 /* The piece: a plain diamond in the player's colour (no fighter emblem). */
 .token .token-body {
   position: relative; width: 50%; aspect-ratio: 1; display: grid; place-items: center; transform: rotate(45deg);
@@ -491,6 +495,11 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .status { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-size: .8rem; }
 .actions { display: flex; gap: 10px; }
 .planner .actions .btn, .summary .btn { height: 36px; padding: 0 20px; }
+/* Replay viewer: the playback controls stay usable while the round plays. */
+.battle.replay[data-mode="reveal"] .summary .row { visibility: visible; }
+.battle.replay .summary .row { gap: 6px; }
+.summary .btn.icon-ctl, .btn.icon-ctl { min-width: 42px; padding: 0 10px; font-size: .95rem; letter-spacing: 0; }
+.summary .btn.icon-ctl { height: 36px; }
 @media (min-aspect-ratio: 1/1) and (max-height: 500px) {
   .battle[data-mode="plan"] .planner, .battle[data-mode="wait"] .planner {
     display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'hand hand' 'status actions';
@@ -991,6 +1000,95 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   .btn.huge { padding: 18px 14px; font-size: 1.2rem; }
   .pass { padding: 12px 8px; gap: 8px; }
   .pass h2 { font-size: 1rem; }
+}
+
+/* ---------- match summary (result screen), life chart and recent matches ---------- */
+.match-summary {
+  width: min(640px, 100%); background: var(--panel); border: 1px solid var(--line); padding: 14px 14px 12px;
+  display: flex; flex-direction: column; gap: 10px; text-align: left;
+}
+.summary-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.summary-head .row { justify-content: flex-end; gap: 8px; }
+.summary-head .btn { padding: 8px 12px; font-size: .78rem; }
+@media (max-width: 600px) {
+  .summary-head { flex-direction: column; align-items: stretch; }
+  .summary-head .row { justify-content: stretch; }
+  .summary-head .row .btn { flex: 1 1 auto; }
+}
+.summary-body { display: flex; flex-direction: column; gap: 10px; }
+.match-summary h4 { margin: 6px 0 0; font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.stat-grid.summary-tiles { width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.summary-tiles .stat-tile { background: var(--bg2); text-align: center; align-items: center; min-width: 0; }
+.stat-tile small { color: var(--muted); font-size: .72rem; line-height: 1.35; display: flex; flex-direction: column; align-items: center; }
+.stat-tile small span { color: inherit; font-size: inherit; text-transform: none; letter-spacing: 0; }
+.note.warn { color: var(--danger-soft); }
+
+.who-key { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.key-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.key-rect { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
+.key-line { width: 14px; height: 2px; border-radius: 1px; display: inline-block; flex: none; }
+
+.life-chart { display: flex; flex-direction: column; gap: 6px; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .8rem; }
+.chart-key { display: inline-flex; align-items: center; gap: 6px; }
+.chart-plot { position: relative; width: 100%; touch-action: pan-y; }
+.chart-svg { display: block; overflow: visible; outline: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.chart-svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.chart-svg .grid { stroke: var(--line); stroke-width: 1; }
+.chart-svg .baseline { stroke: var(--line-hi); stroke-width: 1; }
+.chart-svg .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart-svg .tick.y { text-anchor: end; }
+.chart-svg .tick.x { text-anchor: middle; }
+.chart-svg .axis-note { fill: var(--muted); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.chart-svg .fatigue-band { fill: rgba(255, 255, 255, .035); }
+.chart-svg .life-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-svg .end-dot { stroke: var(--panel); stroke-width: 2; }
+.chart-svg .end-label { fill: var(--text); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.chart-svg .crosshair { stroke: var(--line-hi); stroke-width: 1; }
+.chart-svg .hit { cursor: crosshair; }
+.chart-tip {
+  position: absolute; pointer-events: none; z-index: 2; min-width: 130px; padding: 6px 9px;
+  background: var(--bg); border: 1px solid var(--line-hi); box-shadow: 0 6px 16px rgba(0, 0, 0, .45); font-size: .78rem;
+}
+.chart-tip .tip-title { display: block; margin-bottom: 3px; color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
+.tip-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tip-row strong { min-width: 2.2em; font-variant-numeric: tabular-nums; }
+.tip-row span { color: var(--muted); }
+.chart-table summary { cursor: pointer; color: var(--muted); font-size: .78rem; width: max-content; }
+.chart-table table { width: 100%; margin-top: 6px; border-collapse: collapse; font-size: .8rem; }
+.chart-table th, .chart-table td { padding: 3px 8px; text-align: right; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.chart-table th:first-child, .chart-table td:first-child { text-align: left; }
+.chart-table th { color: var(--muted); font-weight: 600; }
+
+.dmg-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 22px; }
+.dmg-group { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.dmg-head { display: flex; flex-direction: column; gap: 1px; margin-bottom: 2px; font-size: .84rem; }
+.dmg-head small { color: var(--muted); font-size: .74rem; }
+.dmg-row { display: grid; grid-template-columns: minmax(0, 42%) 1fr; align-items: center; gap: 8px; font-size: .8rem; }
+.dmg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dmg-track { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* Bars grow from a square baseline to a rounded end, with the value at the tip. */
+.dmg-bar { display: block; flex: none; height: 10px; min-width: 2px; width: calc((100% - 36px) * var(--p)); border-radius: 0 4px 4px 0; }
+.dmg-track b { font-size: .78rem; font-variant-numeric: tabular-nums; }
+
+.recent-list { list-style: none; margin: 0; padding: 0; width: min(560px, 100%); display: flex; flex-direction: column; gap: 4px; }
+.recent-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px; align-items: center; text-align: left;
+  padding: 6px 8px; background: var(--bg2); border-left: 3px solid var(--line-hi); cursor: pointer;
+}
+.recent-row:hover { background: var(--panel); }
+.recent-row.win { border-left-color: var(--life); }
+.recent-row.loss { border-left-color: var(--danger); }
+.recent-vs { display: flex; }
+.recent-vs .hud-emblem { width: 26px; height: 26px; }
+.recent-vs .hud-emblem + .hud-emblem { margin-left: -6px; }
+.recent-text { display: flex; flex-direction: column; min-width: 0; }
+.recent-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .84rem; }
+.recent-text span { color: var(--muted); font-size: .74rem; }
+.recent-row .btn.icon-ctl { min-width: 38px; height: 34px; padding: 0 8px; }
+.share-text {
+  width: min(440px, 80vw); padding: 8px; resize: none; font: inherit; font-size: .85rem;
+  background: var(--bg); color: var(--text); border: 1px solid var(--line);
 }
 
 /* Keep content clear of notches and rounded corners (fullscreen / installed app). Insets are 0 elsewhere. */

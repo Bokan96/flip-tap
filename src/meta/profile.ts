@@ -18,7 +18,17 @@ export interface Profile {
   achievements: Record<string, number>;
   daily: DailyRecord;
   tutorialDone: boolean;
+  /** The last few finished matches as replay codes, newest first (see meta/replay.ts). */
+  recent: RecentMatch[];
 }
+
+export interface RecentMatch {
+  code: string;
+  /** When it finished (ms since 1970). */
+  at: number;
+}
+
+export const RECENT_LIMIT = 10;
 
 export interface Stats {
   matches: number;
@@ -62,6 +72,7 @@ function emptyProfile(): Profile {
     achievements: {},
     daily: { lastWin: null, streak: 0, best: 0, results: {} },
     tutorialDone: false,
+    recent: [],
   };
 }
 
@@ -195,6 +206,16 @@ export function recordMatch(e: MatchEntry): void {
     for (const id of r.plans[seat]) s.cardPlays[id] = (s.cardPlays[id] ?? 0) + 1;
     for (const step of r.result.steps) s.damageDealt += step.players[1].damageTaken + step.players[1].counterTaken;
   }
+  save();
+}
+
+// ---------- recent matches ----------
+export const recentMatches = (): RecentMatch[] => profile().recent;
+
+/** Remember a finished match; only the newest RECENT_LIMIT are kept. */
+export function recordRecent(code: string, at = Date.now()): void {
+  const p = profile();
+  p.recent = [{ code, at }, ...p.recent].slice(0, RECENT_LIMIT);
   save();
 }
 

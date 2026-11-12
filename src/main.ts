@@ -7,6 +7,7 @@ import { ARENAS, DEFAULT_ARENA, getArena } from './content/arenas';
 import { ASSETS, assetUrl } from './content/assets';
 import { BALANCE } from './content/balance';
 import { BONUS_CARD_IDS, FIGHTERS, getCard, getFighter } from './content/cards';
+import { MODIFIERS } from './content/modifiers';
 import { STRINGS } from './content/strings';
 import { DIFFICULTIES, type Difficulty } from './engine/ai';
 import { randomSeed } from './engine/rng';
@@ -14,6 +15,17 @@ import { createMatch, type MatchModifier, type SeatConfig } from './engine/setup
 import type { MatchLog, MatchOutcome, MatchState, Seat } from './engine/types';
 import { unlockAchievements } from './meta/achievements';
 import { dailyChallenge } from './meta/daily';
+import { matchStats, tradeRow, type MatchStats } from './meta/matchStats';
+import {
+  decodeReplay,
+  encodeReplay,
+  replayFromMatch,
+  ReplayPlanSource,
+  replayStart,
+  runReplay,
+  type Replay,
+  type ReplayMode,
+} from './meta/replay';
 import { clearSavedMatch, loadSavedMatch, saveMatch, type SavedMatch } from './meta/savedMatch';
 import {
   collection,
@@ -23,9 +35,11 @@ import {
   ladder,
   loadout,
   profile,
+  recentMatches,
   recordDaily,
   recordLadderWin,
   recordMatch,
+  recordRecent,
   resetLadder,
   resetProfile,
   setTutorialDone,
@@ -42,6 +56,8 @@ import { BattleView, HumanPlanSource, type BattleOptions } from './ui/battle';
 import { cardHtml, describeCard, passiveHtml } from './ui/card';
 import { emblemHtml, portraitHtml } from './ui/emblems';
 import { retrigger } from './ui/fx';
+import { renderSummary } from './ui/matchSummary';
+import { gameUrl, replayCodeFromHash, replayUrl, shareOrCopy, type ShareResult } from './ui/share';
 import { bindSettings, settingsHtml } from './ui/settingsPanel';
 import { applySkin, themeColor } from './ui/skin';
 import { toast } from './ui/toast';
@@ -429,9 +445,12 @@ interface BattleSetup {
   options?: BattleOptions;
   /** Tournament fighter or daily date, kept with a saved match. */
   context?: string | null;
+  /** Daily rule twist id (kept in the replay). */
+  modifierId?: string;
   /** Continue this saved match instead of starting fresh. */
   resume?: SavedMatch;
-  onEnd: (outcome: MatchOutcome, log: MatchLog) => void;
+  /** `recap` is null in the tutorial (or if the match couldn't be recorded). */
+  onEnd: (outcome: MatchOutcome, log: MatchLog, recap: Recap | null) => void;
   onQuit?: () => void;
 }
 
@@ -467,10 +486,11 @@ function runBattle(setup: BattleSetup): void {
         { name: setup.names[0], source: human },
         { name: setup.names[1], source: opponent },
       ],
-      (outcome, _state, log) => {
+      (outcome, state, log) => {
         clearSavedMatch();
+        const recap = setup.mode === 'tutorial' ? null : recordReplay(setup, state, log, outcome);
         // The mode's own handler runs first (it may record a ladder win or daily result).
-        setup.onEnd(outcome, log);
+        setup.onEnd(outcome, log, recap);
         recordMatch({ mode: setup.mode, fighterId: setup.p0.fighterId, outcome, log });
         const fresh = unlockAchievements({ mode: setup.mode, difficulty: setup.difficulty, outcome, log });
         fresh.forEach((a, i) =>
@@ -491,6 +511,36 @@ function runBattle(setup: BattleSetup): void {
       },
     );
   });
+}
+
+/** Everything the result screen needs for the match summary, replay and share buttons. */
+interface Recap {
+  replay: Replay;
+  code: string;
+  stats: MatchStats;
+  names: [string, string];
+}
+
+/**
+ * Keep the finished match as a replay (in Recent matches) and work out its summary. The replay
+ * is checked by re-running it; if it somehow doesn't end the same way, it isn't kept.
+ */
+function recordReplay(setup: BattleSetup, state: MatchState, log: MatchLog, outcome: MatchOutcome): Recap | null {
+  try {
+    const replay = replayFromMatch(state, log, {
+      mode: setup.mode as ReplayMode,
+      difficulty: setup.difficulty,
+      modifier: setup.modifierId ?? null,
+      date: setup.mode === 'daily' ? (setup.context ?? null) : null,
+    });
+    const check = runReplay(replay);
+    if (!check || JSON.stringify(check.outcome) !== JSON.stringify(outcome)) return null;
+    const code = encodeReplay(replay);
+    recordRecent(code);
+    return { replay, code, stats: matchStats(replayStart(replay), log), names: setup.names };
+  } catch {
+    return null;
+  }
 }
 
 /** Pick a saved match back up in the mode it was played in. */
@@ -539,13 +589,13 @@ function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string, resume?: Save
     names,
     arenaId,
     difficulty: mode === 'cpu' ? difficulty : null,
-    onEnd: (outcome) => {
+    onEnd: (outcome, _log, recap) => {
       const celebrate = outcome.winner === 0 || (mode === 'hotseat' && outcome.winner !== null);
       if (celebrate) play('win');
       resultScreen(outcomeText(outcome, names), outcome.winner, [a, b], [
         { label: STRINGS.rematch, primary: true, fn: () => startMatch(mode, a, b) },
         { label: STRINGS.menu, fn: title },
-      ], '', celebrate);
+      ], '', celebrate, recap);
     },
   });
 }
@@ -574,25 +624,217 @@ function outcomeText(outcome: MatchOutcome, names: [string, string]): string {
   return outcome.winner === null ? STRINGS.draw : STRINGS.wins(names[outcome.winner]);
 }
 
+type ResultButton = { label: string; primary?: boolean; fn: () => void };
+
+/**
+ * The end of a match: both fighters, the outcome and the mode's buttons, then (when the match was
+ * recorded) the match summary with Watch replay and Share buttons.
+ */
 function resultScreen(
   heading: string,
   winner: Seat | null,
   fighters: [string, string],
-  buttons: { label: string; primary?: boolean; fn: () => void }[],
+  buttons: ResultButton[],
   extra = '',
   celebrate = false,
+  recap: Recap | null = null,
+  /** Extra summary actions (e.g. the daily challenge's Share result). */
+  more: ResultButton[] = [],
+  /** Add Watch replay and Share replay next to the summary title (off when `buttons` has them). */
+  replayButtons = true,
 ): void {
   const fx = fighters
     .map((id, i) => `<div class="result-fighter${winner === i ? ' won' : winner === null ? '' : ' lost'}">${portraitHtml(getFighter(id))}</div>`)
     .join('<span class="vs">vs</span>');
+  const again = () => resultScreen(heading, winner, fighters, buttons, extra, false, recap, more, replayButtons);
+  const actions: ResultButton[] =
+    recap && replayButtons
+      ? [
+          ...more,
+          { label: STRINGS.replays.watch, fn: () => watchReplay(recap.code, again) },
+          { label: STRINGS.replays.share, fn: () => void shareReplay(recap.code) },
+        ]
+      : more;
+  const btn = (b: ResultButton, key: string) => `<button class="btn${b.primary ? ' primary' : ''}" data-${key}>${b.label}</button>`;
   const root = screen(
     `<div class="result-row">${fx}</div>
      <h2>${heading}</h2>${extra}
-     <div class="row">${buttons.map((b, i) => `<button class="btn${b.primary ? ' primary' : ''}" data-i="${i}">${b.label}</button>`).join('')}</div>`,
+     <div class="row">${buttons.map((b, i) => btn(b, `i="${i}"`)).join('')}</div>
+     ${
+       recap
+         ? `<section class="match-summary">
+              <div class="summary-head"><h3>${STRINGS.summary.title}</h3>
+                ${actions.length ? `<div class="row">${actions.map((b, i) => btn(b, `a="${i}"`)).join('')}</div>` : ''}</div>
+              <div class="summary-body"></div>
+            </section>`
+         : ''
+     }`,
     'result',
   );
+  if (recap) renderSummary(root.querySelector('.summary-body')!, { stats: recap.stats, names: recap.names, fighters });
   if (celebrate) confetti(root, winner === null ? themeColor('--accent') : getFighter(fighters[winner]).color);
   on(root, '[data-i]', (el) => buttons[Number(el.dataset.i)].fn());
+  on(root, '[data-a]', (el) => actions[Number(el.dataset.a)].fn());
+}
+
+// ---------- replays ----------
+
+/** Seat names as the match showed them. */
+function replayNames(r: Replay): [string, string] {
+  const p1 = STRINGS.player(1);
+  if (r.mode === 'hotseat') return [p1, STRINGS.player(2)];
+  if (r.mode === 'cpu') return [p1, STRINGS.cpu];
+  return [p1, getFighter(r.fighters[1]).name];
+}
+
+function replayTag(r: Replay): string {
+  const mod = r.modifier ? MODIFIERS.find((m) => m.id === r.modifier)?.name : null;
+  return mod ? `${STRINGS.replays.tag} · ${mod}` : STRINGS.replays.tag;
+}
+
+function replayInvalid(back: () => void): void {
+  back();
+  modal(`<h2>${STRINGS.replays.invalidTitle}</h2><p>${STRINGS.replays.invalid}</p>`);
+}
+
+/** Show the outcome of a share: a toast when copied, or the text to copy by hand. */
+function afterShare(res: ShareResult, full: string): void {
+  if (res === 'copied') return toast('✓', STRINGS.replays.copied, STRINGS.replays.copiedHint);
+  if (res !== 'failed') return;
+  modal(`<h2>${STRINGS.replays.copyTitle}</h2><textarea class="share-text" readonly rows="5"></textarea>`, (box) => {
+    const area = box.querySelector('textarea')!;
+    area.value = full;
+    area.focus();
+    area.select();
+  });
+}
+
+async function shareReplay(code: string): Promise<void> {
+  const r = decodeReplay(code);
+  if (!r) return;
+  const text = STRINGS.replays.shareText(getFighter(r.fighters[0]).name, getFighter(r.fighters[1]).name);
+  const url = replayUrl(code);
+  afterShare(await shareOrCopy({ title: STRINGS.replays.shareTitle, text, url }), `${text}\n${url}`);
+}
+
+/**
+ * Watch a replay on the battle screen with playback controls. Skipping to another round starts a
+ * fresh view at that round's start. `after` runs when the viewer exits or the replay ends.
+ */
+function watchReplay(code: string, after: () => void): void {
+  const r = decodeReplay(code);
+  const run = r && runReplay(r);
+  if (!r || !run) return replayInvalid(after);
+  const names = replayNames(r);
+  const ctl = { speed: 1, paused: false };
+  let view: BattleView | null = null;
+  let container: HTMLElement;
+  const leave = () => {
+    view?.destroy();
+    view = null;
+    after();
+  };
+  const open = (round: number) => {
+    view?.destroy();
+    if (round > r.rounds.length) return leave();
+    const k = round - 1;
+    const source = new ReplayPlanSource(r.rounds);
+    view = new BattleView(
+      container,
+      structuredClone(run.states[k]),
+      [
+        { name: names[0], source },
+        { name: names[1], source },
+      ],
+      () => {
+        view = null;
+        after();
+      },
+      leave,
+      {
+        tag: replayTag(r),
+        resume: { lastPlans: k ? run.log.rounds[k - 1].plans : null, log: { rounds: run.log.rounds.slice(0, k) } },
+        replay: {
+          rounds: r.rounds.length,
+          speed: ctl.speed,
+          paused: ctl.paused,
+          onChange: (speed, paused) => Object.assign(ctl, { speed, paused }),
+          seek: open,
+          exit: leave,
+        },
+      },
+    );
+  };
+  void versusSplash(r.fighters[0], r.fighters[1], names).then(() => {
+    container = screen('', 'battle-screen');
+    open(1);
+  });
+}
+
+/** A recorded match: outcome, summary and Watch / Share buttons. */
+function replayScreen(code: string, back: () => void): void {
+  const r = decodeReplay(code);
+  const run = r && runReplay(r);
+  if (!r || !run) return replayInvalid(back);
+  const names = replayNames(r);
+  const recap: Recap = { replay: r, code, stats: matchStats(run.states[0], run.log), names };
+  const self = () => replayScreen(code, back);
+  const meta = [STRINGS.replays.modeNames[r.mode], getArena(r.arena).name, r.date].filter(Boolean).join(' · ');
+  resultScreen(
+    outcomeText(run.outcome, names),
+    run.outcome.winner,
+    r.fighters,
+    [
+      { label: STRINGS.replays.watch, primary: true, fn: () => watchReplay(code, self) },
+      { label: STRINGS.replays.share, fn: () => void shareReplay(code) },
+      { label: STRINGS.back, fn: back },
+    ],
+    `<p class="note">${meta}</p>${r.stale ? `<p class="note warn">${STRINGS.replays.stale}</p>` : ''}`,
+    false,
+    recap,
+    [],
+    false,
+  );
+}
+
+/** Opened from a #replay= link: who played where, without giving away the result. */
+function sharedReplay(code: string): void {
+  const r = decodeReplay(code);
+  if (!r || !runReplay(r)) return replayInvalid(title);
+  const names = replayNames(r);
+  const side = (i: number) => {
+    const f = getFighter(r.fighters[i]);
+    return `<div style="--clr:${f.color}">${portraitHtml(f)}<b>${f.name}</b><span>${names[i] === f.name ? '&nbsp;' : names[i]}</span></div>`;
+  };
+  const arena = getArena(r.arena);
+  const mod = r.modifier ? MODIFIERS.find((m) => m.id === r.modifier) : null;
+  const self = () => sharedReplay(code);
+  const root = screen(
+    `<h2>${STRINGS.replays.sharedTitle}</h2>
+     <p class="note">${STRINGS.replays.sharedHint}</p>
+     <div class="daily-vs">${side(0)}<span class="vs">vs</span>${side(1)}</div>
+     ${mod ? `<div class="daily-rule"><small>${STRINGS.replays.rule}</small><b>${mod.name}</b><span>${mod.text}</span></div>` : ''}
+     <div class="daily-rule arena">${arenaMiniHtml(arena)}<div><small>${STRINGS.arena}</small><b>${arena.name}</b><span>${arena.text}</span></div></div>
+     ${r.stale ? `<p class="note warn">${STRINGS.replays.stale}</p>` : ''}
+     <div class="row">
+       <button class="btn primary" data-act="watch">${STRINGS.replays.watch}</button>
+       <button class="btn" data-act="result">${STRINGS.replays.showResult}</button>
+       <button class="btn ghost-btn" data-act="menu">${STRINGS.menu}</button>
+     </div>`,
+    'daily',
+  );
+  on(root, '[data-act="watch"]', () => watchReplay(code, () => replayScreen(code, self)));
+  on(root, '[data-act="result"]', () => replayScreen(code, self));
+  on(root, '[data-act="menu"]', title);
+}
+
+/** Open a #replay= link (on start, or pasted while the game is open). */
+function openReplayLink(): boolean {
+  const code = replayCodeFromHash();
+  if (!code) return false;
+  history.replaceState(null, '', `${location.pathname}${location.search}`);
+  sharedReplay(code);
+  return true;
 }
 
 // ---------- tournament ----------
@@ -645,12 +887,12 @@ function tournamentMatch(fighterId: string, resume?: SavedMatch): void {
     names,
     difficulty,
     onQuit: () => tournamentHub(fighterId),
-    onEnd: (outcome) => {
+    onEnd: (outcome, _log, recap) => {
       if (outcome.winner !== 0) {
         resultScreen(outcomeText(outcome, names), outcome.winner, [fighterId, rival], [
           { label: STRINGS.retry, primary: true, fn: () => tournamentMatch(fighterId) },
           { label: STRINGS.menu, fn: () => tournamentHub(fighterId) },
-        ]);
+        ], '', false, recap);
         return;
       }
       play('win');
@@ -663,7 +905,7 @@ function tournamentMatch(fighterId: string, resume?: SavedMatch): void {
           : '');
       resultScreen(outcomeText(outcome, names), 0, [fighterId, rival], [
         { label: STRINGS.continue, primary: true, fn: () => tournamentHub(fighterId) },
-      ], extra, true);
+      ], extra, true, recap);
     },
   });
 }
@@ -711,23 +953,70 @@ function dailyMatch(date: string, resume?: SavedMatch): void {
     names,
     difficulty: 'hard',
     modifier: c.modifier.modifier,
+    modifierId: c.modifier.id,
     arenaId: c.arena,
     options: { tag: c.modifier.name },
     onQuit: dailyScreen,
-    onEnd: (outcome) => {
+    onEnd: (outcome, _log, recap) => {
       const won = outcome.winner === 0;
       recordDaily(won ? 'win' : outcome.winner === null ? 'draw' : 'loss', date);
       if (won) play('win');
       const extra = `<p>${STRINGS.daily.streak(dailyStreak(), profile().daily.best)}</p>`;
+      const share = recap ? [{ label: STRINGS.daily.share, fn: () => void shareDaily(date, outcome, recap.stats) }] : [];
       resultScreen(outcomeText(outcome, names), outcome.winner, [c.fighter, c.rival], [
         won ? { label: STRINGS.menu, primary: true, fn: title } : { label: STRINGS.retry, primary: true, fn: () => dailyMatch(date) },
         { label: STRINGS.daily.title, fn: dailyScreen },
-      ], extra, won);
+      ], extra, won, recap, share);
     },
   });
 }
 
+/** The daily result as text with one square per round (no spoilers beyond the outcome). */
+async function shareDaily(date: string, outcome: MatchOutcome, stats: MatchStats): Promise<void> {
+  const c = dailyChallenge(date);
+  const D = STRINGS.daily;
+  const result = outcome.winner === 0 ? D.won(stats.rounds) : outcome.winner === null ? D.drew(stats.rounds) : D.lost(stats.rounds);
+  const matchup = `${getFighter(c.fighter).name} vs ${getFighter(c.rival).name} · ${c.modifier.name}`;
+  const text = D.shareText(date, matchup, tradeRow(stats.trades), result, dailyStreak());
+  const url = gameUrl();
+  afterShare(await shareOrCopy({ title: D.shareTitle, text, url }), `${text}\n${url}`);
+}
+
 // ---------- profile ----------
+
+/** "Today 14:05", "Yesterday 09:12" or a short date. */
+function whenText(at: number): string {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(d)) / 86400000);
+  if (diff === 0) return `${STRINGS.replays.today} ${time}`;
+  if (diff === 1) return `${STRINGS.replays.yesterday} ${time}`;
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function recentHtml(): string {
+  const R = STRINGS.replays;
+  const rows = recentMatches()
+    .map((m, i) => {
+      const r = decodeReplay(m.code);
+      const run = r && runReplay(r);
+      if (!r || !run) return '';
+      const [fa, fb] = r.fighters.map(getFighter);
+      const w = run.outcome.winner;
+      const result = r.mode === 'hotseat' ? (w === null ? R.result.draw : R.wonBy(replayNames(r)[w])) : R.result[w === null ? 'draw' : w === 0 ? 'win' : 'loss'];
+      const cls = r.mode === 'hotseat' || w === null ? 'draw' : w === 0 ? 'win' : 'loss';
+      return `<li class="recent-row ${cls}" data-recent="${i}">
+          <span class="recent-vs">${emblemHtml(fa, 'hud-emblem')}${emblemHtml(fb, 'hud-emblem')}</span>
+          <span class="recent-text"><b>${result} · ${fa.name} vs ${fb.name}</b>
+            <span>${R.modeNames[r.mode]} · ${R.roundsN(r.rounds.length)} · ${whenText(m.at)}</span></span>
+          <button class="btn icon-ctl" data-watch="${i}" aria-label="${R.watchShort}" title="${R.watchShort}">▶\uFE0E</button>
+          <button class="btn icon-ctl" data-share="${i}" aria-label="${R.shareShort}" title="${R.shareShort}">↗</button>
+        </li>`;
+    })
+    .join('');
+  return rows ? `<ul class="recent-list">${rows}</ul>` : `<p class="note">${R.noRecent}</p>`;
+}
 
 function profileScreen(): void {
   const p = profile();
@@ -761,6 +1050,8 @@ function profileScreen(): void {
        ${stat(P.damage, s.damageDealt)}
        ${stat(P.favourite, fav ? getCard(fav).name : P.none)}
      </div>
+     <h3>${STRINGS.replays.recent}</h3>
+     ${recentHtml()}
      <h3>${P.fighters}</h3>
      <ul class="fighter-records">${fighters}</ul>
      <h3>${P.achievements(unlocked, ACHIEVEMENTS.length)}</h3>
@@ -778,6 +1069,17 @@ function profileScreen(): void {
     if (!confirm(P.resetConfirm)) return;
     resetProfile();
     profileScreen();
+  });
+  const recent = recentMatches();
+  root.querySelector('.recent-list')?.addEventListener('click', (e) => {
+    const t = e.target as HTMLElement;
+    const row = t.closest<HTMLElement>('[data-recent]');
+    if (!row) return;
+    play('click');
+    const code = recent[Number(row.dataset.recent)].code;
+    if (t.closest('[data-watch]')) return watchReplay(code, profileScreen);
+    if (t.closest('[data-share]')) return void shareReplay(code);
+    replayScreen(code, profileScreen);
   });
 }
 
@@ -797,4 +1099,5 @@ function showUpdate(apply: () => void): void {
 applySkin();
 applyEffectsClass();
 registerServiceWorker(showUpdate);
-title();
+if (!openReplayLink()) title();
+window.addEventListener('hashchange', () => void openReplayLink());

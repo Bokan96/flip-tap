@@ -4,8 +4,12 @@ A small two-player **simultaneous-planning card battle** for the browser. Each r
 secretly plan three cards (move, guard, focus, attack, …). The cards are then revealed and resolved
 step by step on a 3×5 grid. Dodge, predict, and land your attacks.
 
-Modes: **Tournament** (beat 5 rivals, earn bonus cards), **Versus CPU** (4 difficulties, up to an Expert that learns your habits) and
-**Hot-seat** (two players on one device). Full rules: [docs/RULES.md](docs/RULES.md).
+Modes: **Tournament** (beat 5 rivals, earn bonus cards), **Versus CPU** (4 difficulties, up to an Expert that learns your habits),
+**Hot-seat** (two players on one device) and a **Daily challenge**. Full rules: [docs/RULES.md](docs/RULES.md).
+
+After every match there is a summary (life over the rounds, damage per card, biggest hit, best dodge)
+and a replay. The last 10 matches stay in Profile → Recent matches, and any of them can be shared as a
+`#replay=` link that plays the match back in the receiver's browser.
 
 ## Develop
 
@@ -50,7 +54,11 @@ src/engine/   pure, deterministic rules (no DOM)
                 the round as a small game); runs in a Web Worker (aiWorker.ts)
   playerModel.ts  the Expert CPU's model of your habits
   setup.ts      match creation
-src/net/      PlanSource abstraction (human / CPU / future remote peer)
+src/net/      PlanSource abstraction (human / CPU / replay / future remote peer)
+src/meta/     profile, stats, achievements, daily challenge, saved match
+  replay.ts     match ⇄ short URL-safe code (fighters, bonus cards, arena, rule, plans as deck
+                indices); replaying re-runs the plans through the engine
+  matchStats.ts the post-match summary numbers
 src/ui/       DOM rendering, planner, reveal animation
 src/tournament.ts   single-player ladder + localStorage progress
 ```
