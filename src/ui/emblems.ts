@@ -33,8 +33,11 @@ export function portraitHtml(f: FighterDef, cls = 'emblem'): string {
   return picture(f, art.portrait ?? art.emblem, cls);
 }
 
-/** Picture inside the board token (token, else emblem, else vector). */
+/**
+ * Picture inside the board token: only an explicit `token` image from a reskin. By default the
+ * pieces are plain diamonds in the player's colour (no fighter emblem on the board).
+ */
 export function tokenArtHtml(f: FighterDef): string {
-  const art = fighterArt(f.id);
-  return picture(f, art.token ?? art.emblem, 'token-art');
+  const token = fighterArt(f.id).token;
+  return token ? picture(f, token, 'token-art') : '';
 }

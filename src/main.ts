@@ -37,6 +37,7 @@ import { installMode, onInstallChange, promptInstall, registerServiceWorker } fr
 import { applyEffectsClass, fullEffects } from './settings';
 import { currentRival, rivalBonus, rivalsFor } from './tournament';
 import { createTutorialMatch, ScriptedPlanSource, TUTORIAL, tutorialHooks } from './tutorial';
+import { arenaMiniHtml } from './ui/arenaPreview';
 import { BattleView, HumanPlanSource, type BattleOptions } from './ui/battle';
 import { cardHtml, describeCard, passiveHtml } from './ui/card';
 import { emblemHtml, portraitHtml } from './ui/emblems';
@@ -191,10 +192,11 @@ function difficultyPicker(): string {
   ).join('')}</div><p class="note diff-note">${STRINGS.difficultyHints[difficulty]}</p>`;
 }
 
+/** Arena choices, each with a small drawing of the board. */
 function arenaPicker(): string {
-  return `<div class="difficulty arena-pick"><span>${STRINGS.arena}:</span>${ARENAS.map(
-    (a) => `<button class="chip${a.id === arenaId ? ' on' : ''}" data-arena="${a.id}" title="${a.text}">${a.name}</button>`,
-  ).join('')}</div><p class="note arena-note">${getArena(arenaId).text}</p>`;
+  return `<div class="arena-pick"><span class="arena-pick-label">${STRINGS.arena}:</span><div class="arena-opts">${ARENAS.map(
+    (a) => `<button class="arena-opt${a.id === arenaId ? ' on' : ''}" data-arena="${a.id}" title="${a.text}">${arenaMiniHtml(a)}<b>${a.name}</b></button>`,
+  ).join('')}</div></div><p class="note arena-note">${getArena(arenaId).text}</p>`;
 }
 
 function bindArena(root: HTMLElement): void {
@@ -683,7 +685,7 @@ function dailyScreen(): void {
        <div style="--clr:${r.color}">${portraitHtml(r)}<b>${r.name}</b><span>${STRINGS.daily.hardCpu}</span></div>
      </div>
      <div class="daily-rule"><small>${STRINGS.daily.rule}</small><b>${c.modifier.name}</b><span>${c.modifier.text}</span></div>
-     <div class="daily-rule arena"><small>${STRINGS.arena}</small><b>${getArena(c.arena).name}</b><span>${getArena(c.arena).text}</span></div>
+     <div class="daily-rule arena">${arenaMiniHtml(getArena(c.arena))}<div><small>${STRINGS.arena}</small><b>${getArena(c.arena).name}</b><span>${getArena(c.arena).text}</span></div></div>
      <p>${STRINGS.daily.streak(dailyStreak(), d.best)}</p>
      ${beaten ? `<p class="champion-line">✓ ${STRINGS.daily.done}</p>` : ''}
      <div class="row">

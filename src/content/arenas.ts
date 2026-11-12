@@ -19,27 +19,27 @@ export interface ArenaDef {
 }
 
 export const ARENAS: ArenaDef[] = [
-  { id: 'classic', name: 'Classic', text: 'The original 3×4 board.', rows: 3, cols: 4, start: [[1, 0], [1, 3]] },
-  { id: 'hall', name: 'Long Hall', text: 'A wider board: more room to dodge.', rows: 3, cols: 5, start: [[1, 0], [1, 4]] },
+  { id: 'classic', name: 'Classic', text: 'The standard 3×5 board.', rows: 3, cols: 5, start: [[1, 0], [1, 4]] },
+  { id: 'quarters', name: 'Close Quarters', text: 'The old 3×4 board: less room, faster fights.', rows: 3, cols: 4, start: [[1, 0], [1, 3]] },
   {
     id: 'pillars',
     name: 'Pillars',
     text: 'Two stone pillars block movement and stop pushes.',
     rows: 3,
-    cols: 4,
-    start: [[1, 0], [1, 3]],
-    blocked: [[0, 1], [2, 2]],
+    cols: 5,
+    start: [[1, 0], [1, 4]],
+    blocked: [[0, 1], [2, 3]],
   },
   {
     id: 'springs',
     name: 'Hot Springs',
     text: 'Ending a step on a spring restores energy.',
     rows: 3,
-    cols: 4,
-    start: [[1, 0], [1, 3]],
+    cols: 5,
+    start: [[1, 0], [1, 4]],
     tiles: [
       { at: [0, 2], kind: 'well' },
-      { at: [2, 1], kind: 'well' },
+      { at: [2, 2], kind: 'well' },
     ],
   },
   {
@@ -47,11 +47,12 @@ export const ARENAS: ArenaDef[] = [
     name: 'Thorn Garden',
     text: 'Thorns in the middle lane hurt whoever stops on them.',
     rows: 3,
-    cols: 4,
-    start: [[1, 0], [1, 3]],
+    cols: 5,
+    start: [[1, 0], [1, 4]],
     tiles: [
       { at: [1, 1], kind: 'spikes' },
       { at: [1, 2], kind: 'spikes' },
+      { at: [1, 3], kind: 'spikes' },
     ],
   },
   {

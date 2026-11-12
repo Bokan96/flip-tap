@@ -13,7 +13,7 @@ const match = (a = 'cinder', b = 'marin', bonusA: string[] = [], bonusB: string[
   createMatch({ fighterId: a, bonusCards: bonusA }, { fighterId: b, bonusCards: bonusB });
 
 const IDLE: Plan = ['guard', 'up', 'down'];
-const CLASSIC = arenaState('classic');
+const CLASSIC = arenaState('quarters');
 
 describe('content', () => {
   it('every fighter signature card exists and patterns are 3x3', () => {
@@ -32,8 +32,9 @@ describe('setup', () => {
   it('starts both fighters full at opposite ends', () => {
     const s = match();
     expect(s.players[0].pos).toEqual({ r: 1, c: 0 });
-    expect(s.players[1].pos).toEqual({ r: 1, c: 3 });
+    expect(s.players[1].pos).toEqual({ r: 1, c: 4 });
     expect(s.arena.id).toBe('classic');
+    expect([s.arena.rows, s.arena.cols]).toEqual([3, 5]);
     expect(s.players[0].life).toBe(100);
     expect(s.players[1].energy).toBe(100);
     expect(s.players[0].facing).toBe(1);

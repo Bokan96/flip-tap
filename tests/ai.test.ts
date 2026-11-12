@@ -132,16 +132,20 @@ describe('CPU', () => {
     const rng = new Rng(21);
     let expert = 0;
     let hard = 0;
-    for (let g = 0; g < 8; g++) {
+    // Each pairing is played twice with the CPUs swapping sides (same fighters, same seats, same seed),
+    // so a lopsided matchup or seat cancels out and only the play differs.
+    for (let g = 0; g < 6; g++) {
       const fighters = [rng.pick(FIGHTERS).id, rng.pick(FIGHTERS).id];
-      const flip = g % 2 === 1; // Expert takes both seats in turn
-      const rec = runMatch(
-        { fighterId: fighters[0] },
-        { fighterId: fighters[1] },
-        { profiles: flip ? [PROFILES.hard, PROFILES.expert] : [PROFILES.expert, PROFILES.hard], seed: rng.int(2 ** 31) },
-      );
-      const w = rec.outcome.winner;
-      if (w !== null) (w === (flip ? 1 : 0) ? expert++ : hard++);
+      const seed = rng.int(2 ** 31);
+      for (const expertSeat of [0, 1]) {
+        const rec = runMatch(
+          { fighterId: fighters[0] },
+          { fighterId: fighters[1] },
+          { profiles: expertSeat === 0 ? [PROFILES.expert, PROFILES.hard] : [PROFILES.hard, PROFILES.expert], seed },
+        );
+        const w = rec.outcome.winner;
+        if (w !== null) (w === expertSeat ? expert++ : hard++);
+      }
     }
     expect(expert).toBeGreaterThan(hard);
   }, 120_000);

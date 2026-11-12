@@ -1,15 +1,18 @@
 import { ASSETS, assetUrl } from '../content/assets';
-import { getCard } from '../content/cards';
+import { BASIC_CARD_IDS, getCard } from '../content/cards';
 import { STRINGS } from '../content/strings';
 import type { FighterDef } from '../engine/types';
 
 export type CardGroup = 'move' | 'attack' | 'special';
 const GROUP_ORDER: CardGroup[] = ['move', 'attack', 'special'];
+/** Rows shorter than this are padded with empty spots so the columns line up. */
 const GROUP_SIZE = 4;
 
+/** Which hand row a card goes in. Only the four basic steps are "Move"; special moves join "Special". */
 export function cardGroup(id: string): CardGroup {
   const kind = getCard(id).kind;
-  return kind === 'move' ? 'move' : kind === 'attack' || kind === 'trap' ? 'attack' : 'special';
+  if (kind === 'move') return BASIC_CARD_IDS.includes(id) ? 'move' : 'special';
+  return kind === 'attack' || kind === 'trap' ? 'attack' : 'special';
 }
 
 function attackGrid(pattern: [string, string, string], facing: 1 | -1, cls = 'on'): string {
@@ -144,14 +147,23 @@ export function passiveHtml(f: FighterDef): string {
   return `<p class="passive"><b>${STRINGS.passive}: ${f.passive.name}</b> ${f.passive.text}</p>`;
 }
 
-/** Cards laid out in labelled rows of 4: movement, attacks, specials. */
+/** The longest hand row for this deck (at least 4): cards shrink so that many fit across. */
+export function handRowLength(ids: string[]): number {
+  const n: Record<CardGroup, number> = { move: 0, attack: 0, special: 0 };
+  for (const id of ids) n[cardGroup(id)]++;
+  return Math.max(GROUP_SIZE, n.move, n.attack, n.special);
+}
+
+/**
+ * Cards in exactly three labelled rows (movement, attacks, specials) that never wrap. The container
+ * should get `--row-n: handRowLength(ids)` so long rows shrink their cards instead of wrapping.
+ */
 export function groupedCardsHtml(ids: string[], render: (id: string) => string): string {
   const groups: Record<CardGroup, string[]> = { move: [], attack: [], special: [] };
   for (const id of ids) groups[cardGroup(id)].push(id);
   return GROUP_ORDER.map((g) => {
     const cards = groups[g].map(render);
-    const pad = Math.max(GROUP_SIZE, Math.ceil(cards.length / GROUP_SIZE) * GROUP_SIZE) - cards.length;
-    for (let i = 0; i < pad; i++) cards.push('<span class="card placeholder"></span>');
+    while (cards.length < GROUP_SIZE) cards.push('<span class="card placeholder"></span>');
     return `<div class="group g-${g}"><span class="group-label">${STRINGS.groupNames[g]}</span><div class="group-cards">${cards.join('')}</div></div>`;
   }).join('');
 }

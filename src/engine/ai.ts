@@ -79,7 +79,7 @@ export const PROFILES: Record<Difficulty, AiProfile> = {
     temperature: 1.5,
     caution: 0.3,
     weights: FULL,
-    solve: { candidates: 24, exploit: 0.6, predict: 0.6, predictTemperature: 3 },
+    solve: { candidates: 32, exploit: 0.6, predict: 0.6, predictTemperature: 3 },
     readPlayer: 0.6,
     personality: true,
   },

@@ -90,13 +90,13 @@ export const ASSETS: AssetOverrides = {
 |---|---|---|
 | `fighters[id].emblem` | HUD, ladder, lists, deck viewer, title row | square, transparent PNG/WebP/SVG, 256×256 |
 | `fighters[id].portrait` | fighter select, VS splash, result and daily screens | square, transparent, 512×512 |
-| `fighters[id].token` | inside the board token | square, transparent, 256×256, subject centred |
+| `fighters[id].token` | inside the board piece (without it the piece is a plain diamond in the player's colour) | square, transparent, 256×256, subject centred |
 | `cards[id]` | behind the card's grid (bottom is darkened) | 3:4, 240×320 WebP |
 | `logo` | title screen, replaces the text logo | wide transparent PNG/SVG, up to 920×360 |
 | `background` | whole page, fixed | 1920×1080 JPG/WebP, dark enough for text |
-| `board` | behind the squares | 4:3, 1200×900 |
+| `board` | behind the squares | 5:3, 1500×900 |
 | `tile` | every board square | square, 256×256, subtle |
-| `cardBack` | face-down cards on the reveal piles | 3:4, 240×320 |
+| `cardBack` | face-down cards during the reveal | 3:4, 240×320 |
 
 Without fighter art, the vector emblems in `src/ui/emblems.ts` are used (tinted with the fighter's
 `color`). You can also add new vector shapes there and point a fighter's `emblem` at them.

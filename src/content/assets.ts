@@ -18,7 +18,7 @@ export interface FighterArt {
   emblem?: string;
   /** Large picture: fighter select, VS splash, result and daily screens. Defaults to the emblem. */
   portrait?: string;
-  /** Picture inside the board token. Defaults to the emblem. */
+  /** Picture inside the board piece. Without it the piece is a plain diamond in the player's colour. */
   token?: string;
 }
 
@@ -35,7 +35,7 @@ export interface AssetOverrides {
   board?: string;
   /** Each board square. */
   tile?: string;
-  /** Back of face-down cards on the reveal piles. */
+  /** Back of face-down cards during the reveal. */
   cardBack?: string;
   sounds: Partial<Record<SoundId, string>>;
   /** Looping background tracks. Without them the built-in synthesized loops play. */

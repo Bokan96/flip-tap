@@ -134,15 +134,17 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .vs { color: var(--muted); font-weight: 800; text-transform: uppercase; font-size: .8rem; }
 
 /* ---------- cards ---------- */
+/* Every card scales from one width, --cw (set per context): height, text and grid cells follow it. */
 .hand { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .card {
-  --cell: 13px;
-  position: relative; width: 84px; height: 112px; padding: 20px 4px 6px;
+  --w: var(--cw, 84px); --cell: calc(var(--w) * .155);
+  position: relative; flex: none; width: var(--w); height: calc(var(--w) * 1.28); padding: 2em .35em .55em; font-size: calc(var(--w) * .119);
   border-radius: var(--radius); border: 1px solid var(--line-hi); background: linear-gradient(165deg, var(--card-a), var(--card-b));
   display: flex; flex-direction: column; align-items: center; justify-content: space-between; cursor: pointer;
   transition: transform .12s, border-color .12s, opacity .12s; user-select: none; -webkit-tap-highlight-color: transparent;
-  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  clip-path: polygon(0 0, calc(100% - 1.2em) 0, 100% 1.2em, 100% 100%, 0 100%);
 }
+.card.small { --cw: 70px; }
 .card:hover:not(.disabled):not(.readonly) { transform: translateY(-4px); border-color: var(--accent); }
 .card.disabled { opacity: .3; cursor: not-allowed; }
 .card.selected { opacity: .18; }
@@ -153,22 +155,23 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .card.kind-focus, .card.kind-heal { background: linear-gradient(165deg, var(--card-focus-a), var(--card-focus-b)); }
 .card.placeholder { border-style: dashed; border-color: var(--line); background: transparent; cursor: default; opacity: .45; }
 .card .cost {
-  position: absolute; top: 0; left: 0; min-width: 24px; height: 20px; padding: 0 5px;
-  font-size: .74rem; font-weight: 800; display: grid; place-items: center;
-  clip-path: polygon(0 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
+  position: absolute; top: 0; left: 0; min-width: 2.05em; height: 1.7em; padding: 0 .42em;
+  font-size: 1.18em; font-weight: 800; display: grid; place-items: center;
+  clip-path: polygon(0 0, 100% 0, calc(100% - .5em) 100%, 0 100%);
 }
 .card .cost.spend { background: var(--energy); color: var(--on-accent); }
 .card .cost.gain { background: var(--life); color: var(--on-life); }
 .card .cost.free { background: var(--card-free); }
-.card .name { font-size: .7rem; font-weight: 700; line-height: 1.1; text-transform: uppercase; letter-spacing: .02em; }
-.card .stat { font-size: .7rem; font-weight: 800; }
+.card .name { font-size: max(6.5px, 1.12em); font-weight: 700; line-height: 1.1; text-transform: uppercase; letter-spacing: .02em; }
+.card .stat { font-size: max(6.5px, 1.12em); font-weight: 800; }
 .card .stat.dmg { color: var(--fx-hit); }
 .card .stat.grd { color: var(--fx-guard); }
 .card .stat.heal { color: var(--life); }
 .card .art { flex: 1; display: grid; place-items: center; }
 .big-glyph { font-size: 1.9rem; line-height: 1; }
+.card .big-glyph { font-size: 3em; }
 
-.mini-grid { display: grid; grid-template-columns: repeat(var(--gc, 3), var(--cell)); gap: 2px; }
+.mini-grid { display: grid; grid-template-columns: repeat(var(--gc, 3), var(--cell)); gap: max(1px, calc(var(--cell) * .16)); }
 .mini-grid i { position: relative; width: var(--cell); height: var(--cell); background: rgba(255, 255, 255, .08); }
 .mini-grid.wide i { width: calc(var(--cell) * .72); height: var(--cell); }
 .mini-grid.wide { grid-template-columns: repeat(var(--gc), calc(var(--cell) * .72)); }
@@ -184,24 +187,117 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .mini-grid.face-r i.me::after { border-left: calc(var(--cell) * .45) solid #fff; }
 .mini-grid.face-l i.me::after { border-right: calc(var(--cell) * .45) solid #fff; transform: translate(-60%, -50%); }
 
-.card.small { --cell: 11px; width: 70px; height: 94px; padding-top: 18px; }
-.card.small .big-glyph { font-size: 1.5rem; }
-
-/* grouped hand: rows of 4 */
-.hand.grouped { flex-direction: column; align-items: center; gap: 6px; }
+/* grouped hand: always three labelled rows (move, attack, special) that never wrap; long rows get smaller cards */
+.hand.grouped { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: 6px; }
 .group { display: flex; align-items: center; gap: 8px; }
 .group-label {
-  width: 58px; text-align: right; font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
+  width: 58px; flex: none; text-align: right; font-size: .66rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
   border-right: 2px solid var(--line-hi); padding-right: 8px; align-self: stretch; display: flex; align-items: center; justify-content: flex-end;
 }
 .g-move .group-label { border-color: var(--move); }
 .g-attack .group-label { border-color: var(--attack); }
 .g-special .group-label { border-color: var(--special); }
-.group-cards { display: grid; grid-template-columns: repeat(4, auto); gap: 6px; }
+.group-cards { display: flex; gap: 6px; }
+/* The deck viewer: as many cards across as the longest row needs. */
+.modal .hand.grouped { align-self: center; }
+.modal .hand.grouped .card { --cw: min(84px, calc((min(560px, 100vw - 32px) - 32px - 70px) / var(--row-n, 4) - 6px)); }
 
-/* ---------- battle ---------- */
-.battle-screen { padding-top: 10px; gap: 10px; }
-.battle { width: 100%; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+/* ---------- battle: always fits the screen, never scrolls ---------- */
+/*
+ * The battle fills exactly the visible screen and every size comes from the space available:
+ * container units of .battle-screen, --hud-h (measured by battle.ts) and --row-n (the longest hand row).
+ *   Tall screens: HUD / [slots | board | preview] / planner.
+ *   Wide screens: HUD / [slots | board | preview | planner].
+ * During the reveal and the recap the board grows and both players' cards line up by step:
+ *   tall: two rows under the board; wide: a column on each side of the board;
+ *   short and wide (phones held sideways): a 2×3 grid beside the board.
+ */
+.battle-screen {
+  max-width: none; padding: 8px; gap: 0; overflow: hidden;
+  height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  container: screen / size;
+}
+.battle {
+  --gap: 8px; --W: 100cqw; --H: 100cqh;
+  /* tall layout */
+  --hand-cw: min(104px, calc((var(--W) - 46px) / var(--row-n, 4) - 6px), calc((var(--H) * .56 - 112px) / 3.84));
+  --plan-h: calc(var(--hand-cw) * 3.84 + 112px);
+  --row-h: calc(var(--H) - var(--hud-h, 60px) - var(--plan-h) - 2 * var(--gap));
+  --slot-cw: min(84px, calc(var(--W) * .16), calc((var(--row-h) - 10px) / 3.84));
+  --side-r: clamp(90px, 25cqw, 210px);
+  --prev-cw: min(124px, calc(var(--side-r) - 8px), calc(var(--row-h) * .55 / 1.28));
+  width: 100%; height: 100%; min-height: 0; display: grid; gap: var(--gap);
+  grid-template-columns: calc(var(--slot-cw) + 2px) minmax(0, 1fr) var(--side-r);
+  grid-template-rows: auto minmax(0, 1fr) var(--plan-h);
+  grid-template-areas: 'hud hud hud' 'slots board preview' 'panel panel panel';
+}
+.battle[data-mode="reveal"], .battle[data-mode="summary"] {
+  --bar-h: 72px;
+  --play-cw: min(124px, calc((var(--W) - 34px) / 3 / 1.16), calc((var(--H) - var(--hud-h, 60px) - var(--W) / var(--aspect) - var(--bar-h) - 4 * var(--gap) - 34px) / 2 / 1.28 / 1.1));
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto auto var(--bar-h);
+  grid-template-areas: 'hud' 'board' 'p0' 'p1' 'panel';
+}
+@media (min-aspect-ratio: 1/1) {
+  .battle {
+    --main-h: calc(var(--H) - var(--hud-h, 60px) - var(--gap));
+    /* no wider than the longest hand row needs at full card size: the rest goes to the board */
+    --panel-w: clamp(250px, calc(44cqw + (var(--row-n, 4) - 4) * 3cqw), calc(var(--row-n, 4) * 118px + 64px));
+    --hand-cw: min(112px, calc((var(--panel-w) - 46px) / var(--row-n, 4) - 6px), calc((var(--main-h) - 112px) / 3.84));
+    --slot-cw: min(96px, calc((var(--main-h) - 3 * 16px - 16px) / 3.84), calc(var(--W) * .09));
+    --side-r: clamp(84px, 12cqw, 210px);
+    --prev-cw: min(140px, calc(var(--side-r) - 8px), calc(var(--main-h) * .5 / 1.28));
+    grid-template-columns: calc(var(--slot-cw) + 4px) minmax(0, 1fr) var(--side-r) var(--panel-w);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: 'hud hud hud hud' 'slots board preview panel';
+  }
+  .battle[data-mode="reveal"], .battle[data-mode="summary"] {
+    --play-cw: min(150px, calc((var(--main-h) - 3 * 16px - 20px - 24px) / 3 / 1.28 / 1.1), calc(var(--W) * .13));
+    grid-template-columns: calc(var(--play-cw) * 1.16 + 24px) minmax(0, 1fr) calc(var(--play-cw) * 1.16 + 24px);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'hud hud hud' 'p0 board p1' 'p0 panel p1';
+  }
+}
+
+/* Short wide screens (phones held sideways): the hand gets the height (status and buttons share a row)
+   and during the reveal the cards sit in a 2×3 grid beside the board instead of two thin columns. */
+@media (min-aspect-ratio: 1/1) and (max-height: 500px) {
+  .battle {
+    --panel-w: clamp(250px, calc(46cqw + (var(--row-n, 4) - 4) * 3cqw), 560px);
+    --hand-cw: min(104px, calc((var(--panel-w) - 46px) / var(--row-n, 4) - 6px), calc((var(--main-h) - 64px) / 3.84));
+    --side-r: clamp(80px, 12cqw, 160px);
+  }
+  .battle[data-mode="reveal"], .battle[data-mode="summary"] {
+    --bar-h: 64px;
+    --play-cw: min(130px, calc((var(--main-h) - var(--bar-h) - 14px - 4 * var(--gap)) / 2 / 1.28 / 1.1), calc((var(--W) * .5 - 30px) / 3.4));
+    grid-template-columns: minmax(0, 1fr) calc(var(--play-cw) * 3.4 + 24px);
+    grid-template-rows: auto minmax(0, 1fr) auto auto var(--bar-h) minmax(0, 1fr);
+    grid-template-areas: 'hud hud' 'board .' 'board p0' 'board p1' 'board panel' 'board .';
+  }
+}
+
+.battle > .hud { grid-area: hud; }
+.battle > .slots { grid-area: slots; }
+.battle > .arena-wrap { grid-area: board; }
+.battle > .card-preview { grid-area: preview; }
+.battle > .planner, .battle > .pass, .battle > .summary { grid-area: panel; }
+.battle > .play-col.p0 { grid-area: p0; }
+.battle > .play-col.p1 { grid-area: p1; }
+
+/* which panels each mode shows */
+.battle .slots, .battle .card-preview, .battle .play-col, .battle .planner, .battle .pass, .battle .summary { display: none; }
+.battle[data-mode="plan"] .slots,
+.battle[data-mode="plan"] .card-preview,
+.battle[data-mode="plan"] .planner,
+.battle[data-mode="wait"] .planner,
+.battle[data-mode="pass"] .pass,
+.battle[data-mode="reveal"] .play-col,
+.battle[data-mode="summary"] .play-col,
+.battle[data-mode="reveal"] .summary,
+.battle[data-mode="summary"] .summary { display: flex; }
+.battle[data-mode="wait"] .planner > :not(.status-row) { display: none; }
+.battle[data-mode="reveal"] .summary .row { visibility: hidden; }
+.battle:not([data-mode="reveal"]) .step-label { visibility: hidden; }
 
 .hud { width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; }
 .hud-center { display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -241,25 +337,10 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 }
 .panel.p1 .bar span { transform: skewX(-18deg); }
 
-/* board row: [left side] [arena] [right side] */
-.board-row { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 500px) minmax(0, 1fr); gap: 12px; align-items: center; }
-.side { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; align-self: stretch; }
-
-/* which panels each mode shows */
-.battle .slots, .battle .card-preview, .battle .pile, .battle .planner, .battle .pass, .battle .summary { display: none; }
-.battle[data-mode="plan"] .slots,
-.battle[data-mode="plan"] .card-preview,
-.battle[data-mode="plan"] .planner,
-.battle[data-mode="wait"] .planner,
-.battle[data-mode="pass"] .pass,
-.battle[data-mode="reveal"] .pile,
-.battle[data-mode="summary"] .summary { display: flex; }
-.battle[data-mode="wait"] .planner > :not(.status-row) { display: none; }
-.battle:not([data-mode="reveal"]) .step-label { visibility: hidden; }
-
-.arena-wrap { width: 100%; }
+/* the board: the largest box with the arena's shape that fits its area */
+.arena-wrap { min-width: 0; min-height: 0; container-type: size; display: grid; place-items: center; }
 .arena {
-  position: relative; display: grid; aspect-ratio: 4 / 3;
+  position: relative; display: grid; width: min(100cqw, calc(100cqh * var(--aspect, 1.667)));
   grid-template-columns: repeat(var(--cols), 1fr); grid-template-rows: repeat(var(--rows), 1fr);
   gap: 3px; padding: 4px; border: 1px solid var(--line-hi);
   /* Optional board image from content/assets.ts (ASSETS.board). */
@@ -288,12 +369,15 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   display: grid; place-items: center; pointer-events: none;
 }
 .token { transition: left .5s cubic-bezier(.3, .7, .3, 1), top .5s cubic-bezier(.3, .7, .3, 1), transform .2s; z-index: 2; pointer-events: auto; cursor: pointer; }
-.token .token-art { position: relative; width: 52%; height: 52%; filter: drop-shadow(0 0 8px var(--clr)); }
-.token::before {
-  content: ''; position: absolute; width: 56%; aspect-ratio: 1; transform: rotate(45deg);
-  border: 3px solid; background: color-mix(in srgb, var(--board) 55%, transparent);
+/* The piece: a plain diamond in the player's colour (no fighter emblem). */
+.token .token-body {
+  position: relative; width: 50%; aspect-ratio: 1; display: grid; place-items: center; transform: rotate(45deg);
+  background: linear-gradient(135deg, color-mix(in srgb, currentColor 80%, #fff), currentColor 45%, color-mix(in srgb, currentColor 62%, #000));
+  border: 2px solid color-mix(in srgb, currentColor 50%, #fff);
+  box-shadow: 0 0 12px color-mix(in srgb, currentColor 55%, transparent), inset 0 0 0 2px rgba(0, 0, 0, .22);
 }
-.token:hover::before { box-shadow: 0 0 12px currentColor; }
+.token .token-art { width: 86%; height: 86%; transform: rotate(-45deg); }
+.token:hover .token-body { box-shadow: 0 0 18px currentColor, inset 0 0 0 2px rgba(0, 0, 0, .22); }
 .token.p0 { color: var(--p0); }
 .token.p1 { color: var(--p1); }
 .token .facing { position: absolute; right: 4%; top: 50%; width: 0; height: 0; border: 7px solid transparent; border-left: 11px solid currentColor; transform: translateY(-50%); }
@@ -315,72 +399,114 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .float.energy { color: var(--energy); font-size: .95rem; }
 @keyframes rise { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-44px); } }
 
-/* left side: the 3 chosen cards */
-.slots { flex-direction: column; gap: 6px; align-items: center; }
+/* beside the board while planning: the 3 chosen cards (left) and the focused card (right) */
+.slots { flex-direction: column; gap: 4px; align-items: center; justify-content: center; min-height: 0; }
 .slot { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; }
+.battle .slots .card { --cw: var(--slot-cw); }
+.battle .slots .card .badges { display: none; }
 .slot .empty {
-  width: 70px; height: 94px; border: 1px dashed var(--line-hi); display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px; font-size: .62rem; color: var(--muted); padding: 4px; text-transform: uppercase;
+  width: var(--slot-cw); height: calc(var(--slot-cw) * 1.28); border: 1px dashed var(--line-hi); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; font-size: calc(var(--slot-cw) * .095); color: var(--muted); padding: 4px; text-transform: uppercase;
 }
-.slot .empty b { font-size: 1.4rem; line-height: 1; }
+.slot .empty b { font-size: 2.2em; line-height: 1; }
 .slot.next .empty { border: 1px solid var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
-
-/* right side: preview of the focused card */
-.card-preview { flex-direction: column; align-items: center; gap: 8px; width: 100%; max-width: 220px; }
-.card-preview .card { --cell: 16px; width: 112px; height: 148px; padding-top: 24px; }
-.card-preview .card .name { font-size: .8rem; }
-.card-preview .card .big-glyph { font-size: 2.6rem; }
-.card-preview .desc { margin: 0; font-size: .82rem; line-height: 1.35; color: var(--text); }
-.preview-hint { margin: 0; font-size: .78rem; color: var(--muted); line-height: 1.35; }
-
-/* card piles during the reveal (left = player 1, right = player 2) */
-.pile { flex-direction: column; align-items: center; gap: 6px; }
-.pile-name { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
-.pile.p0 .pile-name { color: var(--p0); }
-.pile.p1 .pile-name { color: var(--p1); }
-.pile-cards { position: relative; width: 84px; height: 110px; }
-.pile-card {
-  position: absolute; left: 0; top: 0;
-  transform: translate(calc(var(--n) * 5px), calc(var(--n) * 4px)) rotate(calc((var(--n) - 1) * 3deg));
-  animation: deal .35s cubic-bezier(.2, .8, .3, 1.2);
+.slot .slot-label { display: none; }
+.card-preview { flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 0; overflow: hidden; }
+.battle .card-preview .card { --cw: var(--prev-cw); }
+.card-preview .desc { margin: 0; font-size: .66rem; line-height: 1.32; color: var(--text); }
+.preview-hint { margin: 0; font-size: .64rem; color: var(--muted); line-height: 1.3; }
+@media (min-aspect-ratio: 1/1) {
+  .slot .slot-label { display: block; height: 14px; line-height: 14px; }
+  .card-preview .desc { font-size: clamp(.64rem, 1.6cqh, .84rem); }
+  .preview-hint { font-size: clamp(.62rem, 1.5cqh, .8rem); }
 }
-.pile.p1 .pile-card { transform: translate(calc(var(--n) * -5px + 10px), calc(var(--n) * 4px)) rotate(calc((1 - var(--n)) * 3deg)); }
-.pile.p0 .pile-card .card { border-color: var(--p0); }
-.pile.p1 .pile-card .card { border-color: var(--p1); }
-.pile-card.under { filter: brightness(.45); }
-.pile-card.inactive .card { opacity: .35; }
-@keyframes deal { from { opacity: 0; translate: 0 -40px; scale: 1.2; } }
 
-/* round recap */
-.summary { flex-direction: column; align-items: center; gap: 10px; animation: deal .3s ease-out; }
-.sum-grid { display: grid; grid-template-columns: auto repeat(3, auto); gap: 6px 8px; align-items: center; }
-.sum-row { display: contents; }
-.sum-name { font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; text-align: right; }
-.sum-row.p0 .sum-name { color: var(--p0); }
-.sum-row.p1 .sum-name { color: var(--p1); }
-.sum-row.p0 .card { border-color: var(--p0); }
-.sum-row.p1 .card { border-color: var(--p1); }
-.sum-cell.inactive .card, .sum-cell.unplayed .card { opacity: .3; }
-.sum-cell.unplayed { position: relative; }
-.sum-cell.unplayed::after { content: '✕'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.8rem; color: var(--muted); }
+/* the round's cards, by step: face down until played; the step playing now steps forward and glows */
+.play-col { --pc: var(--p0); min-width: 0; min-height: 0; align-items: center; justify-content: center; gap: 6px; }
+.play-col.p1 { --pc: var(--p1); }
+.play-name { font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--pc); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.play-cards { display: flex; gap: calc(var(--play-cw) * .16); }
+.play-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; transition: transform .28s cubic-bezier(.3, 1.5, .5, 1), opacity .25s, filter .25s; }
+.battle .play-card .card { --cw: var(--play-cw); border-color: var(--pc); }
+.play-step { font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); height: 14px; line-height: 14px; white-space: nowrap; }
+.play-face { position: relative; }
+.play-card.face-down .card { visibility: hidden; }
+.play-card.face-down .play-face::before {
+  content: ''; position: absolute; inset: 0; border: 1px solid var(--line-hi);
+  /* Optional card back image from content/assets.ts (ASSETS.cardBack). */
+  background: var(--card-back-image, repeating-linear-gradient(45deg, var(--card-back-a) 0 6px, var(--card-back-b) 6px 12px)) center / cover;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+.play-card.flipped .card { animation: flip-in .28s ease-out; }
+@keyframes flip-in { from { transform: perspective(400px) rotateY(90deg); } }
+.play-card.now { z-index: 2; transform: scale(1.1); filter: drop-shadow(0 0 9px var(--pc)) drop-shadow(0 0 2px var(--pc)); }
+.play-card.now .play-step { color: var(--accent); }
+.play-card.now .play-step::before { content: '▶ '; }
+/* During the reveal, finished steps step back; in the recap the replayed step stands out. */
+.battle[data-mode="reveal"] .play-card:not(.now):not(.face-down),
+.battle[data-mode="summary"]:has(.play-card.now) .play-card:not(.now) { opacity: .62; transform: scale(.95); }
+.play-card.inactive .card, .play-card.stunned .card { opacity: .35; }
+.play-card.unplayed .card { opacity: .3; }
+.play-card.unplayed .play-face::after { content: '✕'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.8rem; color: var(--muted); }
+.play-tag {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-12deg); z-index: 1;
+  background: var(--fx-stun); color: var(--on-accent); font-size: .6rem; font-weight: 900; text-transform: uppercase; padding: 2px 5px;
+}
+/* tall: one row per player under the board; wide: one column per player beside it */
+.play-col { flex-direction: row; }
+.play-col .play-name { writing-mode: vertical-rl; transform: rotate(180deg); }
+.play-col.p1 .play-step { display: none; }
+@media (min-aspect-ratio: 1/1) and (min-height: 501px) {
+  .play-col { flex-direction: column; }
+  .play-col .play-name { writing-mode: horizontal-tb; transform: none; }
+  .play-col.p1 .play-step { display: block; }
+  .play-cards { flex-direction: column; gap: 6px; }
+}
 
+/* the bar under the cards: round title, and in the recap the Replay / Next buttons */
+.summary { flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 0; }
+.summary .row { flex-wrap: nowrap; }
 .slot-label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 
 /* ---------- planner (hand) ---------- */
 .planner {
-  position: relative; width: 100%; flex-direction: column; gap: 10px; align-items: center;
-  background: rgba(0, 0, 0, .25); border: 1px solid var(--line); padding: 10px;
+  position: relative; width: 100%; min-width: 0; min-height: 0; flex-direction: column; gap: 6px; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--line); padding: 6px;
 }
+.battle .planner .hand .card { --cw: var(--hand-cw); }
+.planner .hand.grouped { gap: 6px; }
+.planner .group { gap: 5px; }
+.planner .group-cards { gap: 5px; }
+.planner .group-label {
+  width: 16px; padding: 0 3px 0 0; font-size: .52rem; letter-spacing: .12em; text-align: center;
+  writing-mode: vertical-rl; transform: rotate(180deg); border-right: 0; border-left: 2px solid; justify-content: center;
+}
+.planner .g-move .group-label { border-color: var(--move); }
+.planner .g-attack .group-label { border-color: var(--attack); }
+.planner .g-special .group-label { border-color: var(--special); }
 .battle[data-seat="0"] .planner { border-top: 3px solid var(--p0); }
 .battle[data-seat="1"] .planner { border-top: 3px solid var(--p1); }
 .battle[data-mode="wait"] .status::after { content: ''; display: inline-block; width: 12px; height: 12px; margin-left: 8px; border: 2px solid var(--accent); border-right-color: transparent; animation: spin .8s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.status { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-size: .9rem; }
+.status { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-size: .8rem; }
 .actions { display: flex; gap: 10px; }
-
+.planner .actions .btn, .summary .btn { height: 36px; padding: 0 20px; }
+@media (min-aspect-ratio: 1/1) and (max-height: 500px) {
+  .battle[data-mode="plan"] .planner, .battle[data-mode="wait"] .planner {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'hand hand' 'status actions';
+    align-content: center; justify-items: center; column-gap: 8px;
+  }
+  .planner .hand { grid-area: hand; }
+  .planner .status-row { grid-area: status; justify-self: stretch; justify-content: flex-start; gap: 6px; min-width: 0; }
+  .battle[data-mode="wait"] .planner .status-row { grid-column: 1 / -1; justify-content: center; }
+  .planner .status { font-size: .62rem; line-height: 1.15; text-align: left; }
+  .planner .plan-clock { width: 32px; height: 32px; }
+  .planner .actions { grid-area: actions; gap: 6px; }
+  .planner .actions .btn, .summary .btn { padding: 0 12px; font-size: .74rem; }
+}
 /* ---------- hot-seat hand-over (board + stats stay visible) ---------- */
 .pass {
-  width: 100%; flex-direction: column; align-items: center; gap: 14px; padding: 22px 12px;
+  width: 100%; min-height: 0; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px 12px;
   background: rgba(0, 0, 0, .35); border: 1px solid var(--line); animation: deal .3s ease-out;
 }
 .pass[data-seat="0"] { border-top: 3px solid var(--p0); }
@@ -417,18 +543,16 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   text-shadow: 0 0 6px #000; animation: daze 1s linear infinite;
 }
 @keyframes daze { 50% { transform: translateX(3px) rotate(8deg); } }
-.pile-card.stunned .card { opacity: .3; }
-.pile-tag {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-12deg); z-index: 1;
-  background: var(--fx-stun); color: var(--on-accent); font-size: .6rem; font-weight: 900; text-transform: uppercase; padding: 2px 5px;
-}
 
 /* ---------- planning aids: path, energy per step, drag & drop, timer, coach ---------- */
 .path { position: absolute; left: 4px; top: 4px; width: calc(100% - 8px); height: calc(100% - 8px); pointer-events: none; z-index: 1; overflow: visible; }
 .path polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 5; vector-effect: non-scaling-stroke; opacity: .75; }
 .ghost.atk::after { border-color: var(--danger); }
 .slot { position: relative; }
-.slot-energy { font-size: .64rem; font-weight: 800; color: var(--energy); line-height: 1.1; }
+.slot-energy {
+  position: absolute; top: 0; right: 0; z-index: 1; padding: 1px 3px; font-size: .56rem; font-weight: 800; color: var(--energy); line-height: 1.1;
+  background: color-mix(in srgb, var(--bg) 90%, transparent); border: 1px solid var(--line);
+}
 .bar.energy .planned {
   display: none; position: absolute; top: 0; bottom: 0;
   background: repeating-linear-gradient(-45deg, rgba(0, 0, 0, .55) 0 4px, rgba(0, 0, 0, .2) 4px 8px);
@@ -511,7 +635,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 @keyframes hop { 40% { translate: 0 -26%; scale: 1.06; } 80% { translate: 0 0; scale: 1.14 .84; } 100% { scale: 1; } }
 .token.charge { animation: charge .3s ease-in-out; }
 @keyframes charge { 50% { scale: 1.16; filter: brightness(1.6); } }
-.token.flash .token-art { animation: flash .35s; }
+.token.flash .token-body { animation: flash .35s; }
 @keyframes flash { 0%, 40% { filter: brightness(3.2) drop-shadow(0 0 10px #fff); } }
 .token.skid { animation: skid .45s ease-out; }
 @keyframes skid { 30% { rotate: -12deg; } }
@@ -554,16 +678,6 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .float.miss, .float.energy, .float.stun { font-size: 1rem; }
 .float.first { color: var(--accent); font-size: .95rem; }
 
-/* card reveal: dealt face down, then flipped */
-.pile-card.face-down .card { visibility: hidden; }
-.pile-card.face-down::before {
-  content: ''; position: absolute; inset: 0; border: 1px solid var(--line-hi);
-  /* Optional card back image from content/assets.ts (ASSETS.cardBack). */
-  background: var(--card-back-image, repeating-linear-gradient(45deg, var(--card-back-a) 0 6px, var(--card-back-b) 6px 12px)) center / cover;
-  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-}
-.pile-card.flipped .card { animation: flip-in .28s ease-out; }
-@keyframes flip-in { from { transform: perspective(400px) rotateY(90deg); } }
 
 /* knockout flash */
 .battle.ko-flash::after { content: ''; position: fixed; inset: 0; background: #fff; pointer-events: none; z-index: 60; animation: ko-flash .7s ease-out forwards; }
@@ -589,8 +703,9 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 
 /* reduced effects */
 .reduced-fx .fx, .reduced-fx .confetti, .reduced-fx .tile::after, .reduced-fx .battle.ko-flash::after { display: none !important; }
-.reduced-fx .token, .reduced-fx .token .token-art, .reduced-fx .arena, .reduced-fx .tile,
-.reduced-fx .pile-card .card, .reduced-fx .result-fighter .emblem { animation: none !important; }
+.reduced-fx .token, .reduced-fx .token .token-body, .reduced-fx .arena, .reduced-fx .tile,
+.reduced-fx .play-card .card, .reduced-fx .result-fighter .emblem { animation: none !important; }
+.reduced-fx .play-card { transition: none; }
 
 /* ---------- progression: badges, loadout, daily, profile, toasts ---------- */
 .champ { font-style: normal; position: absolute; top: 6px; right: 8px; color: var(--accent); font-size: 1.1rem; text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
@@ -646,10 +761,6 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .toast span { font-weight: 800; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-20px) scale(.95); } }
 
-/* recap replay: the step being replayed is highlighted */
-.summary .slot-label.now { color: var(--accent); }
-.summary .sum-cell.now .card { box-shadow: inset 0 0 0 2px var(--accent), 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); transform: translateY(-3px); }
-.summary .sum-cell .card { transition: transform .2s, box-shadow .2s; }
 
 /* ammo (Ferro): Reload cards and spent attacks */
 .card.kind-reload { background: linear-gradient(165deg, var(--card-reload-a), var(--card-reload-b)); }
@@ -700,11 +811,11 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .trap-mark.p1 { color: var(--p1); }
 .trap-mark.new { animation: trap-in .45s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes trap-in { from { transform: scale(2.2); opacity: 0; } }
-.token.burning .token-art { animation: burning .35s ease-in-out infinite alternate; }
+.token.burning .token-body { animation: burning .35s ease-in-out infinite alternate; }
 @keyframes burning { to { filter: drop-shadow(0 0 10px var(--fx-burn)) brightness(1.25); } }
 .float.burn { color: var(--fx-burn); font-size: 1rem; }
 .float.swap { color: var(--fx-push); font-size: 1.4rem; }
-.reduced-fx .token.burning .token-art, .reduced-fx .trap-mark.new { animation: none !important; }
+.reduced-fx .token.burning .token-body, .reduced-fx .trap-mark.new { animation: none !important; }
 
 /* ---------- match setup (fighter selection) ---------- */
 .setup { width: min(760px, 100%); display: flex; flex-direction: column; gap: 10px; }
@@ -768,6 +879,38 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   gap: 12px; position: sticky; bottom: 0; z-index: 6; padding: 8px 0 max(8px, env(safe-area-inset-bottom));
   background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 94%, transparent) 35%);
 }
+/* arena picker: a tiny drawing of each board */
+.arena-pick { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
+.arena-pick-label { color: var(--muted); }
+.arena-opts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; width: 100%; max-width: 640px; }
+.arena-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 6px 4px; cursor: pointer;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius); transition: border-color .15s, background .15s;
+}
+.arena-opt:hover { border-color: var(--line-hi); }
+.arena-opt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg2)); box-shadow: inset 0 0 0 1px var(--accent); }
+.arena-opt b { font-size: .66rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.arena-mini {
+  display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 2px; padding: 2px; width: 100%; max-width: 76px;
+  aspect-ratio: var(--cols) / var(--rows); background: var(--board); border: 1px solid var(--line-hi);
+}
+.arena-mini i {
+  position: relative; display: grid; place-items: center; font-style: normal; font-size: .42rem; line-height: 1; letter-spacing: -1px;
+  background: linear-gradient(160deg, var(--tile-a), var(--tile-b));
+}
+.arena-mini i.blocked { background: repeating-linear-gradient(45deg, var(--rock-a) 0 3px, var(--rock-b) 3px 6px); }
+.arena-mini i.tile-spikes { color: var(--hazard-spikes); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hazard-spikes) 60%, transparent); }
+.arena-mini i.tile-well { color: var(--hazard-well); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hazard-well) 60%, transparent); }
+.arena-mini .start { width: 46%; aspect-ratio: 1; transform: rotate(45deg); }
+.arena-mini .start.p0 { background: var(--p0); }
+.arena-mini .start.p1 { background: var(--p1); }
+.daily-rule.arena { flex-direction: row; align-items: center; gap: 14px; text-align: left; }
+.daily-rule.arena > div { display: flex; flex-direction: column; gap: 4px; }
+.daily-rule.arena .arena-mini { width: 84px; flex: none; }
+@media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
+  .arena-opts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 .fight-btn { min-width: 200px; padding: 14px 28px; font-size: 1.1rem; }
 .fight-btn:disabled { opacity: .45; }
 
@@ -776,12 +919,6 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   .pick b { font-size: .82rem; }
 }
 
-/* Clear / Lock in stay on screen even when a big hand pushes them below the fold. */
-.battle .planner .actions {
-  position: sticky; bottom: 0; z-index: 6; width: 100%; justify-content: center;
-  padding: 8px 0 max(8px, env(safe-area-inset-bottom));
-  background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 94%, transparent) 35%);
-}
 .token.snap { transition: none !important; }
 
 /* "Install app" button on the title screen (only shown where installing is possible) */
@@ -798,30 +935,18 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 
 @media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
   .screen { padding: 14px 10px 20px; }
-  .battle-screen { padding: 6px 8px 10px; gap: 6px; }
-  .battle { gap: 6px; }
+  .battle-screen { padding: 6px; }
+  .battle { --gap: 6px; }
 
-  .card { --cell: 9px; width: 66px; height: 82px; padding: 16px 2px 3px; clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%); }
-  .card .name { font-size: .55rem; }
-  .card .stat { font-size: .58rem; }
-  .card .cost { min-width: 20px; height: 16px; font-size: .64rem; }
-  .card .badges { right: 9px; top: 1px; }
-  .slots .card .badges { display: none; }
-  .slot-energy {
-    position: absolute; top: 0; right: 0; z-index: 1; padding: 2px 3px;
-    font-size: .56rem; background: color-mix(in srgb, var(--bg) 90%, transparent); border: 1px solid var(--line);
-  }
-  .card .badges i { font-size: .58rem; padding: 0 1px; }
+  /* Menus and the deck viewer: smaller cards. (The battle sizes its own cards.) */
+  .card { --cw: 66px; }
+  .card.small { --cw: 56px; }
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .title-wrap > .row { flex-wrap: nowrap; gap: 6px; }
   .title-wrap > .row .btn { padding: 10px 10px; font-size: .78rem; }
   .fighter-records li { grid-template-columns: 28px 1fr auto; }
   .fighter-records li span:last-child { grid-column: 2 / -1; }
   .daily-vs .emblem { width: 64px; height: 64px; }
-  .big-glyph { font-size: 1.4rem; }
-  .card.small { --cell: 8px; width: 56px; height: 70px; padding-top: 15px; }
-  .card.small .name { font-size: .5rem; }
-  .card.small .big-glyph { font-size: 1.15rem; }
 
   .group { gap: 4px; }
   .group-label {
@@ -846,33 +971,12 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   .step-label { font-size: .6rem; }
   .icon-btn { width: 28px; height: 28px; font-size: .95rem; }
 
-  /* smaller battlefield, chosen cards on the left, preview on the right */
-  .board-row { grid-template-columns: 60px minmax(0, 1fr) 92px; gap: 6px; }
-  .slots { gap: 4px; }
-  .slot .slot-label { display: none; }
-  .slot .empty { width: 56px; height: 70px; font-size: .48rem; }
-  .slot .empty b { font-size: 1.1rem; }
-  .card-preview { gap: 5px; }
-  .card-preview .card { --cell: 11px; width: 84px; height: 104px; padding-top: 19px; }
-  .card-preview .card .name { font-size: .58rem; }
-  .card-preview .card .big-glyph { font-size: 1.8rem; }
-  .card-preview .desc, .preview-hint { font-size: .64rem; line-height: 1.3; }
-  .pile-name { font-size: .55rem; }
-  .pile-cards { width: 66px; height: 84px; }
-  .pile-card { transform: translate(calc(var(--n) * 3px), calc(var(--n) * 3px)) rotate(calc((var(--n) - 1) * 3deg)); }
-  .pile.p1 .pile-card { transform: translate(calc(var(--n) * -3px + 6px), calc(var(--n) * 3px)) rotate(calc((1 - var(--n)) * 3deg)); }
-
-  .planner { padding: 6px 4px; gap: 6px; }
   .status { font-size: .72rem; }
-  .plan-clock { width: 36px; height: 36px; }
+  .plan-clock { width: 34px; height: 34px; }
   .plan-clock b { font-size: .9rem; }
-  .actions .btn { padding: 9px 18px; }
 
   .btn.huge { padding: 30px 16px; font-size: 1.45rem; }
-  .pass { padding: 20px 10px; }
-
-  .sum-grid { gap: 4px; }
-  .sum-name { writing-mode: vertical-rl; transform: rotate(180deg); font-size: .6rem; }
+  .pass { padding: 14px 10px; }
 }
 
 /* ---------- phones held sideways: board on the left, cards on the right ---------- */
@@ -882,31 +986,11 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   .logo { font-size: 2.6rem; }
   .menu .btn.big { padding: 8px 14px; }
 
-  .battle-screen { max-width: none; padding-top: 4px; padding-bottom: 4px; }
-  .battle {
-    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas: 'hud hud' 'board side'; gap: 6px 12px; align-items: center;
-  }
-  .battle > .hud { grid-area: hud; }
-  .battle > .board-row { grid-area: board; }
-  .battle > .planner, .battle > .pass, .battle > .summary { grid-area: side; align-self: start; }
-  /* During the reveal nothing sits on the right, so the board takes the middle and grows. */
-  /* Width is also capped by the screen height so taller arenas (4 rows) still fit. */
-  .battle[data-mode="reveal"] > .board-row {
-    grid-column: 1 / -1; justify-self: center;
-    width: min(100%, 560px, calc((100dvh - 70px) * var(--aspect, 1.333) + 154px));
-  }
-
   .hud .panel { flex-wrap: nowrap; }
   .hud .bars { flex-basis: auto; flex: 1; }
-  .board-row { grid-template-columns: 58px minmax(0, 1fr) 84px; }
-  .planner .hand .card { --cell: 8px; width: 58px; height: 69px; padding-top: 15px; }
-  .planner { padding: 5px 6px; gap: 4px; }
-  .actions .btn { padding: 8px 16px; }
   .btn.huge { padding: 18px 14px; font-size: 1.2rem; }
   .pass { padding: 12px 8px; gap: 8px; }
   .pass h2 { font-size: 1rem; }
-  .summary { gap: 6px; }
 }
 
 /* Keep content clear of notches and rounded corners (fullscreen / installed app). Insets are 0 elsewhere. */
@@ -915,12 +999,6 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Very short landscape screens (e.g. 667×375): slightly smaller hand cards. */
-@media (orientation: landscape) and (max-height: 380px) {
-  .planner .hand .card { height: 64px; padding-top: 14px; }
-  .planner .plan-clock { width: 32px; height: 32px; }
-  .planner .actions .btn { padding: 7px 14px; }
-}
 
 /* Match setup on phones held sideways: roster on the left, details and options on the right. */
 @media (orientation: landscape) and (max-height: 520px) {

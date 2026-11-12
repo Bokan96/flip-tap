@@ -36,7 +36,7 @@ export function loadSavedMatch(): SavedMatch | null {
   const m = readJson<SavedMatch>(KEY);
   if (!m || m.version !== 1 || !m.state || m.state.outcome) return null;
   try {
-    m.state.arena ??= arenaState(); // saved before arenas existed
+    m.state.arena ??= arenaState('quarters'); // saved before arenas existed (played on 3×4)
     for (const p of m.state.players) {
       getFighter(p.fighterId);
       p.deck.forEach(getCard);

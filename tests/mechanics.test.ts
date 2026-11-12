@@ -12,8 +12,9 @@ import type { MatchState, Plan, Pos } from '../src/engine/types';
 
 const IDLE: Plan = ['guard', 'up', 'down'];
 
+/** A match on the 3×4 board (Close Quarters): these tests were written for its edges. */
 function duel(a: string, b: string, posA: Pos, posB: Pos, bonusA: string[] = [], bonusB: string[] = []): MatchState {
-  const s = createMatch({ fighterId: a, bonusCards: bonusA }, { fighterId: b, bonusCards: bonusB });
+  const s = createMatch({ fighterId: a, bonusCards: bonusA }, { fighterId: b, bonusCards: bonusB }, {}, 'quarters');
   s.players[0].pos = posA;
   s.players[1].pos = posB;
   s.players[0].facing = posB.c >= posA.c ? 1 : -1;
@@ -47,7 +48,7 @@ describe('push and pull', () => {
     const s = duel('umbra', 'cinder', { r: 1, c: 1 }, { r: 0, c: 2 });
     const r = resolveRound(s, [['umbraGrasp', 'guard', 'focus'], ['guard', 'focus', 'up']]);
     expect(r.steps[0].players[1].final).toEqual({ r: 0, c: 1 });
-    const classic = arenaState('classic');
+    const classic = arenaState('quarters');
     expect(displace(classic, { r: 0, c: 3 }, { r: 1, c: 1 }, 1, -5)).toEqual({ r: 0, c: 1 });
     expect(displace(classic, { r: 0, c: 1 }, { r: 1, c: 1 }, 1, -1)).toEqual({ r: 0, c: 1 });
   });
@@ -144,7 +145,7 @@ describe('passives', () => {
     s.players[0].energy = 30;
     s.players[1].energy = 30;
     const r = resolveRound(s, [IDLE, IDLE]);
-    expect(r.state.players[0].energy).toBe(30 + BALANCE.energyPerRound + 7);
+    expect(r.state.players[0].energy).toBe(30 + BALANCE.energyPerRound + 10);
     expect(r.state.players[1].energy).toBe(30 + BALANCE.energyPerRound);
   });
 
@@ -157,7 +158,9 @@ describe('passives', () => {
   it('Ambush adds damage against a target that moved', () => {
     const s = duel('umbra', 'marin', { r: 1, c: 1 }, { r: 0, c: 3 });
     const r = resolveRound(s, [['umbraClaw', 'guard', 'focus'], ['left', 'guard', 'focus']]);
-    expect(r.steps[0].players[1].damageTaken).toBe(25 + 10);
+    const ambush = FIGHTERS.find((f) => f.id === 'umbra')!.passive!.mods.vsMovedBonus!;
+    expect(ambush).toBeGreaterThan(0);
+    expect(r.steps[0].players[1].damageTaken).toBe(CARDS.umbraClaw.damage! + ambush);
   });
 
   it('Bedrock and Capacitor raise the maximums', () => {
@@ -170,7 +173,7 @@ describe('passives', () => {
 
   it('match modifiers stack with passives', () => {
     const s = createMatch({ fighterId: 'volta' }, { fighterId: 'cinder' }, { mods: { energyPerRound: 10, damageBonus: 5 }, startLife: 50 });
-    expect(s.players[0].mods.energyPerRound).toBe(17);
+    expect(s.players[0].mods.energyPerRound).toBe(20);
     expect(s.players[1].mods.damageBonus).toBe(5);
     expect(s.players[1].life).toBe(50);
     expect(mergeMods({ immovable: true }, { immovable: false }).immovable).toBe(true);

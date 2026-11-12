@@ -2,7 +2,7 @@
 
 A small two-player **simultaneous-planning card battle** for the browser. Each round, both players
 secretly plan three cards (move, guard, focus, attack, …). The cards are then revealed and resolved
-step by step on a 3×4 grid. Dodge, predict, and land your attacks.
+step by step on a 3×5 grid. Dodge, predict, and land your attacks.
 
 Modes: **Tournament** (beat 5 rivals, earn bonus cards), **Versus CPU** (4 difficulties, up to an Expert that learns your habits) and
 **Hot-seat** (two players on one device). Full rules: [docs/RULES.md](docs/RULES.md).
@@ -31,7 +31,8 @@ Content and presentation are separate from the rules:
 | What | Where |
 |---|---|
 | Fighters, cards, damage, costs, attack patterns | `src/content/cards.ts` |
-| Board size, life/energy, slots per round, energy regen | `src/content/balance.ts` |
+| Life/energy, slots per round, energy regen, fatigue | `src/content/balance.ts` |
+| Arenas: board sizes, start squares, pillars, thorns, springs | `src/content/arenas.ts` |
 | All UI text | `src/content/strings.ts` |
 | Fighter images and sound files (optional) | `public/assets/…` + `src/content/assets.ts` |
 | Colours, layout | `src/styles.css` |

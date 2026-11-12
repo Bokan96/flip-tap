@@ -13,9 +13,10 @@ All tunable numbers live in [`src/content/balance.ts`](../src/content/balance.ts
 
 ## Board and fighters
 - Matches are played in an **arena** ([`src/content/arenas.ts`](../src/content/arenas.ts)). The default,
-  **Classic**, is a grid of **3 rows × 4 columns**; Player 1 starts at row 2, column 1 and Player 2 at
-  row 2, column 4.
-- Other arenas change the size (Long Hall 3×5, Grand Court 4×5) or add special squares:
+  **Classic**, is a grid of **3 rows × 5 columns**; Player 1 starts at row 2, column 1 and Player 2 at
+  row 2, column 5.
+- Other arenas change the size (Close Quarters 3×4, the original board; Grand Court 4×5) or add
+  special squares (Pillars, Hot Springs and Thorn Garden are 3×5):
   - **Pillars (blocked squares):** nobody can stand on them. A move onto one does nothing, a push or
     pull stops in front of one, and attacks don't cover them.
   - **Thorns:** a fighter who ends a step on one loses 10 life.
@@ -73,8 +74,8 @@ Every fighter has one always-on passive ability, made of simple numeric modifier
 | Marin | Riptide | Pushes and pulls move the target 1 extra square |
 | Zephyr | Slipstream | Takes 10 less damage on steps where Zephyr moved |
 | Basalt | Bedrock | 115 max life; can't be pushed or pulled |
-| Volta | Capacitor | 120 max energy; regains 7 extra energy every round |
-| Umbra | Ambush | Attacks deal +10 damage to a target that moved this step |
+| Volta | Capacitor | 120 max energy; regains 10 extra energy every round |
+| Umbra | Ambush | Attacks deal +5 damage to a target that moved this step |
 | Ferro | Magazine | Each attack fires once, then is **spent** until Ferro plays his **Reload** card |
 | Briar | Deep Roots | Your traps deal +10 damage |
 | Vex | Fever | Your burns deal +5 damage each step |
@@ -106,9 +107,9 @@ its previous facing and the pattern is mirrored to match **(design choice)**.
      drop below 0. Focus cards placed earlier pay for attacks placed later.
 2. **Reveal and resolve:** slots resolve in order (slot 1, 2, 3). Both players' cards in the same slot
    happen simultaneously, using the procedure below.
-3. **Fatigue (design choice):** from round 11 on, both fighters lose **5 Life** at the end of every
+3. **Fatigue (design choice):** from round 8 on, both fighters lose **5 Life** at the end of every
    round. This can knock out one or both fighters (both at once is a draw).
-4. **Recover:** at the end of the round both fighters gain **+10 Energy** plus any passive bonus (capped at max). Stuns wear off.
+4. **Recover:** at the end of the round both fighters gain **+15 Energy** plus any passive bonus (capped at max). Stuns wear off.
 5. If the match isn't over, start a new round.
 
 ### Resolving one slot (both players at once)
@@ -202,5 +203,5 @@ For example, Cinder chases damage and Zephyr plays safe. Balance simulations ign
 
 **Where it runs:** in the browser, the search runs in a Web Worker (`aiWorker.ts`) that starts as soon
 as the round begins, so the page never freezes. `npm run balance` and `sim/ai.sim.ts` (CPU vs CPU
-duels: `npm run duel`, e.g. with `A=expert B=hard`) run it directly. In duels over every fighter pairing,
-Expert scores about 70% against Hard.
+duels: `npm run duel`, e.g. with `A=expert B=hard`) run it directly. In duels over every fighter pairing
+on the 3×5 Classic board, Expert scores about 63% against Hard.

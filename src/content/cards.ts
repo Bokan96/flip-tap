@@ -39,12 +39,12 @@ const bonus: CardDef[] = [
 const signature: CardDef[] = [
   // Cinder: high damage, hungry for energy
   { id: 'cinderJab', name: 'Ember Jab', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '011', '000'], fx: 'slash' },
-  { id: 'cinderRing', name: 'Fire Ring', kind: 'attack', cost: -30, damage: 20, pattern: ['111', '101', '111'], push: 1 },
+  { id: 'cinderRing', name: 'Fire Ring', kind: 'attack', cost: -25, damage: 20, pattern: ['111', '101', '111'], push: 1 },
   { id: 'cinderPillar', name: 'Flame Pillar', kind: 'attack', cost: -25, damage: 30, pattern: ['010', '010', '010'], stun: true },
   { id: 'cinderBlaze', name: 'Wildfire', kind: 'attack', cost: -55, damage: 45, pattern: ['011', '011', '011'], fx: 'burst' },
 
   // Marin: wide reach in front
-  { id: 'marinSplash', name: 'Splash', kind: 'attack', cost: -15, damage: 20, pattern: ['000', '111', '000'] },
+  { id: 'marinSplash', name: 'Splash', kind: 'attack', cost: -20, damage: 25, pattern: ['000', '111', '000'] },
   { id: 'marinUndertow', name: 'Undertow', kind: 'attack', cost: -25, damage: 25, pattern: ['101', '010', '101'], push: -1, fx: 'wave' },
   { id: 'marinWall', name: 'Tide Wall', kind: 'attack', cost: -30, damage: 30, pattern: ['001', '001', '001'], push: 1, fx: 'wave' },
   { id: 'marinFlood', name: 'Flood', kind: 'attack', cost: -45, damage: 40, pattern: ['111', '111', '000'], fx: 'wave' },
@@ -62,7 +62,7 @@ const signature: CardDef[] = [
   { id: 'basaltCrush', name: 'Crush', kind: 'attack', cost: -60, damage: 60, pattern: ['000', '010', '000'], fx: 'quake' },
 
   // Volta: fast and efficient
-  { id: 'voltaZap', name: 'Zap', kind: 'attack', cost: -10, damage: 20, pattern: ['000', '011', '000'], fx: 'beam' },
+  { id: 'voltaZap', name: 'Zap', kind: 'attack', cost: -10, damage: 25, pattern: ['000', '011', '000'], fx: 'beam' },
   { id: 'voltaArc', name: 'Arc', kind: 'attack', cost: -25, damage: 25, pattern: ['101', '010', '101'], fx: 'beam' },
   { id: 'voltaField', name: 'Static Field', kind: 'attack', cost: -25, damage: 20, pattern: ['111', '111', '111'] },
   { id: 'voltaClap', name: 'Thunderclap', kind: 'attack', cost: -55, damage: 40, pattern: ['010', '111', '010'], stun: true, fx: 'burst' },
@@ -71,7 +71,7 @@ const signature: CardDef[] = [
   { id: 'ferroSnap', name: 'Snap Shot', kind: 'attack', cost: -10, damage: 25, pattern: ['000', '011', '000'], fx: 'beam' },
   { id: 'ferroScatter', name: 'Scattershot', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '011', '001'], fx: 'burst' },
   { id: 'ferroSlug', name: 'Slug', kind: 'attack', cost: -25, damage: 40, pattern: ['000', '001', '000'], push: 1, fx: 'beam' },
-  { id: 'ferroCannon', name: 'Hand Cannon', kind: 'attack', cost: -45, damage: 50, pattern: ['011', '011', '011'], fx: 'burst' },
+  { id: 'ferroCannon', name: 'Hand Cannon', kind: 'attack', cost: -45, damage: 45, pattern: ['011', '011', '011'], fx: 'burst' },
   { id: 'ferroReload', name: 'Reload', kind: 'reload', cost: 0 },
 
   // Briar: sets traps, then pulls rivals onto them
@@ -81,8 +81,8 @@ const signature: CardDef[] = [
   { id: 'briarBloom', name: 'Bloom', kind: 'attack', cost: -40, damage: 35, pattern: ['111', '101', '111'], fx: 'burst' },
 
   // Vex: burning hexes and trading places
-  { id: 'vexHex', name: 'Hex Bolt', kind: 'attack', cost: -15, damage: 20, pattern: ['000', '011', '000'], burn: 10, fx: 'beam' },
-  { id: 'vexSwap', name: 'Mirror Step', kind: 'move', cost: -10, swap: true },
+  { id: 'vexHex', name: 'Hex Bolt', kind: 'attack', cost: -10, damage: 20, pattern: ['000', '011', '000'], burn: 10, fx: 'beam' },
+  { id: 'vexSwap', name: 'Mirror Step', kind: 'move', cost: -5, swap: true },
   { id: 'vexSmolder', name: 'Smolder', kind: 'attack', cost: -25, damage: 20, pattern: ['010', '111', '010'], burn: 5, fx: 'burst' },
   { id: 'vexFlare', name: 'Flare', kind: 'attack', cost: -45, damage: 40, pattern: ['001', '011', '001'], fx: 'wave' },
 
@@ -165,7 +165,7 @@ export const FIGHTERS: FighterDef[] = [
     role: 'Tempo',
     complexity: 2,
     ai: { aggression: 0.1 },
-    passive: { name: 'Capacitor', text: '120 max energy. Regains 7 extra energy every round.', mods: { energyPerRound: 7 } },
+    passive: { name: 'Capacitor', text: '120 max energy. Regains 10 extra energy every round.', mods: { energyPerRound: 10 } },
     energyMax: 120,
   },
   {
@@ -179,7 +179,7 @@ export const FIGHTERS: FighterDef[] = [
     role: 'Ambusher',
     complexity: 2,
     ai: { aggression: 0.15 },
-    passive: { name: 'Ambush', text: 'Attacks deal 10 more damage to a target that moved this step.', mods: { vsMovedBonus: 10 } },
+    passive: { name: 'Ambush', text: 'Attacks deal 5 more damage to a target that moved this step.', mods: { vsMovedBonus: 5 } },
   },
   {
     id: 'ferro',

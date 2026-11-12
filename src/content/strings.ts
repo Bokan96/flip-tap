@@ -1,3 +1,5 @@
+import { BALANCE } from './balance';
+
 /** Every piece of UI text. Swap this object to re-theme or translate the game. */
 export const STRINGS = {
   gameTitle: 'Flip Tap',
@@ -231,8 +233,8 @@ export const STRINGS = {
     'Every fighter has a passive ability that is always on.',
     'Traps hurt an enemy who ends a step on them; burns hurt at the end of each later step that round; swap makes the fighters trade places.',
     'If both fighters attack in the same step, the stronger attack lands first (on a tie, the fighter with more life). A fighter knocked out first never gets their attack off.',
-    'Both fighters regain 10 energy after every round. Bring your opponent’s life to 0 to win.',
-    'Fatigue: from round 11, both fighters lose 5 life at the end of every round.',
+    `Both fighters regain ${BALANCE.energyPerRound} energy after every round. Bring your opponent’s life to 0 to win.`,
+    `Fatigue: from round ${BALANCE.fatigueAfterRound + 1}, both fighters lose ${BALANCE.fatigueDamage} life at the end of every round.`,
     'Some arenas have pillars (nobody can stand there, pushes stop at them), thorns (lose life when you end a step on them) or springs (gain energy).',
     'Tap a fighter on the board to see their passive and every card they can play.',
   ],

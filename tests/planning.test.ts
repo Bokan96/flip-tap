@@ -34,6 +34,21 @@ describe('partial plans', () => {
 });
 
 describe('tutorial', () => {
+  it('the round-1 lesson (Step Right, Ember Jab, Guard) hits the dummy', () => {
+    const s = createTutorialMatch();
+    const r = resolveRound(s, [['right', 'cinderJab', 'guard'], scriptedPlan(1)]);
+    expect(r.steps[1].players[1].hit).toBe('hit');
+  });
+
+  it('in round 2 the dummy’s Splash hits a player who stays in the middle row', () => {
+    let s = createTutorialMatch();
+    s = resolveRound(s, [['right', 'cinderJab', 'guard'], scriptedPlan(1)]).state;
+    const r = resolveRound(s, [['guard', 'focus', 'left'], scriptedPlan(2)]);
+    expect(r.steps[1].players[0].hit).not.toBe('miss');
+    const dodge = resolveRound(s, [['up', 'focus', 'guard'], scriptedPlan(2)]);
+    expect(dodge.steps[1].players[0].hit).toBe('miss');
+  });
+
   it('the dummy’s scripted plans stay legal whatever the player does', () => {
     for (let seed = 1; seed <= 12; seed++) {
       const rng = new Rng(seed);

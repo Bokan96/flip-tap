@@ -21,7 +21,7 @@ import {
 import type { MatchLog, MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult, Trap } from '../engine/types';
 import type { PlanSource } from '../net/transport';
 import { fullEffects, getPlanTimer, speedMultiplier } from '../settings';
-import { cardHtml, describeCard, groupedCardsHtml, passiveHtml } from './card';
+import { cardHtml, describeCard, groupedCardsHtml, handRowLength, passiveHtml } from './card';
 import { enableDrag } from './drag';
 import { Fx, fxKind, haptic, retrigger, type FxKind } from './fx';
 import { bindSettings, settingsHtml } from './settingsPanel';
@@ -131,7 +131,11 @@ export class BattleView {
   }
 
   private setMode(mode: Mode): void {
+    // The reveal and recap use a different layout (the board grows); zoom the board between them.
+    const playing = (m?: string) => m === 'reveal' || m === 'summary';
+    const from = playing(this.el.dataset.mode) !== playing(mode) && fullEffects() ? this.q('.arena').getBoundingClientRect() : null;
     this.el.dataset.mode = mode;
+    if (from) this.zoomBoardFrom(from);
     if (mode !== 'plan') {
       // Never leave a planned path, planned energy or hover highlight for the other player to see.
       this.clearPath();
@@ -139,6 +143,22 @@ export class BattleView {
       this.showPlannedEnergy(null);
       this.stopTimer();
     }
+  }
+
+  /** Animate the board from its old box to where the new layout put it (FLIP). */
+  private zoomBoardFrom(old: DOMRect): void {
+    const arena = this.q('.arena');
+    const now = arena.getBoundingClientRect();
+    if (!old.width || !now.width || typeof arena.animate !== 'function') return;
+    const s = old.width / now.width;
+    if (Math.abs(s - 1) < 0.02 && Math.abs(old.left - now.left) < 2 && Math.abs(old.top - now.top) < 2) return;
+    arena.animate(
+      [
+        { transformOrigin: '0 0', transform: `translate(${old.left - now.left}px, ${old.top - now.top}px) scale(${s})` },
+        { transformOrigin: '0 0', transform: 'none' },
+      ],
+      { duration: 380, easing: 'cubic-bezier(.2, .8, .3, 1)' },
+    );
   }
 
   // ---------- main loop ----------
@@ -186,12 +206,21 @@ export class BattleView {
       const icon = kind ? `<span class="tile-icon">${STRINGS.tileIcons[kind]}</span>` : '';
       return `<div class="tile${kind ? ` tile-${kind}` : ''}" data-r="${r}" data-c="${c}"${kind ? ` title="${STRINGS.tileNames[kind]}"` : ''}>${icon}</div>`;
     }).join('');
+    // Plain pieces in the player's colour (no fighter emblem); a reskin may still give them a picture.
     const tokens = this.state.players
-      .map((p, i) => `<div class="token p${i}" data-seat="${i}" title="${this.seats[i].name}" style="--clr:${getFighter(p.fighterId).color}">
-          ${tokenArtHtml(getFighter(p.fighterId))}<span class="facing"></span></div>`)
+      .map((p, i) => `<div class="token p${i}" data-seat="${i}" title="${this.seats[i].name}">
+          <span class="token-body">${tokenArtHtml(getFighter(p.fighterId))}</span><span class="facing"></span></div>`)
       .join('');
-    const pile = (i: number) => `<div class="pile p${i}"><span class="pile-name">${this.seats[i].name}</span><div class="pile-cards"></div></div>`;
+    // Each player's cards for the round, one per step: face down until that step plays.
+    const playCol = (i: number) => `<div class="play-col p${i}" data-seat="${i}">
+        <span class="play-name">${this.seats[i].name}</span>
+        <div class="play-cards">${Array.from(
+          { length: BALANCE.slotsPerRound },
+          (_, s) => `<div class="play-card face-down" data-step="${s}"><span class="play-step">${STRINGS.slot(s + 1)}</span><div class="play-face"></div></div>`,
+        ).join('')}</div>
+      </div>`;
     this.el.style.setProperty('--aspect', String(A.cols / A.rows));
+    this.el.style.setProperty('--row-n', String(handRowLength(this.state.players[0].deck)));
     this.el.innerHTML = `
       <header class="hud">
         <div class="panel p0" data-seat="0"></div>
@@ -204,26 +233,19 @@ export class BattleView {
         </div>
         <div class="panel p1" data-seat="1"></div>
       </header>
-      <div class="board-row">
-        <aside class="side left">
-          <div class="slots"></div>
-          ${pile(0)}
-        </aside>
-        <div class="arena-wrap">
-          <div class="arena" style="--rows:${A.rows};--cols:${A.cols};aspect-ratio:${A.cols} / ${A.rows}">
-            ${tiles}
-            <svg class="path" viewBox="0 0 ${A.cols} ${A.rows}" preserveAspectRatio="none"><polyline points=""></polyline></svg>
-            ${'<div class="ghost hidden"></div>'.repeat(BALANCE.slotsPerRound)}
-            ${tokens}
-            <div class="fx-layer"></div>
-            <div class="floats"></div>
-          </div>
+      <div class="slots"></div>
+      <div class="arena-wrap">
+        <div class="arena" style="--rows:${A.rows};--cols:${A.cols};aspect-ratio:${A.cols} / ${A.rows}">
+          ${tiles}
+          <svg class="path" viewBox="0 0 ${A.cols} ${A.rows}" preserveAspectRatio="none"><polyline points=""></polyline></svg>
+          ${'<div class="ghost hidden"></div>'.repeat(BALANCE.slotsPerRound)}
+          ${tokens}
+          <div class="fx-layer"></div>
+          <div class="floats"></div>
         </div>
-        <aside class="side right">
-          <div class="card-preview"></div>
-          ${pile(1)}
-        </aside>
       </div>
+      <div class="card-preview"></div>
+      ${playCol(0)}${playCol(1)}
       <section class="planner">
         <div class="time-bar"></div>
         <div class="status-row">
@@ -245,6 +267,12 @@ export class BattleView {
       <div class="modal hidden"><div class="modal-box"></div></div>`;
     this.placeTokens(this.state.players.map((p) => p.pos) as [Pos, Pos]);
     this.fx = new Fx(this.q('.arena'), this.q('.fx-layer'));
+    this.resetPlayCards();
+    // The layout sizes everything from the space left under the HUD, so keep its height current.
+    const hud = this.q('.hud');
+    const measure = () => this.el.style.setProperty('--hud-h', `${hud.offsetHeight}px`);
+    measure();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(measure).observe(hud);
     this.renderTraps(this.state.arena.traps);
 
     this.el.addEventListener('click', (e) => {
@@ -475,7 +503,7 @@ export class BattleView {
                .join('')}</div>`
            : ''
        }
-       <div class="hand grouped">${groupedCardsHtml(p.deck, (id) => cardHtml(id, { facing: p.facing, readonly: true, spent: isSpent(p, id) }))}</div>
+       <div class="hand grouped" style="--row-n:${handRowLength(p.deck)}">${groupedCardsHtml(p.deck, (id) => cardHtml(id, { facing: p.facing, readonly: true, spent: isSpent(p, id) }))}</div>
        <button class="btn" data-modal="close">${STRINGS.close}</button>`,
     );
   }
@@ -644,6 +672,7 @@ export class BattleView {
     const filled = this.plan.some(Boolean);
     this.showPlannedEnergy(filled && trace ? trace[trace.length - 1] : null);
     const target = this.nextEmptySlot();
+    this.el.style.setProperty('--row-n', String(handRowLength(me.deck)));
     this.q('.hand').innerHTML = groupedCardsHtml(me.deck, (id) => {
       const used = this.plan.includes(id);
       const ok = target >= 0 && canPlace(me, this.plan, target, id);
@@ -857,7 +886,8 @@ export class BattleView {
       facing: this.state.players.map((p) => p.facing) as [number, number],
       traps: this.state.arena.traps.map((t) => ({ ...t })),
     };
-    this.el.querySelectorAll('.pile-cards').forEach((p) => (p.innerHTML = ''));
+    this.resetPlayCards();
+    this.q('.summary').innerHTML = this.summaryBar(STRINGS.round(this.state.round), '');
     this.q('.step-label').textContent = '';
     this.setMode('reveal');
     play('reveal');
@@ -913,21 +943,17 @@ export class BattleView {
     const ms = (n: number) => n * speedMultiplier() * this.slow;
     if (step.outcome) this.slow = 1.8;
 
-    // 1. Each player's card lands face down on their pile, then flips over.
+    // 1. This step's cards (still face down) step forward, then flip over.
     const dealt: HTMLElement[] = [];
     for (const i of [0, 1]) {
-      const pile = this.q(`.pile.p${i} .pile-cards`);
-      pile.querySelectorAll('.pile-card').forEach((c) => c.classList.add('under'));
       const sp = players[i];
-      const card = document.createElement('div');
-      card.className = `pile-card face-down${sp.active ? '' : ' inactive'}${sp.stunned ? ' stunned' : ''}`;
-      card.style.setProperty('--n', String(step.slot));
-      card.innerHTML =
-        cardHtml(plans[i][step.slot], { facing: sp.facing, small: true, readonly: true }) +
-        (sp.stunned ? `<span class="pile-tag">${STRINGS.stunned}</span>` : '');
-      pile.appendChild(card);
+      const card = this.playCard(i, step.slot);
+      card.className = `play-card face-down${sp.active ? '' : ' inactive'}${sp.stunned ? ' stunned' : ''}`;
+      card.querySelector('.play-face')!.innerHTML =
+        cardHtml(plans[i][step.slot], { facing: sp.facing, readonly: true }) + (sp.stunned ? `<span class="play-tag">${STRINGS.stunned}</span>` : '');
       dealt.push(card);
     }
+    this.markStep(step.slot);
     play('place');
     await wait(ms(240));
     dealt.forEach((c) => {
@@ -1137,7 +1163,7 @@ export class BattleView {
   private restoreBoard(): void {
     this.clearAreas();
     this.renderTraps(this.state.arena.traps);
-    this.el.querySelectorAll('.summary .now').forEach((e) => e.classList.remove('now'));
+    this.markStep(null);
     const ps = this.state.players;
     this.snapTokens([ps[0].pos, ps[1].pos], [ps[0].facing, ps[1].facing]);
     const o = this.state.outcome;
@@ -1161,8 +1187,7 @@ export class BattleView {
       while (this.paused && this.replayRun === run && !this.destroyed) await wait(100);
       if (this.replayRun !== run || this.destroyed) throw CANCELLED;
     };
-    const mark = (slot: number | null) =>
-      this.el.querySelectorAll<HTMLElement>('.summary [data-step]').forEach((e) => e.classList.toggle('now', Number(e.dataset.step) === slot));
+    const mark = (slot: number | null) => this.markStep(slot);
     try {
       for (;;) {
         mark(null);
@@ -1217,7 +1242,32 @@ export class BattleView {
     }
   }
 
-  /** After the round: both players' three cards side by side, in order. */
+  /** Every play-area card back to face down, for a new round. */
+  private resetPlayCards(): void {
+    this.el.querySelectorAll<HTMLElement>('.play-card').forEach((c) => {
+      c.className = 'play-card face-down';
+      c.title = '';
+      c.querySelector('.play-face')!.innerHTML = '<span class="card card-back"></span>';
+    });
+  }
+
+  private playCard(seat: number, step: number): HTMLElement {
+    return this.q(`.play-col.p${seat} .play-card[data-step="${step}"]`);
+  }
+
+  /** Spotlight the cards of the step playing now (null: none). */
+  private markStep(step: number | null): void {
+    this.el.querySelectorAll<HTMLElement>('.play-card').forEach((c) => c.classList.toggle('now', Number(c.dataset.step) === step));
+  }
+
+  /** The bar under the cards: a title and (in the recap) the buttons. Same size in both, so nothing jumps. */
+  private summaryBar(title: string, buttons: string): string {
+    return `<h3>${title}</h3><div class="row">${
+      buttons || `<button class="btn" disabled>${STRINGS.replay}</button><button class="btn primary" disabled>${STRINGS.nextRound}</button>`
+    }</div>`;
+  }
+
+  /** After the round: the cards stay in the play area and the round replays on the board. */
   private async showSummary(
     roundNo: number,
     plans: [Plan, Plan],
@@ -1225,27 +1275,23 @@ export class BattleView {
     start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[] },
   ): Promise<void> {
     const summary = this.q('.summary');
-    const header = plans[0].map((_, s) => `<span class="slot-label" data-step="${s}">${STRINGS.slot(s + 1)}</span>`).join('');
-    const rows = ([0, 1] as Seat[])
-      .map((i) => {
-        const cells = plans[i]
-          .map((id, s) => {
-            const step = result.steps[s];
-            const facing = step ? step.players[i].facing : result.state.players[i].facing;
-            const cls = !step ? ' unplayed' : step.players[i].active ? '' : ' inactive';
-            return `<div class="sum-cell${cls}" data-step="${s}" title="${!step ? STRINGS.notPlayed : ''}">${cardHtml(id, { facing, small: true, readonly: true })}</div>`;
-          })
-          .join('');
-        return `<div class="sum-row p${i}"><span class="sum-name">${this.seats[i].name}</span>${cells}</div>`;
-      })
-      .join('');
+    // Cards never played (the match ended first) are shown crossed out.
+    for (const i of [0, 1] as Seat[]) {
+      plans[i].forEach((id, s) => {
+        if (result.steps[s]) return;
+        const card = this.playCard(i, s);
+        card.className = 'play-card unplayed';
+        card.title = STRINGS.notPlayed;
+        card.querySelector('.play-face')!.innerHTML = cardHtml(id, { facing: result.state.players[i].facing, readonly: true });
+      });
+    }
+    this.markStep(null);
     const label = result.state.outcome ? STRINGS.seeResult : STRINGS.nextRound;
-    summary.innerHTML = `<h3>${STRINGS.roundSummary(roundNo)}</h3>
-      <div class="sum-grid"><span></span>${header}${rows}</div>
-      <div class="row">
-        <button class="btn" data-act="replay">${STRINGS.replay}</button>
-        <button class="btn primary" data-act="next">${label}</button>
-      </div>`;
+    summary.innerHTML = this.summaryBar(
+      STRINGS.roundSummary(roundNo),
+      `<button class="btn" data-act="replay">${STRINGS.replay}</button>
+        <button class="btn primary" data-act="next">${label}</button>`,
+    );
     this.setMode('summary');
     const replayBtn = summary.querySelector<HTMLElement>('[data-act="replay"]')!;
     const stopReplay = () => {

@@ -3,9 +3,9 @@ export const BALANCE = {
   slotsPerRound: 3,
   lifeMax: 100,
   energyMax: 100,
-  energyPerRound: 10,
+  energyPerRound: 15,
   /** From the round after this one, both fighters lose `fatigueDamage` life at the end of every round. */
-  fatigueAfterRound: 10,
+  fatigueAfterRound: 7,
   fatigueDamage: 5,
   /** What arena squares do to a fighter ending a step on them (see content/arenas.ts). */
   tiles: { spikes: 10, well: 10 },

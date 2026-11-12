@@ -6,8 +6,9 @@ import type { MatchState, Plan, Pos } from '../src/engine/types';
 
 const IDLE: Plan = ['guard', 'focus', 'up'];
 
+/** A match on the 3×4 board (Close Quarters): these tests were written for its edges. */
 function duel(a: string, b: string, posA: Pos, posB: Pos, bonusA: string[] = [], bonusB: string[] = []): MatchState {
-  const s = createMatch({ fighterId: a, bonusCards: bonusA }, { fighterId: b, bonusCards: bonusB });
+  const s = createMatch({ fighterId: a, bonusCards: bonusA }, { fighterId: b, bonusCards: bonusB }, {}, 'quarters');
   s.players[0].pos = posA;
   s.players[1].pos = posB;
   s.players[0].facing = posB.c >= posA.c ? 1 : -1;

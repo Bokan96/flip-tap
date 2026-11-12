@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { it } from 'vitest';
-import { BONUS_CARD_IDS, FIGHTERS, getCard } from '../src/content/cards';
+import { BALANCE } from '../src/content/balance';
+import { BONUS_CARD_IDS, CARDS, FIGHTERS, getCard } from '../src/content/cards';
 import { SIM_PROFILE, type AiProfile } from '../src/engine/ai';
 import { runMatch } from '../src/engine/match';
 import { Rng } from '../src/engine/rng';
@@ -11,6 +12,10 @@ import { Rng } from '../src/engine/rng';
  *   BONUS=n    each side brings n random bonus cards (default 0)
  *   SEED=n     base seed (default 1)
  *   ARENA=id   arena (default classic)
+ * Try changes without editing content (the report then goes to sim/, not docs/):
+ *   RULES="fatigueAfterRound=8"                       numbers in BALANCE
+ *   CARD="umbraClaw.damage=20;vexHex.cost=-10"        card fields (patterns as 010/111/010)
+ *   FIGHTER="umbra.passive.mods.vsMovedBonus=5"       fighter fields, by path
  */
 const MATCHES = Number(process.env.MATCHES ?? 40);
 const BONUS = Number(process.env.BONUS ?? 0);
@@ -21,6 +26,23 @@ const WEIGHTS = process.env.WEIGHTS ?? '';
 const PROFILE: AiProfile = WEIGHTS
   ? { ...SIM_PROFILE, weights: { ...SIM_PROFILE.weights, ...Object.fromEntries(WEIGHTS.split(',').map((kv) => [kv.split('=')[0], Number(kv.split('=')[1])])) } }
   : SIM_PROFILE;
+
+const RULES = process.env.RULES ?? '';
+const CARD = process.env.CARD ?? '';
+const FIGHTER = process.env.FIGHTER ?? '';
+/** Set `obj.a.b.c = value` from "a.b.c=value" (numbers stay numbers; "x/y/z" becomes an array). */
+function setPath(root: Record<string, unknown>, spec: string): void {
+  const [path, raw] = spec.split('=');
+  const keys = path.trim().split('.');
+  let o = root;
+  for (const k of keys.slice(0, -1)) o = (o[k] ??= {}) as Record<string, unknown>;
+  const n = Number(raw);
+  o[keys[keys.length - 1]] = raw.includes('/') ? raw.split('/') : raw === 'true' || raw === 'false' ? raw === 'true' : Number.isNaN(n) ? raw : n;
+}
+for (const kv of RULES.split(/[;,]/).filter(Boolean)) setPath(BALANCE as unknown as Record<string, unknown>, kv);
+for (const kv of CARD.split(';').filter(Boolean)) setPath(CARDS as unknown as Record<string, unknown>, kv);
+const byId = Object.fromEntries(FIGHTERS.map((f) => [f.id, f]));
+for (const kv of FIGHTER.split(';').filter(Boolean)) setPath(byId as unknown as Record<string, unknown>, kv);
 
 const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : '–');
 
@@ -92,6 +114,7 @@ it('balance report', () => {
       `AI vs AI with the simulation profile, so these numbers describe the cards, not human play.`,
     '',
   );
+  if (RULES || CARD || FIGHTER) lines.push(`Changes tried: ${[RULES, CARD, FIGHTER].filter(Boolean).join(' · ')}`, '');
   lines.push(`- Matches: ${total} · average length ${(rounds / total).toFixed(1)} rounds · draws ${pct(draws, total)} · hit round limit ${timeouts}`);
   lines.push(`- Player 1 (left start) wins ${pct(seat0Wins, total - draws)} of decided matches`);
   lines.push(`- Time: ${((Date.now() - started) / 1000).toFixed(0)} s`, '');
@@ -116,7 +139,7 @@ it('balance report', () => {
   // Only the default run (Classic, no bonus cards) updates docs/BALANCE.md; other runs write next to it.
   const tag = process.env.TAG ? `-${process.env.TAG}` : '';
   const file =
-    ARENA === 'classic' && !BONUS && !WEIGHTS && !tag
+    ARENA === 'classic' && !BONUS && !WEIGHTS && !tag && !RULES && !CARD && !FIGHTER
       ? '../docs/BALANCE.md'
       : `../sim/balance-${ARENA}${BONUS ? `-bonus${BONUS}` : ''}${WEIGHTS ? '-weights' : ''}${tag}.md`;
   writeFileSync(new URL(file, import.meta.url), report);
