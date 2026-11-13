@@ -85,6 +85,15 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 
 /* ---------- title ---------- */
 .title-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 4vh; }
+/* Secondary menu: two columns the width of the mode buttons, Exit across the bottom. */
+.title-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: min(340px, 100%); }
+.title-links .btn { padding: 10px 8px; }
+.title-links .exit-btn { grid-column: 1 / -1; color: var(--muted); border-color: var(--line); }
+.title-links .exit-btn:hover { color: var(--danger-soft); border-color: var(--danger); }
+.app-version {
+  position: fixed; right: calc(10px + env(safe-area-inset-right)); bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 5;
+  color: var(--muted); font-size: .72rem; letter-spacing: .04em; opacity: .8; pointer-events: none; font-variant-numeric: tabular-nums;
+}
 .logo {
   font-size: clamp(3rem, 12vw, 5.5rem); letter-spacing: .02em; font-weight: 900; font-style: italic; text-transform: uppercase;
   background: linear-gradient(90deg, var(--p0), var(--accent), var(--p1)); -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -148,6 +157,12 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .card:hover:not(.disabled):not(.readonly) { transform: translateY(-4px); border-color: var(--accent); }
 .card.disabled { opacity: .3; cursor: not-allowed; }
 .card.selected { opacity: .18; }
+/* Touch: a card tapped once is lifted and ringed (inside its edges: cards are clipped to their shape);
+   tapping it again adds it to the plan. */
+.planner .hand .card.armed {
+  transform: translateY(-5px); border-color: var(--accent); z-index: 1;
+  box-shadow: inset 0 0 0 2px var(--accent), inset 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent);
+}
 .card.readonly { cursor: default; }
 .card.bonus { border-color: var(--card-bonus); box-shadow: inset 0 0 12px color-mix(in srgb, var(--card-bonus) 30%, transparent); }
 .card.kind-attack { background: linear-gradient(165deg, var(--card-attack-a), var(--card-attack-b)); }
@@ -331,8 +346,8 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
   background: repeating-linear-gradient(
     90deg,
-    transparent 0 calc(100% / var(--seg, 10) - 2px),
-    color-mix(in srgb, var(--board) 90%, transparent) calc(100% / var(--seg, 10) - 2px) calc(100% / var(--seg, 10))
+    transparent 0 calc(100% / var(--seg, 10) - 1px),
+    color-mix(in srgb, var(--board) 60%, transparent) calc(100% / var(--seg, 10) - 1px) calc(100% / var(--seg, 10))
   );
 }
 .panel.p1 .bar span { transform: skewX(-18deg); }
@@ -373,19 +388,39 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   transition: left calc(.5s * var(--pace, 1)) cubic-bezier(.3, .7, .3, 1), top calc(.5s * var(--pace, 1)) cubic-bezier(.3, .7, .3, 1), transform .2s;
   z-index: 2; pointer-events: auto; cursor: pointer;
 }
-/* The piece: a plain diamond in the player's colour (no fighter emblem). */
+/*
+ * The piece: a diamond in the player's colour (no fighter emblem) with a dark rim so it stands out
+ * on any square. A dark chevron in its front tip and a light arrow outside it show which way it faces.
+ */
 .token .token-body {
   position: relative; width: 50%; aspect-ratio: 1; display: grid; place-items: center; transform: rotate(45deg);
-  background: linear-gradient(135deg, color-mix(in srgb, currentColor 80%, #fff), currentColor 45%, color-mix(in srgb, currentColor 62%, #000));
-  border: 2px solid color-mix(in srgb, currentColor 50%, #fff);
-  box-shadow: 0 0 12px color-mix(in srgb, currentColor 55%, transparent), inset 0 0 0 2px rgba(0, 0, 0, .22);
+  background: linear-gradient(135deg, color-mix(in srgb, currentColor 72%, #fff), currentColor 48%, color-mix(in srgb, currentColor 68%, #000));
+  border: 2px solid color-mix(in srgb, currentColor 30%, #fff);
+  box-shadow: 0 0 0 2px var(--token-rim), 0 0 14px color-mix(in srgb, currentColor 60%, transparent);
+}
+/* The square's top-right corner becomes the right-hand tip once it is turned 45°. */
+.token .token-body::after {
+  content: ''; position: absolute; top: 15%; right: 15%; width: 30%; height: 30%; z-index: 1;
+  border-top: 3px solid var(--token-mark); border-right: 3px solid var(--token-mark); border-radius: 0 2px 0 0;
+}
+.token.face-left .token-body::after {
+  top: auto; right: auto; bottom: 15%; left: 15%; border: 0;
+  border-bottom: 3px solid var(--token-mark); border-left: 3px solid var(--token-mark); border-radius: 0 0 0 2px;
 }
 .token .token-art { width: 86%; height: 86%; transform: rotate(-45deg); }
-.token:hover .token-body { box-shadow: 0 0 18px currentColor, inset 0 0 0 2px rgba(0, 0, 0, .22); }
+.token:hover .token-body { box-shadow: 0 0 0 2px var(--token-rim), 0 0 20px currentColor; }
 .token.p0 { color: var(--p0); }
 .token.p1 { color: var(--p1); }
-.token .facing { position: absolute; right: 4%; top: 50%; width: 0; height: 0; border: 7px solid transparent; border-left: 11px solid currentColor; transform: translateY(-50%); }
-.token.face-left .facing { right: auto; left: 4%; border-left: 7px solid transparent; border-right: 11px solid currentColor; }
+.token .facing {
+  position: absolute; right: 1%; top: 50%; width: 15%; aspect-ratio: 1; transform: translateY(-50%);
+  filter: drop-shadow(0 0 1px var(--token-rim)) drop-shadow(0 0 1px var(--token-rim));
+}
+.token .facing::before {
+  content: ''; position: absolute; inset: 0; clip-path: polygon(0 0, 100% 50%, 0 100%);
+  background: color-mix(in srgb, currentColor 35%, #fff);
+}
+.token.face-left .facing { right: auto; left: 1%; }
+.token.face-left .facing::before { clip-path: polygon(100% 0, 0 50%, 100% 100%); }
 .token.shared.p0 { transform: translateX(-18%) scale(.8); }
 .token.shared.p1 { transform: translateX(18%) scale(.8); }
 .token.shake { animation: shake .45s; }
@@ -638,6 +673,30 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .ring.shield i { border: 3px solid var(--fx-guard); background: radial-gradient(circle, transparent 55%, color-mix(in srgb, var(--fx-guard) 35%, transparent)); animation: ring .6s ease-out forwards; }
 .ring.stun i { border: 3px dashed var(--fx-stun); animation: ring-spin .6s ease-out forwards; }
 @keyframes ring { from { opacity: .95; transform: translate(-50%, -50%) scale(.5); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.35); } }
+/* Focus: energy motes fly in to the fighter. */
+.particles.gather i { border-radius: 50%; opacity: 0; animation: gather .6s ease-in var(--delay, 0ms) forwards; }
+@keyframes gather {
+  0% { transform: rotate(var(--a)) translateX(var(--dist)) scale(.6); opacity: 0; }
+  30% { opacity: 1; }
+  100% { transform: rotate(var(--a)) translateX(2px) scale(1.1); opacity: 0; }
+}
+.token.focusing .token-body { animation: focus-glow .9s ease-out; }
+@keyframes focus-glow {
+  0% { filter: none; }
+  55% { filter: brightness(1.45) drop-shadow(0 0 10px var(--energy)); }
+  100% { filter: none; }
+}
+/* Guard: a shield bubble around the fighter for the rest of the step. */
+.token.guarding::before {
+  content: ''; position: absolute; inset: 7%; border-radius: 50%; pointer-events: none;
+  border: 2px solid var(--fx-guard);
+  background: radial-gradient(circle, transparent 52%, color-mix(in srgb, var(--fx-guard) 30%, transparent));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--fx-guard) 55%, transparent);
+  animation: shield-up .35s cubic-bezier(.3, 1.6, .5, 1), shield-hum 1.2s ease-in-out .35s infinite alternate;
+}
+@keyframes shield-up { from { transform: scale(.4); opacity: 0; } }
+@keyframes shield-hum { to { opacity: .65; transform: scale(.96); } }
+.reduced-fx .token.guarding::before { animation: none; }
 @keyframes ring-spin { from { opacity: 1; transform: translate(-50%, -50%) scale(.4) rotate(0); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.35) rotate(140deg); } }
 
 .token.hop { animation: hop .5s cubic-bezier(.3, .7, .3, 1); }
@@ -951,8 +1010,7 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   .card { --cw: 66px; }
   .card.small { --cw: 56px; }
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .title-wrap > .row { flex-wrap: nowrap; gap: 6px; }
-  .title-wrap > .row .btn { padding: 10px 10px; font-size: .78rem; }
+  .title-links .btn { padding: 9px 6px; font-size: .78rem; }
   .fighter-records li { grid-template-columns: 28px 1fr auto; }
   .fighter-records li span:last-child { grid-column: 2 / -1; }
   .daily-vs .emblem { width: 64px; height: 64px; }
@@ -1089,6 +1147,44 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .share-text {
   width: min(440px, 80vw); padding: 8px; resize: none; font: inherit; font-size: .85rem;
   background: var(--bg); color: var(--text); border: 1px solid var(--line);
+}
+
+/* ---------- glossary ---------- */
+.gl-tabs { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.gl-tabs .chip { padding: 6px 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; font-size: .78rem; }
+.glossary { width: min(780px, 100%); display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.glossary.gl-fighters { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.gl-fighter { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--clr); }
+.gl-hand { display: flex; gap: 6px; flex-wrap: wrap; }
+.gl-hand .card { --cw: 58px; }
+.gl-section { display: flex; flex-direction: column; gap: 6px; }
+.gl-section h3 { display: flex; align-items: center; gap: 8px; }
+.gl-section h3 .hud-emblem { width: 22px; height: 22px; }
+.gl-section .note { margin: 0; }
+.gl-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; }
+.gl-card { display: flex; gap: 10px; align-items: flex-start; padding: 8px; background: var(--bg2); border: 1px solid var(--line); }
+.gl-card .card { --cw: 56px; }
+.gl-card b { display: block; font-size: .9rem; }
+.gl-card small, .gl-detail small { color: var(--muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; }
+.gl-card p { margin: 4px 0 0; font-size: .8rem; line-height: 1.35; }
+.gl-terms { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 6px; }
+.gl-terms > div { padding: 8px 10px; background: var(--bg2); border: 1px solid var(--line); }
+.gl-terms dt { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: .88rem; }
+.gl-terms dt i { flex: none; width: 24px; font-style: normal; text-align: center; color: var(--accent); font-size: 1.05rem; }
+.gl-terms dd { margin: 4px 0 0; font-size: .8rem; line-height: 1.35; }
+.gl-terms dt i.tile-key { width: 22px; height: 22px; display: grid; place-items: center; font-size: .6rem; border: 1px solid var(--line-hi); }
+.tile-key.blocked { background: repeating-linear-gradient(45deg, var(--rock-a) 0 4px, var(--rock-b) 4px 8px); }
+.gl-terms dt i.tile-key.spikes { color: var(--hazard-spikes); }
+.gl-terms dt i.tile-key.well { color: var(--hazard-well); }
+.gl-arenas { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; }
+.gl-arena { display: flex; gap: 10px; align-items: center; padding: 8px; background: var(--bg2); border: 1px solid var(--line); }
+.gl-arena b { font-size: .9rem; }
+.gl-arena p { margin: 2px 0 0; font-size: .8rem; color: var(--muted); }
+.gl-detail { display: flex; gap: 14px; align-items: flex-start; text-align: left; max-width: 440px; }
+.gl-detail h2 { margin-bottom: 2px; }
+.gl-detail p { margin: 8px 0 0; line-height: 1.4; }
+@media (max-width: 600px) {
+  .gl-detail { flex-direction: column; align-items: center; text-align: center; }
 }
 
 /* Keep content clear of notches and rounded corners (fullscreen / installed app). Insets are 0 elsewhere. */

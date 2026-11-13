@@ -84,6 +84,8 @@ type Mode = 'idle' | 'plan' | 'wait' | 'pass' | 'reveal' | 'summary';
 
 /** Base animation timings in ms at "normal" speed. */
 const TIMING = { intro: 500, place: 700, move: 650, area: 1150, hit: 1000, quiet: 450, energy: 900 };
+/** Every step (in the reveal, the recap and replays) lasts at least this long at normal speed. */
+const MIN_STEP_MS = 2000;
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Human input, fed by the planner UI below. */
@@ -119,6 +121,10 @@ export class BattleView {
   private shownTraps: Trap[] = [];
   /** The round being revealed or recapped. */
   private shownRound = 0;
+  /** On touch, a tapped hand card is first only selected (previewed); a second tap adds it. */
+  private armed: string | null = null;
+  /** Pointer type of the latest press, so a mouse click can still add a card straight away. */
+  private lastPointer = 'mouse';
 
   constructor(
     private root: HTMLElement,
@@ -331,6 +337,7 @@ export class BattleView {
       const seatEl = t.closest<HTMLElement>('.token, .panel');
       if (seatEl) this.showDeck(Number(seatEl.dataset.seat) as Seat);
     });
+    this.el.addEventListener('pointerdown', (e) => (this.lastPointer = e.pointerType), true);
     this.el.addEventListener('pointerover', (e) => {
       if ((e.target as HTMLElement).closest('.planner, .slots')) this.onPlannerHover(e);
     });
@@ -585,6 +592,7 @@ export class BattleView {
     this.plan = Array(BALANCE.slotsPerRound).fill('');
     this.hovered = null;
     this.previewCard = null;
+    this.armed = null;
     this.el.dataset.seat = String(seat);
     this.q('.status').textContent = STRINGS.planning(this.seats[seat].name);
     this.setMode('plan');
@@ -612,6 +620,7 @@ export class BattleView {
   private setPlan(plan: Plan): void {
     this.plan = plan;
     this.hovered = null;
+    this.armed = null;
     this.renderPlanner();
     this.opts.hooks?.planChanged?.(this, [...plan], this.planSeat);
   }
@@ -724,6 +733,9 @@ export class BattleView {
       return cardHtml(id, { facing: facings[Math.max(0, target)], disabled: used || !ok, selected: used, spent: isSpent(me, id) });
     });
     this.q<HTMLButtonElement>('[data-act="lock"]').disabled = planError(me, this.plan) !== null;
+    const armedOk = !!this.armed && target >= 0 && canPlace(me, this.plan, target, this.armed);
+    if (this.armed) this.q('.hand').querySelector(`.card[data-card="${this.armed}"]`)?.classList.add('armed');
+    this.q('.status').textContent = armedOk ? STRINGS.tapAgainToAdd(getCard(this.armed!).name) : STRINGS.planning(this.seats[this.planSeat].name);
     this.renderPreview();
     this.renderPreviewPanel();
     this.applyHighlight();
@@ -856,6 +868,16 @@ export class BattleView {
     if (cardEl) {
       const slot = this.nextEmptySlot();
       const id = cardEl.dataset.card!;
+      // Touch: the first tap only selects the card (its details and squares show); the second adds it.
+      // A mouse already previews on hover, so a click adds straight away.
+      if (this.lastPointer !== 'mouse' && this.armed !== id) {
+        this.armed = id;
+        this.previewCard = id;
+        if (slot >= 0) this.hovered = { slot, card: id };
+        play('click');
+        this.renderPlanner();
+        return;
+      }
       if (slot < 0 || !canPlace(me, this.plan, slot, id)) return play('deny');
       play('place');
       haptic('tap');
@@ -988,6 +1010,7 @@ export class BattleView {
     const color = (i: number) => getFighter(this.state.players[i].fighterId).color;
     const ms = (n: number) => n * this.pace();
     if (step.outcome) this.slow = 1.8;
+    const minEnd = performance.now() + MIN_STEP_MS * this.pace();
 
     // 1. This step's cards (still face down) step forward, then flip over.
     const dealt: HTMLElement[] = [];
@@ -1037,6 +1060,9 @@ export class BattleView {
     // Where each token currently stands (pushes move them during the step).
     const posNow: [Pos, Pos] = [players[0].to, players[1].to];
     const stacks = [0, 0];
+
+    // Guard raises a shield for the rest of the step; Focus draws energy in.
+    if (this.showStances(players, posNow, tokens, stacks)) await this.tick(450);
 
     /** Attackers wind up, then their squares light up outward from them. */
     const windUp = async (who: number[]) => {
@@ -1201,8 +1227,37 @@ export class BattleView {
       });
     }
     await this.sleep(busy ? 'hit' : 'quiet');
+    // Quiet steps (say, both fighters focusing) still get their moment.
+    const rest = minEnd - performance.now();
+    if (rest > 0) await this.hold(rest / this.pace());
+    tokens.forEach((t) => t.classList.remove('guarding'));
     this.slow = 1;
     this.clearAreas();
+  }
+
+  /**
+   * Shield for fighters guarding this step, an energy charge for those focusing (with the energy
+   * they gain). Returns whether anything was shown.
+   */
+  private showStances(players: StepResult['players'], at: [Pos, Pos], tokens: HTMLElement[], stacks?: number[], quiet = false): boolean {
+    let shown = false;
+    players.forEach((p, i) => {
+      if (!p.active) return;
+      const c = getCard(p.cardId);
+      if (c.kind === 'guard') {
+        tokens[i].classList.add('guarding');
+        this.fx.ring(at[i], 'shield');
+        if (!quiet) play('guard');
+        shown = true;
+      } else if (c.kind === 'focus') {
+        retrigger(tokens[i], 'focusing');
+        this.fx.gather(at[i], themeColor('--energy'), 10);
+        if (c.cost > 0) this.floatText(at[i], STRINGS.energyBack(c.cost), 'energy', stacks ? stacks[i]++ : 0);
+        if (!quiet) play('shimmer');
+        shown = true;
+      }
+    });
+    return shown;
   }
 
   /** Put the board back to the end-of-round state (after a replay). */
@@ -1215,7 +1270,7 @@ export class BattleView {
     const o = this.state.outcome;
     [0, 1].forEach((i) => {
       const t = this.q(`.token.p${i}`);
-      t.classList.remove('dazed', 'hop', 'shake', 'flash');
+      t.classList.remove('dazed', 'hop', 'shake', 'flash', 'guarding', 'focusing');
       t.classList.toggle('ko', !!o && (o.winner === null || o.winner !== i));
       t.classList.remove('ko-fall');
     });
@@ -1243,6 +1298,7 @@ export class BattleView {
         this.snapTokens(start.pos, start.facing);
         await pause(700);
         for (const step of result.steps) {
+          const t0 = performance.now();
           const P = step.players;
           const facing: [number, number] = [P[0].facing, P[1].facing];
           const posNow: [Pos, Pos] = [P[0].to, P[1].to];
@@ -1250,6 +1306,7 @@ export class BattleView {
           this.placeTokens(posNow, facing);
           P.forEach((p, i) => p.moved && retrigger(tokens[i], 'hop'));
           await pause(P.some((p) => p.moved) ? 550 : 250);
+          if (this.showStances(P, posNow, tokens, undefined, true)) await pause(350);
 
           // Same order as the real reveal: one strike at a time when both attack.
           const strikes = step.sequence
@@ -1278,6 +1335,9 @@ export class BattleView {
           this.placeTokens([P[0].final, P[1].final], facing);
           this.renderTraps(step.traps);
           await pause(300);
+          const rest = MIN_STEP_MS - (performance.now() - t0) / speedMultiplier();
+          if (rest > 0) await pause(rest);
+          tokens.forEach((t) => t.classList.remove('guarding'));
         }
         // Hold the final position a while before starting over.
         await pause(2400);

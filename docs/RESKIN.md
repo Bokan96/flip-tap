@@ -20,6 +20,11 @@ engine (`src/engine/`) never needs to change for a reskin. Work through the sect
 - **`strings.ts`** holds every word the player sees: game title, tagline, menus, rules, tutorial tips,
   daily challenge, profile screen, card tooltips. Translate or rewrite freely; keep the function
   signatures (for example `wins: (who) => …`).
+- **Other languages** live in `src/content/lang/` (Serbian: `sr.ts`). Each provides the whole
+  `strings.ts` object (the type checker lists any missing key) plus the names and descriptions of
+  cards, fighters, arenas, daily rules and achievements by id. Register a new one in
+  `src/content/i18n.ts` and it appears under Settings → Language. Changing a rename in a reskin? Change
+  it in every language file too.
 - `gameTitle` and `pageDescription` also become the browser tab title and page description at startup.
   `index.html` has the same title as a fallback for the first instant; update it too.
 - Card and fighter names live in `cards.ts` (next section).

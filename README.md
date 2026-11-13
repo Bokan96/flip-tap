@@ -9,7 +9,11 @@ Modes: **Tournament** (beat 5 rivals, earn bonus cards), **Versus CPU** (4 diffi
 
 After every match there is a summary (life over the rounds, damage per card, biggest hit, best dodge)
 and a replay. The last 10 matches stay in Profile → Recent matches, and any of them can be shared as a
-`#replay=` link that plays the match back in the receiver's browser.
+`#replay=` link that plays the match back in the receiver's browser. The main menu has a
+**Glossary** (fighters, every card, effects, arenas) and the game is available in **English and
+Serbian** (Settings → Language).
+
+The version shown in the corner of the main menu comes from `package.json`: bump it with every update.
 
 ## Develop
 
@@ -37,7 +41,8 @@ Content and presentation are separate from the rules:
 | Fighters, cards, damage, costs, attack patterns | `src/content/cards.ts` |
 | Life/energy, slots per round, energy regen, fatigue | `src/content/balance.ts` |
 | Arenas: board sizes, start squares, pillars, thorns, springs | `src/content/arenas.ts` |
-| All UI text | `src/content/strings.ts` |
+| All UI text (English) | `src/content/strings.ts` |
+| Translations: every UI text plus card, fighter, arena, rule and achievement names | `src/content/lang/*.ts` (registered in `src/content/i18n.ts`) |
 | Fighter images and sound files (optional) | `public/assets/…` + `src/content/assets.ts` |
 | Colours, layout | `src/styles.css` |
 

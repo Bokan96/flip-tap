@@ -48,6 +48,8 @@
   --danger-soft: #ffb3b3;
 
   /* ---------- board ---------- */
+  --token-rim: #05070e; /* dark outline around the pieces and their facing arrow */
+  --token-mark: rgba(8, 10, 20, .72); /* chevron inside a piece, pointing the way it faces */
   --board: #0a0d18; /* frame and gaps behind the squares */
   --tile-a: #222a48; /* square gradient */
   --tile-b: #171c33;

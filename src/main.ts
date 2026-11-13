@@ -1,5 +1,7 @@
 import './theme.css';
 import './styles.css';
+// First: the chosen language's texts must be in place before anything reads them.
+import './lang';
 import { setMusic } from './audio/music';
 import { play } from './audio/sfx';
 import { ACHIEVEMENTS } from './content/achievements';
@@ -56,6 +58,7 @@ import { BattleView, HumanPlanSource, type BattleOptions } from './ui/battle';
 import { cardHtml, describeCard, passiveHtml } from './ui/card';
 import { emblemHtml, portraitHtml } from './ui/emblems';
 import { retrigger } from './ui/fx';
+import { cardDetailHtml, GLOSSARY_TABS, glossaryTabHtml, starsHtml, type GlossaryTab } from './ui/glossary';
 import { renderSummary } from './ui/matchSummary';
 import { gameUrl, replayCodeFromHash, replayUrl, shareOrCopy, type ShareResult } from './ui/share';
 import { bindSettings, settingsHtml } from './ui/settingsPanel';
@@ -88,7 +91,7 @@ function modal(html: string, bind: (box: HTMLElement) => void = () => undefined)
 }
 
 function openSettings(): void {
-  modal(`<h2>${STRINGS.settings.title}</h2>${settingsHtml()}`, bindSettings);
+  modal(`<h2>${STRINGS.settings.title}</h2>${settingsHtml({ language: true })}`, bindSettings);
 }
 
 function on(root: HTMLElement, sel: string, fn: (el: HTMLElement) => void): void {
@@ -142,12 +145,15 @@ function title(): void {
         <button class="btn big" data-mode="hotseat">${STRINGS.modeHotseat}<small>${STRINGS.modeHotseatHint}</small></button>
       </nav>
       <button class="btn install-btn hidden" data-act="install">⤓ ${STRINGS.install.button}<small>${STRINGS.install.hint}</small></button>
-      <div class="row">
+      <div class="title-links">
         <button class="btn ghost-btn" data-act="howto">${STRINGS.howToPlay}</button>
+        <button class="btn ghost-btn" data-act="glossary">${STRINGS.glossary.title}</button>
         <button class="btn ghost-btn" data-act="profile">${STRINGS.profile.title}</button>
         <button class="btn ghost-btn" data-act="settings">${STRINGS.settings.title}</button>
+        <button class="btn ghost-btn exit-btn" data-act="exit">${STRINGS.exitGame.button}</button>
       </div>
-    </div>`,
+    </div>
+    <span class="app-version" title="${STRINGS.versionTitle}">v${__APP_VERSION__}</span>`,
     'title',
   );
   on(root, '[data-mode]', (el) => matchSetup(el.dataset.mode as SetupMode));
@@ -156,12 +162,28 @@ function title(): void {
   on(root, '[data-act="howto"]', howTo);
   on(root, '[data-act="profile"]', profileScreen);
   on(root, '[data-act="settings"]', openSettings);
+  on(root, '[data-act="glossary"]', () => glossaryScreen());
+  on(root, '[data-act="exit"]', exitGame);
   on(root, '[data-act="tutorial"]', startTutorial);
   bindInstallButton(root);
   on(root, '[data-act="no-tutorial"]', () => {
     setTutorialDone();
     root.querySelector('.banner')?.remove();
   });
+}
+
+/**
+ * Close the game. Browsers only let a page close itself when it was opened as an app or a fresh
+ * window with no history; otherwise explain how to leave instead.
+ */
+function exitGame(): void {
+  setMusic(null);
+  window.close();
+  setTimeout(() => {
+    if (document.visibilityState === 'hidden') return;
+    setMusic('menu');
+    modal(`<h2>${STRINGS.exitGame.title}</h2><p>${STRINGS.exitGame.cantClose}</p>`);
+  }, 350);
 }
 
 /** "Install app": the browser's own install dialog where supported, instructions on iPhone/iPad. */
@@ -198,6 +220,35 @@ function howTo(): void {
   );
   on(root, '[data-act="back"]', title);
   on(root, '[data-act="tutorial"]', startTutorial);
+}
+
+// ---------- glossary ----------
+
+let glossaryTab: GlossaryTab = 'fighters';
+
+/** Fighters, every card, effect icons and arenas. Tap any card for its full description. */
+function glossaryScreen(tab = glossaryTab): void {
+  glossaryTab = tab;
+  const G = STRINGS.glossary;
+  const tabs = GLOSSARY_TABS.map(
+    (t) => `<button class="chip${t === tab ? ' on' : ''}" data-tab="${t}" role="tab" aria-selected="${t === tab}">${G.tabs[t]}</button>`,
+  ).join('');
+  const root = screen(
+    `<h2>${G.title}</h2>
+     <div class="gl-tabs" role="tablist">${tabs}</div>
+     ${tab === 'fighters' || tab === 'cards' ? `<p class="note">${G.tapCard}</p>` : ''}
+     <div class="glossary gl-${tab}">${glossaryTabHtml(tab)}</div>
+     <div class="row"><button class="btn" data-act="back">${STRINGS.back}</button></div>`,
+    'glossary-screen',
+  );
+  on(root, '[data-tab]', (el) => glossaryScreen(el.dataset.tab as GlossaryTab));
+  on(root, '[data-act="back"]', title);
+  root.querySelector('.glossary')!.addEventListener('click', (e) => {
+    const card = (e.target as HTMLElement).closest<HTMLElement>('[data-card]');
+    if (!card) return;
+    play('click');
+    modal(cardDetailHtml(card.dataset.card!));
+  });
 }
 
 // ---------- fighter selection and loadout ----------
@@ -269,9 +320,6 @@ const lastPicks: Partial<Record<SetupMode, (string | null)[]>> = {};
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-function stars(n: number): string {
-  return `<span class="stars" title="${STRINGS.setup.complexity}">${'★'.repeat(n)}<span class="off">${'★'.repeat(3 - n)}</span></span>`;
-}
 
 /**
  * Match setup: the fighter slots (tap one to change it), the roster with a Random tile, details of
@@ -327,7 +375,7 @@ function matchSetup(mode: SetupMode): void {
       const id = tile.dataset.pick!;
       tile.classList.toggle('focus', id === focus);
       tile.querySelector('.pick-marks')!.innerHTML = picks
-        .map((p, i) => (p === id ? `<i class="m${i}">${seats === 1 ? '✓' : i === 0 ? 'P1' : mode === 'cpu' ? 'CPU' : 'P2'}</i>` : ''))
+        .map((p, i) => (p === id ? `<i class="m${i}">${seats === 1 ? '✓' : i === 0 ? STRINGS.setup.markP1 : mode === 'cpu' ? STRINGS.cpu : STRINGS.setup.markP2}</i>` : ''))
         .join('');
     });
     const detail = root.querySelector<HTMLElement>('.fighter-detail')!;
@@ -338,7 +386,7 @@ function matchSetup(mode: SetupMode): void {
     } else {
       detail.style.setProperty('--clr', f.color);
       detail.innerHTML = `<div class="detail-head">${portraitHtml(f, 'detail-emblem')}
-          <div><b>${f.name}</b><i>${f.title}</i><div class="detail-tags"><span class="role-tag">${f.role}</span>${stars(f.complexity)}</div></div>
+          <div><b>${f.name}</b><i>${f.title}</i><div class="detail-tags"><span class="role-tag">${f.role}</span>${starsHtml(f.complexity)}</div></div>
           <span class="detail-stats">♥ ${f.lifeMax ?? BALANCE.lifeMax}<br>⚡ ${f.energyMax ?? BALANCE.energyMax}</span>
         </div>
         <p class="detail-blurb">${f.blurb}</p>
@@ -645,7 +693,7 @@ function resultScreen(
 ): void {
   const fx = fighters
     .map((id, i) => `<div class="result-fighter${winner === i ? ' won' : winner === null ? '' : ' lost'}">${portraitHtml(getFighter(id))}</div>`)
-    .join('<span class="vs">vs</span>');
+    .join(`<span class="vs">${STRINGS.vsShort}</span>`);
   const again = () => resultScreen(heading, winner, fighters, buttons, extra, false, recap, more, replayButtons);
   const actions: ResultButton[] =
     recap && replayButtons
@@ -812,7 +860,7 @@ function sharedReplay(code: string): void {
   const root = screen(
     `<h2>${STRINGS.replays.sharedTitle}</h2>
      <p class="note">${STRINGS.replays.sharedHint}</p>
-     <div class="daily-vs">${side(0)}<span class="vs">vs</span>${side(1)}</div>
+     <div class="daily-vs">${side(0)}<span class="vs">${STRINGS.vsShort}</span>${side(1)}</div>
      ${mod ? `<div class="daily-rule"><small>${STRINGS.replays.rule}</small><b>${mod.name}</b><span>${mod.text}</span></div>` : ''}
      <div class="daily-rule arena">${arenaMiniHtml(arena)}<div><small>${STRINGS.arena}</small><b>${arena.name}</b><span>${arena.text}</span></div></div>
      ${r.stale ? `<p class="note warn">${STRINGS.replays.stale}</p>` : ''}
@@ -923,7 +971,7 @@ function dailyScreen(): void {
      <p class="note">${STRINGS.daily.sameForEveryone}</p>
      <div class="daily-vs">
        <div style="--clr:${f.color}">${portraitHtml(f)}<b>${f.name}</b><span>${STRINGS.daily.youPlay}</span></div>
-       <span class="vs">vs</span>
+       <span class="vs">${STRINGS.vsShort}</span>
        <div style="--clr:${r.color}">${portraitHtml(r)}<b>${r.name}</b><span>${STRINGS.daily.hardCpu}</span></div>
      </div>
      <div class="daily-rule"><small>${STRINGS.daily.rule}</small><b>${c.modifier.name}</b><span>${c.modifier.text}</span></div>
@@ -987,12 +1035,13 @@ async function shareDaily(date: string, outcome: MatchOutcome, stats: MatchStats
 /** "Today 14:05", "Yesterday 09:12" or a short date. */
 function whenText(at: number): string {
   const d = new Date(at);
-  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const locale = STRINGS.locale || undefined;
+  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((day(new Date()) - day(d)) / 86400000);
   if (diff === 0) return `${STRINGS.replays.today} ${time}`;
   if (diff === 1) return `${STRINGS.replays.yesterday} ${time}`;
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
 }
 
 function recentHtml(): string {

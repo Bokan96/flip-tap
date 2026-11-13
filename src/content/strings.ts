@@ -1,7 +1,12 @@
 import { BALANCE } from './balance';
 
-/** Every piece of UI text. Swap this object to re-theme or translate the game. */
+/**
+ * Every piece of UI text, in English. Other languages (content/lang/*.ts) provide the same object
+ * and replace this one's values at startup (see content/i18n.ts).
+ */
 export const STRINGS = {
+  /** Locale for dates and times ('' = the browser's own). */
+  locale: '',
   gameTitle: 'Flip Tap',
   pageDescription: 'Flip Tap: a two-player simultaneous card battle on a tiny grid.',
   tagline: 'Plan three moves. Reveal. Outsmart.',
@@ -14,6 +19,12 @@ export const STRINGS = {
   howToPlay: 'How to play',
   back: 'Back',
   menu: 'Menu',
+  versionTitle: 'Game version',
+  exitGame: {
+    button: 'Exit',
+    title: 'Exit Flip Tap',
+    cantClose: 'Your browser won’t let the game close itself here. Close this tab, or swipe the app away, to exit. Your progress is saved.',
+  },
   settings: {
     title: 'Settings',
     sound: 'Sound',
@@ -21,6 +32,7 @@ export const STRINGS = {
     vibration: 'Vibration',
     effects: 'Effects',
     fullscreen: 'Fullscreen',
+    language: 'Language',
     on: 'On',
     off: 'Off',
     full: 'Full',
@@ -57,6 +69,9 @@ export const STRINGS = {
     next: 'Continue',
     complexity: 'How tricky to play (1–3 stars)',
     you: 'You',
+    /** Short seat marks on the roster tiles. */
+    markP1: 'P1',
+    markP2: 'P2',
   },
   player: (n: number) => `Player ${n}`,
   cpu: 'CPU',
@@ -72,6 +87,7 @@ export const STRINGS = {
 
   round: (n: number) => `Round ${n}`,
   planning: (who: string) => `${who}: plan your 3 moves`,
+  tapAgainToAdd: (card: string) => `Tap ${card} again to add it`,
   lockIn: 'Lock in',
   clear: 'Clear',
   slot: (n: number) => `Step ${n}`,
@@ -166,6 +182,7 @@ export const STRINGS = {
   previewHint: 'Tap a card to see what it does.',
   previewHint2: 'Tap a fighter on the board to see all of their cards.',
   vs: 'VS',
+  vsShort: 'vs',
   tapToContinue: 'Tap to continue',
 
   effectIcons: { push: '⇥', pull: '⇤', stun: '✷', counter: '↺', drain: '♥', burn: '≋', trap: '⊠', swap: '⇄' },
@@ -268,15 +285,59 @@ export const STRINGS = {
     yesterday: 'Yesterday',
   },
 
+  glossary: {
+    title: 'Glossary',
+    tabs: { fighters: 'Fighters', cards: 'Cards', effects: 'Effects', arenas: 'Arenas' } as Record<string, string>,
+    tapCard: 'Tap any card for its full description.',
+    basicCards: 'Basic cards',
+    basicNote: 'Every fighter has these.',
+    fighterCards: (fighter: string) => `${fighter}’s cards`,
+    bonusCards: 'Bonus cards',
+    bonusNote: 'Won in the Tournament. Equip up to three for Tournament and Versus CPU matches.',
+    basicOwner: 'Basic card',
+    bonusOwner: 'Bonus card',
+    fighterOwner: (fighter: string) => `${fighter}’s card`,
+    dirs: { up: 'up', down: 'down', left: 'left', right: 'right' } as Record<string, string>,
+    move: (n: number, dir: string) => `Moves you ${n} square${n > 1 ? 's' : ''} ${dir}.`,
+    guard: (n: number) => `Blocks ${n} damage from a hit this step.`,
+    focus: (n: number) => `Gives you ${n} energy.`,
+    attack: (n: number) => `Deals ${n} damage to an opponent on a red square.`,
+    heal: (n: number) => `Restores ${n} life.`,
+    cost: (n: number) => `Costs ${n} energy.`,
+    free: 'Free to play.',
+    tileNames: { blocked: 'Pillar', spikes: 'Thorns', well: 'Spring' } as Record<string, string>,
+    tileTexts: () =>
+      ({
+        blocked: 'Nobody can stand here, and pushes and pulls stop at it.',
+        spikes: `End a step here and lose ${BALANCE.tiles.spikes} life.`,
+        well: `End a step here and gain ${BALANCE.tiles.well} energy.`,
+      }) as Record<string, string>,
+    terms: () => [
+      { icon: '⚡', name: 'Energy', text: `The number in a card’s corner is its cost. Fighters regain ${BALANCE.energyPerRound} energy after every round, and Focus gives energy back. A plan can never run out of energy part-way.` },
+      { icon: '♥', name: 'Life', text: 'Bring your opponent’s life to 0 to win. If both fall in the same step, it is a draw.' },
+      { icon: '⛨', name: 'Guard', text: 'Takes the guard value off the damage of any hit that step.' },
+      { icon: '⇥', name: 'Push', text: 'Knocks the target away from the attacker. Pillars and the board’s edge stop it.' },
+      { icon: '⇤', name: 'Pull', text: 'Drags the target toward the attacker.' },
+      { icon: '✷', name: 'Stun', text: 'If it deals damage, the target’s next card this round is cancelled.' },
+      { icon: '↺', name: 'Counter', text: 'If an attack hits you while this card is played, the attacker takes damage back.' },
+      { icon: '♥', name: 'Drain', text: 'Heals the attacker for part of the damage it deals.' },
+      { icon: '≋', name: 'Burn', text: 'If it deals damage, the target loses life at the end of each later step that round.' },
+      { icon: '⊠', name: 'Trap', text: 'Marks squares from the next step. An enemy who ends a step on one takes damage. Traps last until the end of the next round.' },
+      { icon: '⇄', name: 'Swap', text: 'The two fighters trade places after moving.' },
+      { icon: '»', name: 'First strike', text: 'If both fighters attack in the same step, the stronger attack lands first (on a tie, the fighter with more life). A fighter knocked out first never gets their attack off.' },
+      { icon: '⌛', name: 'Fatigue', text: `From round ${BALANCE.fatigueAfterRound + 1}, both fighters lose ${BALANCE.fatigueDamage} life at the end of every round.` },
+    ],
+  },
+
   tutorial: {
     dummy: 'Training dummy',
     playTutorial: 'Play tutorial',
     newHere: 'New here? Learn the basics in a short guided match.',
     noThanks: 'No thanks',
     r1a: 'Welcome! Each round, both fighters secretly plan 3 cards. Then the cards play out one step at a time, at the same time.',
-    r1b: 'On a card, the blue square shows where a move takes you and red squares show where an attack hits. Get closer first: tap Step Right.',
-    r1c: 'Now tap Ember Jab. While you choose, the board shows the squares it will hit.',
-    r1d: 'Fill the last slot with Guard, then tap Lock in. Tip: you can also drag cards into slots and between them.',
+    r1b: 'On a card, the blue square shows where a move takes you and red squares show where an attack hits. Get closer first: tap Step Right to see where it goes, then tap it again to add it to your plan.',
+    r1c: 'Now add Ember Jab the same way. While it is selected, the board shows the squares it will hit.',
+    r1d: 'Fill the last slot with Guard, then tap Lock in. Tip: you can also drag cards straight into slots and between them.',
     r1hit: 'Hit! Attacks land after both fighters have moved, so the dummy walked straight into your Jab.',
     r1miss: 'Attacks land after both fighters have moved. Always think about where your opponent will step.',
     r2: 'The dummy is about to attack the whole row in front of it on step 2. Be in a different row by then: use Step Up or Step Down.',
@@ -290,7 +351,7 @@ export const STRINGS = {
 
   rules: [
     'Both players secretly plan 3 cards, then the cards resolve one step at a time, simultaneously.',
-    'Tap a card to put it in the next free slot, or drag it into any slot. Drag between slots to reorder; drag a planned card out to remove it.',
+    'Tap a card to see what it does and tap it again to put it in the next free slot (with a mouse, one click does both), or drag it into any slot. Drag between slots to reorder; tap a planned card or drag it out to remove it.',
     'Movement happens first, then attacks. Step out of an attack’s area to dodge it.',
     'Attack cards hit the highlighted squares around you, aimed at the side your opponent is on.',
     'Cards cost energy. Your plan must stay affordable step by step. Focus gives energy back.',
@@ -305,3 +366,5 @@ export const STRINGS = {
     'Tap a fighter on the board to see their passive and every card they can play.',
   ],
 };
+
+export type Strings = typeof STRINGS;

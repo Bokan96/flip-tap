@@ -1,8 +1,12 @@
 import type { Plugin } from 'vite';
+import pkg from './package.json' with { type: 'json' };
 import { defineConfig } from 'vitest/config';
 
 /** Changes every build; the service worker uses it to name its cache and detect updates. */
 const BUILD_ID = Date.now().toString(36);
+
+/** The game's version (package.json), shown in the corner of the main menu. Bump it with every update. */
+const APP_VERSION: string = pkg.version;
 
 /** Files from public/ the app needs offline (the bundle's own files are added automatically). */
 const PUBLIC_FILES = [
@@ -30,7 +34,7 @@ function precacheList(): Plugin {
 // GitHub Pages serves this repo at https://<user>.github.io/flip-tap/
 export default defineConfig({
   base: '/flip-tap/',
-  define: { __BUILD_ID__: JSON.stringify(BUILD_ID) },
+  define: { __BUILD_ID__: JSON.stringify(BUILD_ID), __APP_VERSION__: JSON.stringify(APP_VERSION) },
   plugins: [precacheList()],
   test: {
     include: ['tests/**/*.test.ts'],

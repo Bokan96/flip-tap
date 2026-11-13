@@ -93,6 +93,20 @@ export class Fx {
     }
   }
 
+  /** Motes drawn in from all around into a square (Focus gathering energy). */
+  gather(pos: Pos, color: string, count: number): void {
+    if (!fullEffects()) return;
+    const el = this.cell(pos, 'particles gather', 1000);
+    el.style.setProperty('--clr', color);
+    for (let i = 0; i < count; i++) {
+      const p = document.createElement('i');
+      p.style.setProperty('--a', `${(360 * i) / count + Math.random() * 25}deg`);
+      p.style.setProperty('--dist', `${26 + Math.random() * 14}px`);
+      p.style.setProperty('--delay', `${Math.round(Math.random() * 220)}ms`);
+      el.appendChild(p);
+    }
+  }
+
   /** Expanding ring on a square: a shield for guards, a starburst for stuns. */
   ring(pos: Pos, kind: 'shield' | 'stun'): void {
     if (!fullEffects()) return;

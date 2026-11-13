@@ -1,5 +1,6 @@
 import { refreshMusic } from '../audio/music';
 import { isSoundEnabled, play, setSoundEnabled } from '../audio/sfx';
+import { getLanguage, LANGUAGES, setLanguage, type Lang } from '../content/i18n';
 import { STRINGS } from '../content/strings';
 import {
   getEffects,
@@ -30,13 +31,29 @@ interface Row {
   apply: (value: string) => void;
 }
 
-function rows(): Row[] {
+/** The language row reloads the game, so it is only offered outside a match. */
+function languageRow(): Row {
+  return {
+    key: 'lang',
+    label: STRINGS.settings.language,
+    options: LANGUAGES.map((l) => [l.id, l.name]),
+    current: getLanguage,
+    apply: (v) => {
+      if (v === getLanguage()) return;
+      setLanguage(v as Lang);
+      location.reload();
+    },
+  };
+}
+
+function rows(language = false): Row[] {
   const S = STRINGS.settings;
   const onOff: [string, string][] = [
     ['on', S.on],
     ['off', S.off],
   ];
   const list: Row[] = [
+    ...(language ? [languageRow()] : []),
     { key: 'sound', label: S.sound, options: onOff, current: () => (isSoundEnabled() ? 'on' : 'off'), apply: (v) => setSoundEnabled(v === 'on') },
     {
       key: 'music',
@@ -102,8 +119,9 @@ function rows(): Row[] {
   return list;
 }
 
-export function settingsHtml(): string {
-  return `<div class="settings">${rows()
+/** `language`: include the language row (title screen only; switching reloads the game). */
+export function settingsHtml(opts: { language?: boolean } = {}): string {
+  return `<div class="settings">${rows(opts.language)
     .map(
       (r) => `<div class="setting" data-set="${r.key}"><span>${r.label}</span><div class="chips">${r.options
         .map(([v, label]) => `<button class="chip${v === r.current() ? ' on' : ''}" data-v="${v}">${label}</button>`)
@@ -153,7 +171,7 @@ function bindInstallRow(root: HTMLElement): void {
 
 export function bindSettings(root: HTMLElement): void {
   bindInstallRow(root);
-  const byKey = new Map(rows().map((r) => [r.key, r]));
+  const byKey = new Map(rows(true).map((r) => [r.key, r]));
   root.querySelectorAll<HTMLElement>('.setting[data-set]').forEach((rowEl) => {
     const row = byKey.get(rowEl.dataset.set!)!;
     rowEl.querySelectorAll<HTMLElement>('[data-v]').forEach((chip) =>
