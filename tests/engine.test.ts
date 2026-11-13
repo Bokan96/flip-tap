@@ -16,14 +16,16 @@ const IDLE: Plan = ['guard', 'up', 'down'];
 const CLASSIC = arenaState('quarters');
 
 describe('content', () => {
-  it('every fighter signature card exists and patterns are 3x3', () => {
+  it('every fighter signature card exists and patterns are 3 rows of 3 (or 5) squares', () => {
     for (const f of FIGHTERS) for (const id of f.signature) expect(CARDS[id]).toBeDefined();
     for (const c of Object.values(CARDS)) {
-      if (c.kind === 'attack') {
+      if (c.kind === 'attack' || c.kind === 'trap') {
         expect(c.pattern).toHaveLength(3);
-        for (const row of c.pattern!) expect(row).toMatch(/^[01]{3}$/);
-        expect(c.damage).toBeGreaterThan(0);
+        const width = c.pattern![0].length;
+        expect([3, 5]).toContain(width);
+        for (const row of c.pattern!) expect(row).toMatch(width === 3 ? /^[01]{3}$/ : /^[01]{5}$/);
       }
+      if (c.kind === 'attack') expect(c.damage).toBeGreaterThan(0);
     }
   });
 });
@@ -140,12 +142,12 @@ describe('resolution', () => {
 
   it('double KO is a draw', () => {
     // Equal damage (25 vs 25) and equal life: both strike at the same time.
-    const s = match('cinder', 'basalt');
+    const s = match('cinder', 'volta');
     s.players[0].pos = { r: 1, c: 1 };
     s.players[1].pos = { r: 1, c: 2 };
     s.players[0].life = 10;
     s.players[1].life = 10;
-    const r = resolveRound(s, [['cinderJab', 'up', 'down'], ['basaltQuake', 'up', 'down']]);
+    const r = resolveRound(s, [['cinderJab', 'up', 'down'], ['voltaZap', 'up', 'down']]);
     expect(r.state.outcome).toEqual({ winner: null, draw: true });
   });
 

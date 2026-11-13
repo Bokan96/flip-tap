@@ -120,7 +120,7 @@ describe('fatigue', () => {
     s.players[1].life = 10;
     const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['focus', 'guard', 'up']]);
     expect(r.fatigue).toBe(0);
-    expect(r.state.players[0].life).toBe(100);
+    expect(r.state.players[0].life).toBe(100 - 5); // only Ember Jab's recoil
   });
 });
 

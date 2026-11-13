@@ -20,7 +20,10 @@ export interface CardDef {
   step?: [number, number];
   heal?: number;
   guard?: number;
-  /** 3 rows of 3 chars ('1' = hit), written facing right; centre is the user. */
+  /**
+   * 3 rows of 3 (or 5, for a reach of 2) chars ('1' = hit), written facing right; the middle of
+   * the middle row is the user.
+   */
   pattern?: [string, string, string];
   damage?: number;
   /** Attack: on a connecting hit, move the target n squares away (n > 0) or toward you (n < 0) along columns. */
@@ -31,12 +34,24 @@ export interface CardDef {
   counter?: number;
   /** Attack: percent of the damage dealt that heals the attacker. */
   drain?: number;
-  /** Attack: if the hit deals damage, the target takes this much at the end of each later step this round. */
-  burn?: number;
+  /** Attack: the user loses this much life when the card resolves, hit or miss (can knock them out). */
+  recoil?: number;
+  /** Heal: only heals if the user's life is at or below this after the step's hits. */
+  healAtOrBelow?: number;
+  /** Attack: on a connecting hit (even a guarded one) the target loses this much energy. */
+  sap?: number;
+  /** Attack: extra damage against a target that moved this step. */
+  vsMoved?: number;
+  /** Attack: if the hit deals damage, the target is hexed (see Mods.hexBonus and BALANCE.hexDamage). */
+  hex?: boolean;
+  /** Attack: can't be planned after a move card in the same round. */
+  planted?: boolean;
   /** Trap card: damage a trap on each of the pattern's squares deals to the first enemy to end a step there. */
   trap?: number;
   /** Move card: after movement, the two fighters trade places. */
   swap?: boolean;
+  /** Move card: the step's columns are relative to facing (positive = toward the opponent). */
+  forward?: boolean;
   /** Attack animation style; guessed from the pattern when omitted (see ui/fx.ts). */
   fx?: 'slash' | 'burst' | 'wave' | 'beam' | 'quake';
   /** Bonus cards are earned in Tournament mode. */
@@ -70,8 +85,8 @@ export interface Mods {
   ammo: boolean;
   /** Extra damage this player's traps deal. */
   trapBonus: number;
-  /** Extra damage this player's burns deal each step. */
-  burnBonus: number;
+  /** Extra damage this player's hits deal when they break a hex. */
+  hexBonus: number;
 }
 
 export interface Passive {
@@ -105,8 +120,6 @@ export interface FighterDef {
   passive?: Passive;
   /** CPU personality for this fighter. */
   ai?: Personality;
-  lifeMax?: number;
-  energyMax?: number;
 }
 
 export interface PlayerState {
@@ -122,8 +135,8 @@ export interface PlayerState {
   mods: Mods;
   /** Ammo fighters only: attack cards already fired and not yet reloaded. */
   spent: string[];
-  /** Burn damage taken at the end of each remaining step this round (0 = not burning). */
-  burn: number;
+  /** Hexed: the next enemy hit that connects deals extra damage and breaks the hex. Lasts across rounds. */
+  hexed: boolean;
   /** Stunned: this player's next card this round is cancelled. Cleared at the end of every round. */
   dazed: boolean;
 }
@@ -202,10 +215,16 @@ export interface StepPlayerResult {
   swapped: boolean;
   /** Damage from an enemy trap this player stepped on. */
   trapDamage: number;
-  /** Burn damage this player took at the end of the step. */
-  burnDamage: number;
-  /** Burn still affecting this player after the step (for the status icon). */
-  burning: number;
+  /** Life this player lost to their own attack's recoil. */
+  recoilTaken: number;
+  /** Energy this player lost to the opponent's sap. */
+  energyLost: number;
+  /** This player got hexed this step. */
+  hexApplied: boolean;
+  /** A hit broke the hex on this player this step (its extra damage is in damageTaken). */
+  hexBroken: boolean;
+  /** Hexed after the step (for the status glow). */
+  hexed: boolean;
   healed: number;
   life: number;
   energy: number;
@@ -224,6 +243,8 @@ export interface StepResult {
   midLives: [number, number] | null;
   /** Traps on the board after this step (including ones placed during it). */
   traps: Trap[];
+  /** Squares (r * cols + c) of traps an enemy attack destroyed this step. */
+  brokenTraps: number[];
 }
 
 export interface RoundResult {

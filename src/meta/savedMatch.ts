@@ -41,6 +41,7 @@ export function loadSavedMatch(): SavedMatch | null {
       getFighter(p.fighterId);
       p.deck.forEach(getCard);
       p.spent ??= [];
+      p.hexed ??= false; // saved before hexes existed
     }
     return m;
   } catch {

@@ -263,7 +263,8 @@ export class BattleView {
     // Plain pieces in the player's colour (no fighter emblem); a reskin may still give them a picture.
     const tokens = this.state.players
       .map((p, i) => `<div class="token p${i}" data-seat="${i}" title="${this.seats[i].name}">
-          <span class="token-body">${tokenArtHtml(getFighter(p.fighterId))}</span><span class="facing"></span></div>`)
+          <span class="token-body">${tokenArtHtml(getFighter(p.fighterId))}</span><span class="facing"></span>
+          <span class="hex-mark" title="${STRINGS.effectNames.hex}">${STRINGS.effectIcons.hex}</span></div>`)
       .join('');
     // Each player's cards for the round, one per step: face down until that step plays.
     const playCol = (i: number) => `<div class="play-col p${i}" data-seat="${i}">
@@ -328,6 +329,7 @@ export class BattleView {
     measure();
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(measure).observe(hud);
     this.renderTraps(this.state.arena.traps);
+    this.showHexes([this.state.players[0].hexed, this.state.players[1].hexed]);
 
     this.el.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
@@ -423,6 +425,11 @@ export class BattleView {
   }
 
   // ---------- board ----------
+
+  /** The hex mark on each fighter's token. */
+  private showHexes(hexed: [boolean, boolean]): void {
+    hexed.forEach((h, i) => this.q(`.token.p${i}`).classList.toggle('hexed', h));
+  }
 
   private placeTokens(pos: [Pos, Pos], facing?: [number, number]): void {
     const shared = pos[0].r === pos[1].r && pos[0].c === pos[1].c;
@@ -749,7 +756,7 @@ export class BattleView {
     let facing = me.facing;
     const out = { pos: [] as Pos[], facing: [] as (1 | -1)[] };
     for (const id of this.plan) {
-      if (id) pos = movePos(this.state.arena, pos, getCard(id));
+      if (id) pos = movePos(this.state.arena, pos, getCard(id), facing);
       facing = faceTowards(pos, them.pos, facing);
       out.pos.push({ ...pos });
       out.facing.push(facing);
@@ -808,9 +815,10 @@ export class BattleView {
     const me = this.state.players[this.planSeat];
     const them = this.state.players[this.planSeat === 0 ? 1 : 0];
     const before = slot === 0 ? me.pos : path.pos[slot - 1];
+    const facingBefore = slot === 0 ? me.facing : path.facing[slot - 1];
     const c = getCard(card);
-    const pos = movePos(this.state.arena, before, c);
-    const facing = faceTowards(pos, them.pos, slot === 0 ? me.facing : path.facing[slot - 1]);
+    const pos = movePos(this.state.arena, before, c, facingBefore);
+    const facing = faceTowards(pos, them.pos, facingBefore);
     // Same colour language as the cards: red = where an attack hits, blue = where a move lands.
     const cls = c.kind === 'attack' ? 'preview-atk' : c.kind === 'trap' ? 'preview-trap' : c.kind === 'move' ? 'preview-move' : 'preview';
     const squares = c.kind === 'attack' || c.kind === 'trap' ? attackArea(this.state.arena, c, pos, facing) : [pos];
@@ -952,6 +960,7 @@ export class BattleView {
       pos: this.state.players.map((p) => ({ ...p.pos })) as [Pos, Pos],
       facing: this.state.players.map((p) => p.facing) as [number, number],
       traps: this.state.arena.traps.map((t) => ({ ...t })),
+      hexed: this.state.players.map((p) => p.hexed) as [boolean, boolean],
     };
     this.resetPlayCards();
     this.shownRound = this.state.round;
@@ -970,8 +979,9 @@ export class BattleView {
     this.state = result.state;
     this.lastPlans = [[...plans[0]], [...plans[1]]];
     this.log.rounds.push({ plans: this.lastPlans, result });
-    this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed', 'burning'));
+    this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed'));
     this.renderTraps(this.state.arena.traps);
+    this.showHexes([this.state.players[0].hexed, this.state.players[1].hexed]);
     if (result.fatigue > 0) {
       const tokens = [this.q('.token.p0'), this.q('.token.p1')];
       this.state.players.forEach((p, i) => {
@@ -1123,6 +1133,22 @@ export class BattleView {
           this.floatText(posNow[i], STRINGS.dazed, 'stun', stacks[i]++);
           sounds.push('zap');
         }
+        if (p.energyLost > 0) {
+          // Energy crackles out of the target toward the attacker.
+          this.fx.travel(posNow[i], posNow[o], themeColor('--fx-sap'), 5, 'spark');
+          this.floatText(posNow[i], STRINGS.sapped(p.energyLost), 'sap', stacks[i]++);
+          sounds.push('zap');
+        }
+        if (p.hexBroken) {
+          this.fx.particles(posNow[i], themeColor('--fx-hex'), 14);
+          this.floatText(posNow[i], STRINGS.hexBrokenFloat, 'hex', stacks[i]++);
+          sounds.push('shimmer');
+        } else if (p.hexApplied) {
+          this.fx.gather(posNow[i], themeColor('--fx-hex'), 8);
+          this.floatText(posNow[i], STRINGS.hexedFloat, 'hex', stacks[i]++);
+          sounds.push('shimmer');
+        }
+        token.classList.toggle('hexed', p.hexed);
       }
       for (const j of healers) {
         const p = players[j];
@@ -1134,6 +1160,14 @@ export class BattleView {
           this.floatText(posNow[j], `+${p.healed + p.drained}`, 'heal', stacks[j]++);
           if (p.healed > 0) sounds.push('heal');
         }
+      }
+      for (const j of healers) {
+        const p = players[j];
+        if (p.recoilTaken <= 0) continue;
+        retrigger(tokens[j], 'shake');
+        this.fx.particles(posNow[j], themeColor('--fx-recoil'), 8);
+        this.floatText(posNow[j], STRINGS.recoiled(p.recoilTaken), 'recoil', stacks[j]++, p.recoilTaken);
+        sounds.push('burn');
       }
       [...new Set(sounds)].forEach((id, k) => setTimeout(() => play(id), k * 110));
       if (biggest > 0) {
@@ -1185,6 +1219,17 @@ export class BattleView {
       busy = attackers.length > 0 || happened;
     }
 
+    // Attacks shatter the enemy traps they covered.
+    if (step.brokenTraps.length) {
+      const cols = this.state.arena.cols;
+      for (const at of step.brokenTraps) this.fx.particles({ r: Math.floor(at / cols), c: at % cols }, themeColor('--trap'), 8, 'dust');
+      // Only the broken ones go now: traps springing or set later this step still show in order.
+      const broken = (t: Trap) =>
+        step.brokenTraps.includes(t.at) && ([0, 1] as const).some((o) => o !== t.owner && players[o].area.some((p) => p.r * cols + p.c === t.at));
+      this.renderTraps(this.shownTraps.filter((t) => !broken(t)));
+      play('thud');
+    }
+
     // Arena squares: thorns hurt, springs restore energy, for whoever ended the step on one.
     players.forEach((p, i) => {
       if (p.tile === 'spikes') {
@@ -1197,21 +1242,16 @@ export class BattleView {
       }
     });
 
-    // Traps spring, burns tick, then any new traps appear.
+    // Traps spring, then any new traps appear.
     players.forEach((p, i) => {
       if (p.trapDamage > 0) {
         this.floatText(p.final, STRINGS.trapped(p.trapDamage), 'damage', stacks[i]++, p.trapDamage);
         retrigger(tokens[i], 'shake');
         play('trap');
       }
-      if (p.burnDamage > 0) {
-        this.floatText(p.final, STRINGS.burned(p.burnDamage), 'burn', stacks[i]++, p.burnDamage);
-        play('burn');
-      }
-      tokens[i].classList.toggle('burning', p.burning > 0);
     });
     if (this.renderTraps(step.traps, true)) play('place');
-    if (players.some((p) => p.trapDamage > 0 || p.burnDamage > 0)) {
+    if (players.some((p) => p.trapDamage > 0)) {
       this.renderHud([players[0].life, players[1].life], [players[0].energy, players[1].energy]);
     }
 
@@ -1264,6 +1304,7 @@ export class BattleView {
   private restoreBoard(): void {
     this.clearAreas();
     this.renderTraps(this.state.arena.traps);
+    this.showHexes([this.state.players[0].hexed, this.state.players[1].hexed]);
     this.markStep(null);
     const ps = this.state.players;
     this.snapTokens([ps[0].pos, ps[1].pos], [ps[0].facing, ps[1].facing]);
@@ -1280,7 +1321,11 @@ export class BattleView {
    * Loop the round on the board (silently): moves, attacks in their real order, hits and pushes,
    * with a short pause before each loop. Runs until `replayRun` changes.
    */
-  private async replayRound(result: RoundResult, start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[] }, run: number): Promise<void> {
+  private async replayRound(
+    result: RoundResult,
+    start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[]; hexed: [boolean, boolean] },
+    run: number,
+  ): Promise<void> {
     const CANCELLED = Symbol('cancelled');
     const tokens = [this.q('.token.p0'), this.q('.token.p1')];
     const pause = async (ms: number) => {
@@ -1295,6 +1340,7 @@ export class BattleView {
         tokens.forEach((t) => t.classList.remove('ko', 'ko-fall', 'dazed'));
         this.clearAreas();
         this.renderTraps(start.traps);
+        this.showHexes(start.hexed);
         this.snapTokens(start.pos, start.facing);
         await pause(700);
         for (const step of result.steps) {
@@ -1326,6 +1372,9 @@ export class BattleView {
                 this.floatText(posNow[d], STRINGS.guarded, 'guarded');
               }
               if (P[o].counterTaken > 0) this.floatText(posNow[o], `${STRINGS.effectIcons.counter} -${P[o].counterTaken}`, 'damage', 1);
+              if (P[o].recoilTaken > 0) this.floatText(posNow[o], STRINGS.recoiled(P[o].recoilTaken), 'recoil', 2);
+              if (P[d].energyLost > 0) this.floatText(posNow[d], STRINGS.sapped(P[d].energyLost), 'sap', 1);
+              tokens[d].classList.toggle('hexed', P[d].hexed);
               posNow[d] = P[d].final;
             }
             this.placeTokens(posNow, facing);
@@ -1334,6 +1383,7 @@ export class BattleView {
           }
           this.placeTokens([P[0].final, P[1].final], facing);
           this.renderTraps(step.traps);
+          this.showHexes([P[0].hexed, P[1].hexed]);
           await pause(300);
           const rest = MIN_STEP_MS - (performance.now() - t0) / speedMultiplier();
           if (rest > 0) await pause(rest);
@@ -1428,7 +1478,7 @@ export class BattleView {
     roundNo: number,
     plans: [Plan, Plan],
     result: RoundResult,
-    start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[] },
+    start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[]; hexed: [boolean, boolean] },
   ): Promise<void> {
     const summary = this.q('.summary');
     // Cards never played (the match ended first) are shown crossed out.

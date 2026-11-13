@@ -23,7 +23,7 @@ All tunable numbers live in [`src/content/balance.ts`](../src/content/balance.ts
   - **Springs:** a fighter who ends a step on one gains 10 energy.
 - Every arena is point-symmetric, so neither side has an advantage **(design choice)**.
 - Both fighters may stand on the same square.
-- Each fighter has **Life** (max 100) and **Energy** (max 100). Both start full.
+- Every fighter has **Life** (max 100) and **Energy** (max 100). Both start full.
 
 ## Cards
 Every card has:
@@ -33,15 +33,21 @@ Every card has:
 | `step` | Movement `[rows, cols]` applied to the user (clamped to the board) |
 | `heal` | Life restored to the user |
 | `guard` | Damage absorbed this step if the user is hit |
-| `pattern` | 3×3 attack area centred on the user (only for attack cards) |
+| `pattern` | 3×3 attack area centred on the user (only for attack and trap cards); rows may be 5 wide for a reach of 2 |
 | `damage` | Life removed from the opponent if they stand in the pattern |
 | `push` | Attack effect: on a connecting hit, move the target *n* squares away (positive) or toward you (negative, a **pull**) |
 | `stun` | Attack effect: if the hit deals damage, the target's **next card this round** is cancelled |
 | `counter` | Guard effect: if an attack hits you this step, the attacker takes this much damage |
 | `drain` | Attack effect: heal this percentage of the damage the attack dealt |
-| `burn` | Attack effect: if the hit deals damage, the target takes this much at the end of each later step this round |
+| `sap` | Attack effect: on a connecting hit (even a guarded one), the target loses this much energy |
+| `hex` | Attack effect: if the hit deals damage, the target is **hexed** (see below) |
+| `vsMoved` | Attack effect: extra damage against a target that moved this step |
+| `recoil` | Attack effect: the user loses this much life when the card resolves, hit or miss |
+| `planted` | Attack rule: can't be planned after a move card in the same round |
+| `healAtOrBelow` | Heal rule: only heals if the user's life is at or below this after the step's hits |
 | `trap` | Trap card: sets a trap with this damage on each square of its pattern |
 | `swap` | Move card: after movement, the two fighters trade places |
+| `forward` | Move card: the step's columns count toward the side the user faces |
 
 Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, **trap**, **reload**.
 
@@ -54,31 +60,43 @@ Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, 
   - The stunned player's next card does nothing and costs nothing.
   - A stun on the last step of a round has no effect, because stuns wear off at the end of every round.
 - **Counter** damage is fixed (not reduced by guard or passives). It triggers on any hit, even one fully guarded.
+  Guard cards and move cards (Zephyr's dashes) can carry a counter.
 - **Drain** rounds down.
 - **Traps** are set at the very end of the step their card is played, on the open squares of the card's
   pattern (aimed like an attack). The first enemy to *end a later step* on a trap takes its damage and
   the trap is used up. A trap never hurts its owner. Unused traps disappear at the end of the round
   after the one they were set in. A new trap from the same owner on the same square replaces the old one.
-- **Burn** starts on the step after the hit: the target loses the burn's damage at the end of each
-  remaining step of the round. Burns don't stack (the stronger one applies) and end with the round.
+- **Breaking traps:** an attack that strikes (an interrupted one doesn't) destroys every enemy trap on
+  the squares it covers, right after the attacks and before any trap can spring that step. So a
+  fighter standing on an enemy trap is safe if it attacks its own square.
+- **Hex:** a damaging hit from a `hex` attack marks a fighter who isn't already hexed. The next enemy hit
+  that *connects* on a hexed fighter deals `BALANCE.hexDamage` (10) plus the attacker's `hexBonus`
+  more damage (guard still applies) and removes the hex. A hex lasts across rounds until it is used.
+  A hexing attack that removes a hex doesn't put a new one on.
+- **Sap** comes off the target's energy together with its own card's cost (clamped to 0). A later card
+  it can no longer pay for this round does nothing.
+- **Recoil** is applied with the attacker's own cost, after the strikes. Guard doesn't reduce it, and it
+  can knock the attacker out (both fighters at 0 in the same step is a draw).
+- **Planted** attacks can't be planned after any move card in the same round. Moves after them are fine.
 - **Swap** happens right after movement: the fighters trade squares (once, even if both swap). A swap
   can't move an immovable opponent. Both fighters count as having moved.
-- Trap and burn damage is fixed: guard, counters and drains don't apply to it.
+- **Forward** moves step toward the side the fighter faces at the start of the step.
+- Trap and recoil damage is fixed: guard, counters and drains don't apply to it.
 
 ## Fighter passives
 Every fighter has one always-on passive ability, made of simple numeric modifiers:
 
-| Fighter | Passive | Effect |
-|---|---|---|
-| Cinder | Kindle | Attacks deal +10 damage while Cinder is at 50 life or less |
-| Marin | Riptide | Pushes and pulls move the target 1 extra square |
-| Zephyr | Slipstream | Takes 10 less damage on steps where Zephyr moved |
-| Basalt | Bedrock | 115 max life; can't be pushed or pulled |
-| Volta | Capacitor | 120 max energy; regains 10 extra energy every round |
-| Umbra | Ambush | Attacks deal +5 damage to a target that moved this step |
-| Ferro | Magazine | Each attack fires once, then is **spent** until Ferro plays his **Reload** card |
-| Briar | Deep Roots | Your traps deal +10 damage |
-| Vex | Fever | Your burns deal +5 damage each step |
+| Fighter | Passive | Effect | Signature mechanic |
+|---|---|---|---|
+| Cinder | Kindle | Attacks deal +10 damage while Cinder is at 50 life or less | Every attack has **recoil**; **Rekindle** heals only at 50 life or less |
+| Marin | Riptide | Pushes and pulls move the target 1 extra square | **Tidal Lure** pulls from 2 squares away; **Geyser** shoves foes in his own column |
+| Zephyr | Slipstream | Takes 10 less damage on steps where Zephyr moved | **Gale Dash** / **Sky Lunge**: costly forward moves with a counter |
+| Basalt | Bedrock | Can't be pushed or pulled | **Planted** attacks: cheap and strong, but not after a move |
+| Volta | Capacitor | Regains 10 extra energy every round | **Sap** attacks: weak, wide hits that drain energy |
+| Umbra | Ambush | Attacks deal +5 damage to a target that moved this step | **Pounce** / **Nightfall** deal much more to a target that moved |
+| Ferro | Magazine | Each attack fires once, then is **spent** until Ferro plays his **Reload** card | Reload |
+| Briar | Deep Roots | Your traps deal +10 damage | Cheap traps (attacks can break them) |
+| Vex | Malice | Breaking a hex deals +10 more damage | **Hex** attacks and Mirror Step (swap) |
 
 ### Ammo and Reload (Ferro)
 - An attack is spent as soon as it is played (hit or miss). A spent attack can't be planned again.
@@ -92,7 +110,8 @@ damage to every attack).
 
 Each fighter has a deck made of:
 - **Basic cards** every fighter shares: Step ↑ ↓ ← →, Guard, Focus.
-- **4 signature cards** unique to that fighter (Basalt's include a counter guard; Ferro also has Reload).
+- **4 or 5 signature cards** unique to that fighter (Basalt's include a counter guard; Ferro also has
+  Reload; Cinder has Rekindle; Zephyr has two dashes).
 - **Bonus cards** earned in Tournament mode (see below).
 
 ### Patterns and facing
@@ -131,11 +150,11 @@ does nothing.
      active) − *X*'s passive reductions, never below 0. A hit with `guard > 0` counts as "guarded".
    - Then: *X*'s counter hurts the attacker, the attacker's drain heals them, a stun marks *X*'s
      next card, and a push or pull is queued.
-3. **Self effects:** every active card applies its own `cost` and `heal`, and Life and Energy are
-   clamped to `0..max`.
+3. **Self effects:** every active card applies its own `cost`, `heal` (if its condition holds) and
+   `recoil`, any `sap` comes off the target's energy, and Life and Energy are clamped to `0..max`.
 4. **Push and pull:** queued displacements happen at the same time. Both fighters face each other again.
-   Then, in order: **square effects** (thorns, springs), **traps** springing, running **burns**, and
-   finally new **traps** being set.
+   Then, in order: attacks **break** the enemy traps they covered, **square effects** (thorns,
+   springs), **traps** springing, and finally new **traps** being set.
 5. **KO check:** if exactly one fighter has 0 Life, the other wins. If both reach 0 on the same step,
    the match is a **draw**. A KO ends the round immediately, and the remaining slots don't resolve.
 

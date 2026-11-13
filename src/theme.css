@@ -85,6 +85,9 @@
   --fx-push: #9fd4ff;
   --fx-reload: #c7ced9;
   --fx-dust: #aab4d2;
-  --fx-burn: #ff8a3d;
+  --fx-recoil: #ff8a3d; /* Cinder's attacks hurting himself */
+  --fx-sap: #ffe36b; /* energy drained by Volta */
+  --fx-hex: #d58bff; /* hex marks */
+  --fx-planted: #d9b98a;
   --trap: #ffb347; /* trap squares on cards, trap previews */
 }

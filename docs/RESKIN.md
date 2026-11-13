@@ -58,7 +58,7 @@ Keep card `id`s stable once players have saves: bonus cards and stats are stored
 | `--board`, `--tile-a`, `--tile-b` | board frame and squares |
 | `--rock-a`, `--rock-b`, `--hazard-spikes`, `--hazard-well` | pillars, thorn squares, spring squares |
 | `--card-*` | card backgrounds per kind, bonus outline, card back |
-| `--fx-*` | guard, stun, counter, drain, push, reload, burn, dust effects |
+| `--fx-*` | guard, stun, counter, drain, push, reload, recoil, sap, hex, planted, dust effects |
 | `--trap`, `--card-trap-a/b` | trap squares on cards and previews, trap card background |
 | `--font-body`, `--font-display` | text and headings/logo |
 | `--radius`, `--cut` | corner rounding and the clipped button corner |
@@ -119,7 +119,7 @@ everywhere; music files should loop cleanly. Anything left out uses the built-in
 | `slash`, `burst`, `wave`, `beam`, `quake` | an attack lights up (by the card's `fx`) |
 | `hit`, `guard`, `miss` | an attack lands / is guarded / misses |
 | `clang`, `zap`, `shimmer`, `heal`, `reload` | counter, stun, drain, heal, Reload |
-| `trap`, `burn`, `swap` | a trap springs, a burn ticks, fighters swap places |
+| `trap`, `burn`, `swap` | a trap springs, an attack burns its user (recoil), fighters swap places |
 | `ko`, `win` | knockout / victory |
 | `tick` | the last 10 seconds of the plan timer |
 

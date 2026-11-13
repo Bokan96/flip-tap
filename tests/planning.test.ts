@@ -73,7 +73,7 @@ describe('attack styles', () => {
     expect(fxKind(CARDS.basaltQuake)).toBe('quake');
     expect(fxKind(CARDS.cinderPillar)).toBe('beam');
     expect(fxKind(CARDS.marinSplash)).toBe('wave');
-    expect(fxKind(CARDS.zephyrShear)).toBe('slash');
+    expect(fxKind(CARDS.umbraClaw)).toBe('slash');
     expect(fxKind(CARDS.cinderJab)).toBe('slash'); // set explicitly on the card
   });
 });

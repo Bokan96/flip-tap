@@ -1,5 +1,5 @@
 import { BALANCE } from '../content/balance';
-import { BONUS_CARD_IDS } from '../content/cards';
+import { BONUS_CARD_IDS, CARDS } from '../content/cards';
 import { Rng, randomSeed } from '../engine/rng';
 import type { MatchLog, MatchOutcome, Seat } from '../engine/types';
 import { readJson, readRaw, removeKey, writeJson } from './storage';
@@ -219,8 +219,9 @@ export function recordRecent(code: string, at = Date.now()): void {
   save();
 }
 
+/** Most played card that still exists (cards can be retired between versions). */
 export function favouriteCard(): string | null {
-  const plays = Object.entries(profile().stats.cardPlays);
+  const plays = Object.entries(profile().stats.cardPlays).filter(([id]) => CARDS[id]);
   if (!plays.length) return null;
   return plays.sort((a, b) => b[1] - a[1])[0][0];
 }

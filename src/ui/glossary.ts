@@ -1,5 +1,4 @@
 import { ARENAS } from '../content/arenas';
-import { BALANCE } from '../content/balance';
 import { BASIC_CARD_IDS, BONUS_CARD_IDS, FIGHTERS, getCard } from '../content/cards';
 import { STRINGS } from '../content/strings';
 import { arenaMiniHtml } from './arenaPreview';
@@ -21,8 +20,9 @@ export function cardSummary(id: string): string {
   const parts: string[] = [];
   if (c.kind === 'move' && c.step) {
     const [dr, dc] = c.step;
+    const n = Math.max(Math.abs(dr), Math.abs(dc));
     const dir = dr < 0 ? 'up' : dr > 0 ? 'down' : dc < 0 ? 'left' : 'right';
-    parts.push(G.move(Math.max(Math.abs(dr), Math.abs(dc)), G.dirs[dir]));
+    parts.push(c.forward ? G.moveForward(n) : G.move(n, G.dirs[dir]));
   }
   if (c.kind === 'guard') parts.push(G.guard(c.guard ?? 0));
   if (c.kind === 'focus') parts.push(G.focus(c.cost));
@@ -53,7 +53,6 @@ function fightersHtml(): string {
     (f) => `<article class="gl-fighter" style="--clr:${f.color}">
       <div class="detail-head">${portraitHtml(f, 'detail-emblem')}
         <div><b>${f.name}</b><i>${f.title}</i><div class="detail-tags"><span class="role-tag">${f.role}</span>${starsHtml(f.complexity)}</div></div>
-        <span class="detail-stats">♥ ${f.lifeMax ?? BALANCE.lifeMax}<br>⚡ ${f.energyMax ?? BALANCE.energyMax}</span>
       </div>
       <p class="detail-blurb">${f.blurb}</p>
       ${passiveHtml(f)}

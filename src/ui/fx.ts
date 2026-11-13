@@ -12,13 +12,15 @@ export type FxKind = 'slash' | 'burst' | 'wave' | 'beam' | 'quake';
 export function fxKind(card: CardDef): FxKind {
   if (card.fx) return card.fx;
   const p = card.pattern ?? ['000', '000', '000'];
+  const width = p[1].length;
   const flat = p.join('');
   const cells = flat.split('').filter((x) => x === '1').length;
   const col = (j: number) => p.every((row) => row[j] === '1');
-  if (cells >= 7 || flat === '000010000') return 'burst';
-  if (col(0) || col(1) || col(2)) return 'beam';
-  if (p[2] === '111') return 'quake';
-  if (p[0] === '000' && p[2] === '000') return 'wave';
+  const onlySelf = cells === 1 && p[1][(width - 1) / 2] === '1';
+  if (cells >= 7 || onlySelf) return 'burst';
+  if (Array.from({ length: width }, (_, j) => j).some(col)) return 'beam';
+  if (/^1+$/.test(p[2])) return 'quake';
+  if (!p[0].includes('1') && !p[2].includes('1')) return 'wave';
   return 'slash';
 }
 

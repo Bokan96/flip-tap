@@ -1,4 +1,5 @@
 import { ASSETS, assetUrl } from '../content/assets';
+import { BALANCE } from '../content/balance';
 import { BASIC_CARD_IDS, getCard } from '../content/cards';
 import { STRINGS } from '../content/strings';
 import type { FighterDef } from '../engine/types';
@@ -15,12 +16,16 @@ export function cardGroup(id: string): CardGroup {
   return kind === 'attack' || kind === 'trap' ? 'attack' : 'special';
 }
 
+/** Pattern preview: 3 (or 5, for reach 2) columns, with the user's square outlined. */
 function attackGrid(pattern: [string, string, string], facing: 1 | -1, cls = 'on'): string {
+  const width = pattern[1].length;
+  const me = width + (width - 1) / 2;
   const cells = pattern
     .flatMap((row) => (facing === -1 ? [...row].reverse() : [...row]))
-    .map((v, i) => `<i class="${v === '1' ? cls : ''}${i === 4 ? ' me' : ''}"></i>`)
+    .map((v, i) => `<i class="${v === '1' ? cls : ''}${i === me ? ' me' : ''}"></i>`)
     .join('');
-  return `<span class="mini-grid ${facing === -1 ? 'face-l' : 'face-r'}">${cells}</span>`;
+  const wide = width > 3 ? ` wide" style="--gc:${width}` : '';
+  return `<span class="mini-grid ${facing === -1 ? 'face-l' : 'face-r'}${wide}">${cells}</span>`;
 }
 
 /** Grid centred on the user with the destination square marked; widens for multi-square steps. */
@@ -51,7 +56,11 @@ export function cardEffects(id: string): Effect[] {
   if (c.stun) out.push('stun');
   if (c.counter) out.push('counter');
   if (c.drain) out.push('drain');
-  if (c.burn) out.push('burn');
+  if (c.sap) out.push('sap');
+  if (c.hex) out.push('hex');
+  if (c.vsMoved) out.push('ambush');
+  if (c.planted) out.push('planted');
+  if (c.recoil) out.push('recoil');
   if (c.kind === 'trap') out.push('trap');
   if (c.swap) out.push('swap');
   return out;
@@ -82,7 +91,9 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
   } else if (c.kind === 'move' && c.swap) {
     art = `<span class="big-glyph">${STRINGS.effectIcons.swap}</span>`;
   } else if (c.kind === 'move' && c.step) {
-    art = moveGrid(c.step);
+    // Forward moves point the way you face.
+    art = moveGrid(c.forward ? [c.step[0], c.step[1] * (opts.facing ?? 1)] : c.step);
+    if (c.counter) stat = `<span class="stat grd" title="${STRINGS.effectNames.counter}">${STRINGS.effectIcons.counter} ${c.counter}</span>`;
   } else if (c.kind === 'guard') {
     art = '<span class="big-glyph">⛨</span>';
     stat = `<span class="stat grd" title="${STRINGS.cardTips.guard}">⛨ ${c.guard}${c.counter ? ` ${STRINGS.effectIcons.counter} ${c.counter}` : ''}</span>`;
@@ -122,7 +133,7 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
 }
 
 /**
- * Words for a card's special effects only (push, pull, stun, counter, drain and any extra note).
+ * Words for a card's special effects only (push, pull, stun, counter, drain, ... and any extra note).
  * Damage, cost and movement are already shown on the card itself. Empty if the card has none.
  */
 export function describeCard(id: string): string {
@@ -133,7 +144,12 @@ export function describeCard(id: string): string {
   if (c.stun) parts.push(STRINGS.descStun);
   if (c.counter) parts.push(STRINGS.descCounter(c.counter));
   if (c.drain) parts.push(STRINGS.descDrain(c.drain));
-  if (c.burn) parts.push(STRINGS.descBurn(c.burn));
+  if (c.sap) parts.push(STRINGS.descSap(c.sap));
+  if (c.hex) parts.push(STRINGS.descHex(BALANCE.hexDamage));
+  if (c.vsMoved) parts.push(STRINGS.descVsMoved(c.vsMoved));
+  if (c.planted) parts.push(STRINGS.descPlanted);
+  if (c.recoil) parts.push(STRINGS.descRecoil(c.recoil));
+  if (c.healAtOrBelow !== undefined) parts.push(STRINGS.descHealBelow(c.healAtOrBelow));
   if (c.kind === 'trap') parts.push(STRINGS.descTrap(c.trap ?? 0));
   if (c.swap) parts.push(STRINGS.descSwap);
   if (c.kind === 'reload') parts.push(STRINGS.descReload);

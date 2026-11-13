@@ -7,6 +7,8 @@ export const BALANCE = {
   /** From the round after this one, both fighters lose `fatigueDamage` life at the end of every round. */
   fatigueAfterRound: 7,
   fatigueDamage: 5,
+  /** Extra damage of the hit that breaks a hex (plus the attacker's hexBonus). */
+  hexDamage: 10,
   /** What arena squares do to a fighter ending a step on them (see content/arenas.ts). */
   tiles: { spikes: 10, well: 10 },
   /** Each card may appear at most once in a plan. */

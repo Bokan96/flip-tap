@@ -46,26 +46,34 @@ export function tileAt(arena: ArenaState, pos: Pos): TileKind | null {
   return arena.tiles[pos.r * arena.cols + pos.c] ?? null;
 }
 
-/** Squares an attack (or trap card) covers from `pos` while facing `facing`, clipped to open squares. */
+/**
+ * Squares an attack (or trap card) covers from `pos` while facing `facing`, clipped to open squares.
+ * Pattern rows are 3 or 5 characters wide; the middle character is the user's column.
+ */
 export function attackArea(arena: ArenaState, card: CardDef, pos: Pos, facing: Facing): Pos[] {
   if ((card.kind !== 'attack' && card.kind !== 'trap') || !card.pattern) return [];
   const out: Pos[] = [];
   card.pattern.forEach((row, i) => {
-    for (let j = 0; j < 3; j++) {
+    const half = (row.length - 1) / 2;
+    for (let j = 0; j < row.length; j++) {
       if (row[j] !== '1') continue;
       const r = pos.r + (i - 1);
-      const c = pos.c + (j - 1) * facing;
+      const c = pos.c + (j - half) * facing;
       if (isOpen(arena, r, c)) out.push({ r, c });
     }
   });
   return out;
 }
 
-/** Where a move card takes you: clamped to the board; a move onto a blocked square does nothing. */
-export function movePos(arena: ArenaState, pos: Pos, card: CardDef): Pos {
+/**
+ * Where a move card takes you: clamped to the board; a move onto a blocked square does nothing.
+ * `facing` turns a forward move (card.forward) toward the side you face.
+ */
+export function movePos(arena: ArenaState, pos: Pos, card: CardDef, facing: Facing = 1): Pos {
   if (!card.step) return { ...pos };
+  const dc = card.forward ? card.step[1] * facing : card.step[1];
   const r = clamp(pos.r + card.step[0], 0, arena.rows - 1);
-  const c = clamp(pos.c + card.step[1], 0, arena.cols - 1);
+  const c = clamp(pos.c + dc, 0, arena.cols - 1);
   return isOpen(arena, r, c) ? { r, c } : { ...pos };
 }
 
@@ -109,6 +117,18 @@ export function ammoOk(player: PlayerState, plan: Plan): boolean {
   return true;
 }
 
+/** Planted attacks can't come after a move card in the same plan. */
+export function plantedOk(plan: Plan): boolean {
+  let moved = false;
+  for (const id of plan) {
+    if (!id) continue;
+    const c = getCard(id);
+    if (c.kind === 'move') moved = true;
+    else if (c.planted && moved) return false;
+  }
+  return true;
+}
+
 /** Is this card a spent attack for this player right now? */
 export function isSpent(player: PlayerState, cardId: string): boolean {
   return player.mods.ammo && player.spent.includes(cardId) && getCard(cardId).kind === 'attack';
@@ -124,6 +144,7 @@ export function planError(player: PlayerState, plan: Plan): string | null {
   if (BALANCE.uniqueCardsPerPlan && new Set(plan).size !== plan.length) return 'Each card can be used once per round.';
   if (!planEnergyTrace(player.energy, player.energyMax, plan)) return 'Not enough energy for this plan.';
   if (!ammoOk(player, plan)) return 'That attack must be reloaded first.';
+  if (!plantedOk(plan)) return 'That attack can’t follow a move this round.';
   return null;
 }
 
@@ -133,6 +154,7 @@ export function partialPlanOk(player: PlayerState, plan: Plan): boolean {
   if (used.some((id) => !player.deck.includes(id))) return false;
   if (BALANCE.uniqueCardsPerPlan && new Set(used).size !== used.length) return false;
   if (!ammoOk(player, plan)) return false;
+  if (!plantedOk(plan)) return false;
   return planEnergyTrace(player.energy, player.energyMax, plan) !== null;
 }
 
@@ -167,7 +189,7 @@ function outcomeFor(players: [PlayerState, PlayerState]): MatchOutcome | null {
   return null;
 }
 
-/** Life a hit removes, after the attacker's and defender's modifiers. Never below 0. */
+/** Life a hit removes, after the attacker's and defender's modifiers (and a hex it breaks). Never below 0. */
 export function hitDamage(
   card: CardDef,
   attacker: PlayerState,
@@ -179,7 +201,8 @@ export function hitDamage(
   const dm = defender.mods;
   let dmg = (card.damage ?? 0) + am.damageBonus;
   if (am.lowLifeThreshold > 0 && attacker.life <= am.lowLifeThreshold) dmg += am.lowLifeBonus;
-  if (defenderMoved) dmg += am.vsMovedBonus - dm.movedReduction;
+  if (defenderMoved) dmg += am.vsMovedBonus + (card.vsMoved ?? 0) - dm.movedReduction;
+  if (defender.hexed) dmg += BALANCE.hexDamage + am.hexBonus;
   dmg -= defenderGuard + dm.damageReduction;
   return Math.max(0, dmg);
 }
@@ -195,6 +218,13 @@ export function displace(arena: ArenaState, target: Pos, attacker: Pos, attacker
   let c = target.c;
   while (steps-- > 0 && isOpen(arena, target.r, c + dir)) c += dir;
   return { r: target.r, c };
+}
+
+/** Life a heal card restores, given the user's life after this step's hits. */
+export function healAmount(card: CardDef, lifeAfterHits: number): number {
+  if (!card.heal) return 0;
+  if (card.healAtOrBelow !== undefined && lifeAfterHits > card.healAtOrBelow) return 0;
+  return card.heal;
 }
 
 /** A card's push (or pull, if negative) plus the attacker's bonus squares. */
@@ -222,6 +252,7 @@ export function strikeOrder(c0: CardDef, c1: CardDef, life0: number, life1: numb
 /** Resolve one slot for both players simultaneously. Mutates `state`. */
 export function resolveStep(state: MatchState, cardIds: [string, string], slot: number): StepResult {
   const ps = state.players;
+  const cols = state.arena.cols;
   const cards = [getCard(cardIds[0]), getCard(cardIds[1])] as const;
   const stunned = [ps[0].dazed, ps[1].dazed];
   ps[0].dazed = ps[1].dazed = false;
@@ -229,12 +260,10 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   // (possible when a stun cancelled the Reload planned before it).
   const active = [0, 1].map((i) => !stunned[i] && ps[i].energy + cards[i].cost >= 0 && !isSpent(ps[i], cardIds[i]));
   const from = [{ ...ps[0].pos }, { ...ps[1].pos }];
-  // Burns already running hurt at the end of this step; burns from this step's hits start next step.
-  const burnNow = [ps[0].burn, ps[1].burn];
 
   // 1. Movement (simultaneous), then a swap if anyone played one, then face each other.
   for (const i of [0, 1] as const) {
-    if (active[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i]);
+    if (active[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i], ps[i].facing);
   }
   const swappers = [0, 1].filter((i) => active[i] && cards[i].swap);
   // An immovable fighter can't be swapped by the other side (but can swap itself).
@@ -251,13 +280,41 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const counter = [0, 0];
   const drained = [0, 0];
   const dazed = [false, false];
-  const burnHit = [0, 0];
+  const sapped = [0, 0];
+  const recoil = [0, 0];
   const healed = [0, 0];
+  const hexApplied = [false, false];
+  const hexBroken = [false, false];
   const interrupted = [false, false];
   let areas: [Pos[], Pos[]] = [[], []];
   let midLives: [number, number] | null = null;
   const reface = () => {
     for (const i of [0, 1] as const) ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
+  };
+  /** A hit on `i` connected: it breaks a hex, or a damaging hexing attack hexes them. */
+  const hexHit = (i: 0 | 1, atk: CardDef, dealt: number) => {
+    if (ps[i].hexed) {
+      ps[i].hexed = false;
+      hexBroken[i] = true;
+    } else if (atk.hex && dealt > 0) {
+      ps[i].hexed = true;
+      hexApplied[i] = true;
+    }
+  };
+  /** The card's own effects on its user (energy, heal, recoil) plus energy sapped from them. */
+  const selfEffects = (i: 0 | 1, lifeAfterHits: number) => {
+    const p = ps[i];
+    let life = lifeAfterHits;
+    let energy = p.energy - sapped[i];
+    if (active[i]) {
+      recoil[i] = cards[i].recoil ?? 0;
+      healed[i] = healAmount(cards[i], life);
+      life += healed[i] - recoil[i];
+      energy += cards[i].cost;
+    }
+    p.life = clamp(life, 0, p.lifeMax);
+    p.energy = clamp(energy, 0, p.energyMax);
+    p.dazed = dazed[i];
   };
 
   // 2. Attacks. If both fighters attack, they strike one after the other (see strikeOrder);
@@ -287,7 +344,8 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
           ps[o].life = clamp(ps[o].life + drained[o], 0, ps[o].lifeMax);
         }
         if (atk.stun && damage[i] > 0) dazed[i] = true;
-        if (atk.burn && damage[i] > 0) burnHit[i] = atk.burn + ps[o].mods.burnBonus;
+        if (atk.sap) sapped[i] = atk.sap;
+        hexHit(i, atk, damage[i]);
         if (atk.push && !ps[i].mods.immovable) {
           ps[i].pos = displace(state.arena, ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
           reface();
@@ -295,15 +353,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       }
       if (k === 0) midLives = [ps[0].life, ps[1].life];
     });
-    for (const i of [0, 1] as const) {
-      const p = ps[i];
-      if (active[i]) {
-        healed[i] = cards[i].heal ?? 0;
-        p.life = clamp(p.life + healed[i], 0, p.lifeMax);
-        p.energy = clamp(p.energy + cards[i].cost, 0, p.energyMax);
-      }
-      p.dazed = dazed[i];
-    }
+    for (const i of [0, 1] as const) selfEffects(i, ps[i].life);
   } else {
     // Hits, computed from post-movement positions.
     areas = [0, 1].map((i) =>
@@ -324,30 +374,31 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       if (active[i] && cards[i].counter) counter[o] += cards[i].counter!;
       if (atk.drain && damage[i] > 0) drained[o] = Math.floor((damage[i] * atk.drain) / 100);
       if (atk.stun && damage[i] > 0) dazed[i] = true;
-      if (atk.burn && damage[i] > 0) burnHit[i] = atk.burn + ps[o].mods.burnBonus;
+      if (atk.sap) sapped[i] = atk.sap;
+      // Only touches ps[i].hexed, which the other side's damage (worked out next) doesn't read.
+      hexHit(i, atk, damage[i]);
       if (atk.push && !ps[i].mods.immovable) pushTo[i] = displace(state.arena, ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
     }
 
     // 3. Self effects, then clamp.
-    for (const i of [0, 1] as const) {
-      const p = ps[i];
-      let life = p.life - damage[i] - counter[i] + drained[i];
-      let energy = p.energy;
-      if (active[i]) {
-        healed[i] = cards[i].heal ?? 0;
-        life += healed[i];
-        energy += cards[i].cost;
-      }
-      p.life = clamp(life, 0, p.lifeMax);
-      p.energy = clamp(energy, 0, p.energyMax);
-      p.dazed = dazed[i];
-    }
+    for (const i of [0, 1] as const) selfEffects(i, ps[i].life - damage[i] - counter[i] + drained[i]);
 
     // 4. Push and pull (simultaneous), then face each other again.
     for (const i of [0, 1] as const) {
       if (pushTo[i]) ps[i].pos = pushTo[i]!;
     }
     reface();
+  }
+
+  // Attacks break the enemy traps they cover, before any trap can spring this step.
+  const brokenTraps: number[] = [];
+  for (const o of [0, 1] as const) {
+    for (const sq of areas[o]) {
+      const at = sq.r * cols + sq.c;
+      const left = state.arena.traps.filter((t) => !(t.at === at && t.owner !== o));
+      if (left.length < state.arena.traps.length && !brokenTraps.includes(at)) brokenTraps.push(at);
+      state.arena.traps = left;
+    }
   }
 
   // Square effects for whoever ends the step on one.
@@ -362,7 +413,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   // Enemy traps spring on whoever ends the step on them (each trap fires once).
   const trapDamage = [0, 0];
   for (const i of [0, 1] as const) {
-    const at = ps[i].pos.r * state.arena.cols + ps[i].pos.c;
+    const at = ps[i].pos.r * cols + ps[i].pos.c;
     const hits = state.arena.traps.filter((t) => t.at === at && t.owner !== i);
     if (!hits.length) continue;
     trapDamage[i] = hits.reduce((sum, t) => sum + t.damage, 0);
@@ -370,22 +421,12 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     state.arena.traps = state.arena.traps.filter((t) => !hits.includes(t));
   }
 
-  // Burns running since before this step hurt now; new burns take over from the next step.
-  const burnDamage = [0, 0];
-  for (const i of [0, 1] as const) {
-    if (burnNow[i] > 0) {
-      burnDamage[i] = burnNow[i];
-      ps[i].life = clamp(ps[i].life - burnNow[i], 0, ps[i].lifeMax);
-    }
-    ps[i].burn = Math.max(ps[i].burn, burnHit[i]);
-  }
-
   // New traps go down last, so they can only spring from the next step on.
   for (const i of [0, 1] as const) {
     if (!active[i] || cards[i].kind !== 'trap') continue;
     const damage = (cards[i].trap ?? 0) + ps[i].mods.trapBonus;
     for (const sq of attackArea(state.arena, cards[i], ps[i].pos, ps[i].facing)) {
-      const at = sq.r * state.arena.cols + sq.c;
+      const at = sq.r * cols + sq.c;
       // One trap per owner per square: a new one replaces the old.
       state.arena.traps = state.arena.traps.filter((t) => !(t.at === at && t.owner === i));
       state.arena.traps.push({ at, owner: i, damage, until: state.round + 1 });
@@ -427,14 +468,25 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     tile: tile[i],
     swapped,
     trapDamage: trapDamage[i],
-    burnDamage: burnDamage[i],
-    burning: ps[i].burn,
+    recoilTaken: recoil[i],
+    energyLost: sapped[i],
+    hexApplied: hexApplied[i],
+    hexBroken: hexBroken[i],
+    hexed: ps[i].hexed,
     healed: healed[i],
     life: ps[i].life,
     energy: ps[i].energy,
   })) as [StepPlayerResult, StepPlayerResult];
 
-  return { slot, players, outcome: state.outcome, sequence, midLives, traps: state.arena.traps.map((t: Trap) => ({ ...t })) };
+  return {
+    slot,
+    players,
+    outcome: state.outcome,
+    sequence,
+    midLives,
+    traps: state.arena.traps.map((t: Trap) => ({ ...t })),
+    brokenTraps,
+  };
 }
 
 /** Resolve a whole round. Pure: returns a new state. Throws on illegal plans. */
@@ -457,10 +509,7 @@ export function resolveRound(state: MatchState, plans: [Plan, Plan]): RoundResul
     for (const p of next.players) p.life = Math.max(0, p.life - fatigue);
     next.outcome = outcomeFor(next.players);
   }
-  for (const p of next.players) {
-    p.dazed = false;
-    p.burn = 0;
-  }
+  for (const p of next.players) p.dazed = false;
   // Traps last until the end of the round after the one they were set in.
   next.arena.traps = next.arena.traps.filter((t) => t.until > state.round);
   if (!next.outcome) {

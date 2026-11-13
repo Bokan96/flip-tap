@@ -53,10 +53,22 @@ describe('push and pull', () => {
     expect(displace(classic, { r: 0, c: 1 }, { r: 1, c: 1 }, 1, -1)).toEqual({ r: 0, c: 1 });
   });
 
-  it('Riptide pushes one extra square', () => {
-    const s = duel('marin', 'cinder', { r: 1, c: 0 }, { r: 1, c: 1 });
-    const r = resolveRound(s, [['marinWall', 'guard', 'focus'], ['guard', 'focus', 'up']]);
-    expect(r.steps[0].players[1].final).toEqual({ r: 1, c: 3 });
+  it('Riptide pushes one extra square (Geyser hits Marin’s own column)', () => {
+    const s = duel('marin', 'cinder', { r: 1, c: 1 }, { r: 0, c: 1 });
+    const r = resolveRound(s, [['marinGeyser', 'guard', 'focus'], ['guard', 'focus', 'up']]);
+    expect(r.steps[0].players[1].hit).toBe('guard');
+    expect(r.steps[0].players[1].final).toEqual({ r: 0, c: 3 });
+  });
+
+  it('Tidal Lure reaches two squares and Riptide pulls the target all the way in', () => {
+    const s = duel('marin', 'cinder', { r: 1, c: 0 }, { r: 2, c: 2 });
+    const r = resolveRound(s, [['marinLure', 'guard', 'focus'], ['focus', 'guard', 'up']]);
+    const p1 = r.steps[0].players[1];
+    expect(p1.damageTaken).toBe(5);
+    expect(p1.final).toEqual({ r: 2, c: 0 });
+    // One square away is out of its reach.
+    const t = duel('marin', 'cinder', { r: 1, c: 0 }, { r: 1, c: 1 });
+    expect(resolveRound(t, [['marinLure', 'guard', 'focus'], ['focus', 'guard', 'up']]).steps[0].players[1].hit).toBe('miss');
   });
 
   it('an immovable fighter ignores push and pull', () => {
@@ -109,7 +121,7 @@ describe('counter and drain', () => {
     const [a, b] = r.steps[0].players;
     expect(b.damageTaken).toBe(25 - 20);
     expect(a.counterTaken).toBe(20);
-    expect(a.life).toBe(80);
+    expect(a.life).toBe(100 - 20 - 5); // counter, then Ember Jab's recoil
   });
 
   it('counter does nothing on a miss', () => {
@@ -163,12 +175,14 @@ describe('passives', () => {
     expect(r.steps[0].players[1].damageTaken).toBe(CARDS.umbraClaw.damage! + ambush);
   });
 
-  it('Bedrock and Capacitor raise the maximums', () => {
+  it('every fighter starts with the same life and energy', () => {
+    for (const f of FIGHTERS) {
+      const p = createMatch({ fighterId: f.id }, { fighterId: 'marin' }).players[0];
+      expect([p.life, p.lifeMax, p.energy, p.energyMax], f.id).toEqual([BALANCE.lifeMax, BALANCE.lifeMax, BALANCE.energyMax, BALANCE.energyMax]);
+    }
     const s = createMatch({ fighterId: 'basalt' }, { fighterId: 'volta' });
-    expect(s.players[0].lifeMax).toBe(115);
-    expect(s.players[0].life).toBe(115);
     expect(s.players[0].mods.immovable).toBe(true);
-    expect(s.players[1].energyMax).toBe(120);
+    expect(s.players[1].mods.energyPerRound).toBe(10);
   });
 
   it('match modifiers stack with passives', () => {
@@ -207,7 +221,7 @@ describe('fast simulator with every card, modifier and arena', () => {
         p.energy = rng.int(p.energyMax + 1);
         p.dazed = rng.int(5) === 0;
         if (p.mods.ammo) p.spent = p.deck.filter((id) => CARDS[id].kind === 'attack' && rng.int(2) === 0);
-        p.burn = rng.int(4) === 0 ? 5 + rng.int(3) * 5 : 0;
+        p.hexed = rng.int(3) === 0;
       }
       // A few traps already on the board, owned by either side.
       for (let k = rng.int(3); k > 0; k--) {
@@ -226,6 +240,7 @@ describe('fast simulator with every card, modifier and arena', () => {
       const ps = real.state.players;
       expect(fast.facing).toEqual([ps[0].facing, ps[1].facing]);
       expect(fast.spent).toEqual(ps.map((p) => (p.mods.ammo ? p.spent.length : -1)));
+      expect(fast.hexed).toEqual([ps[0].hexed, ps[1].hexed]);
       const key = (at: number, owner: number, dmg: number) => `${at}:${owner}:${dmg}`;
       const fastTraps: string[] = [];
       for (let k = 0; k < fast.traps.length; k += 3) fastTraps.push(key(fast.traps[k], fast.traps[k + 1], fast.traps[k + 2]));
@@ -239,8 +254,10 @@ describe('fast simulator with every card, modifier and arena', () => {
 describe('content and match runner', () => {
   it('every effect card is well formed', () => {
     for (const c of Object.values(CARDS)) {
-      if (c.push || c.stun || c.drain) expect(c.kind).toBe('attack');
-      if (c.counter) expect(c.kind).toBe('guard');
+      if (c.push || c.stun || c.drain || c.sap || c.hex || c.vsMoved || c.recoil || c.planted) expect(c.kind, c.id).toBe('attack');
+      if (c.counter) expect(['guard', 'move'], c.id).toContain(c.kind);
+      if (c.forward) expect(c.kind, c.id).toBe('move');
+      if (c.healAtOrBelow !== undefined) expect(c.kind, c.id).toBe('heal');
     }
     for (const f of FIGHTERS) expect(f.passive?.name).toBeTruthy();
   });
@@ -264,39 +281,40 @@ describe('attack priority', () => {
     expect(step.sequence).toEqual([0, 1]);
     expect(step.players[1].interrupted).toBe(true);
     expect(step.players[0].hit).toBe('none');
-    expect(step.players[0].life).toBe(100);
+    expect(step.players[0].life).toBe(100 - 10); // only Wildfire's recoil
     expect(r.state.outcome).toEqual({ winner: 0 });
   });
 
   it('on equal damage the fighter with more life strikes first', () => {
-    // Ember Jab and Tremor both deal 25.
-    const s = duel('cinder', 'basalt', { r: 1, c: 1 }, { r: 1, c: 2 });
+    // Ember Jab and Zap both deal 25.
+    const s = duel('cinder', 'volta', { r: 1, c: 1 }, { r: 1, c: 2 });
     s.players[0].life = 20;
     s.players[1].life = 30;
-    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['basaltQuake', 'guard', 'focus']]);
+    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['voltaZap', 'guard', 'focus']]);
     expect(r.steps[0].sequence).toEqual([1, 0]);
     expect(r.steps[0].players[0].interrupted).toBe(true);
     expect(r.state.outcome).toEqual({ winner: 1 });
   });
 
   it('equal damage and equal life still strike at the same time', () => {
-    const s = duel('cinder', 'basalt', { r: 1, c: 1 }, { r: 1, c: 2 });
+    const s = duel('cinder', 'volta', { r: 1, c: 1 }, { r: 1, c: 2 });
     s.players[0].life = s.players[1].life = 10;
-    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['basaltQuake', 'guard', 'focus']]);
+    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['voltaZap', 'guard', 'focus']]);
     expect(r.steps[0].sequence).toBeNull();
     expect(r.state.outcome).toEqual({ winner: null, draw: true });
   });
 
   it('a push from the first strike can carry the target out of its own attack', () => {
-    // Tide Wall (30) beats Ember Jab (25) and pushes Cinder 2 squares (Riptide), so the Jab misses.
-    const s = duel('marin', 'cinder', { r: 1, c: 1 }, { r: 1, c: 2 });
-    const r = resolveRound(s, [['marinWall', 'guard', 'focus'], ['cinderJab', 'guard', 'focus']]);
+    // Slug (40) beats Ember Jab (25) and pushes Cinder a square, so the Jab misses.
+    const s = duel('ferro', 'cinder', { r: 1, c: 1 }, { r: 1, c: 2 });
+    const r = resolveRound(s, [['ferroSlug', 'guard', 'focus'], ['cinderJab', 'guard', 'focus']]);
     const step = r.steps[0];
     expect(step.sequence).toEqual([0, 1]);
-    expect(step.midLives).toEqual([100, 70]);
+    expect(step.midLives).toEqual([100, 60]);
     expect(step.players[1].final).toEqual({ r: 1, c: 3 });
     expect(step.players[0].hit).toBe('miss');
     expect(step.players[0].life).toBe(100);
+    expect(step.players[1].life).toBe(60 - 5); // the Jab still burns Cinder
   });
 
   it('only applies when both fighters attack', () => {

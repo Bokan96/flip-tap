@@ -28,16 +28,18 @@ export interface EvalWeights {
   trap: number;
   /** Extra weight on each point of life below DANGER_LIFE (being one round from a KO). */
   danger: number;
+  /** Share of a hex's extra damage counted as value (it only pays off on the next hit that lands). */
+  hex: number;
 }
 
 /** Life below which a fighter is in KO range of most rounds. */
 const DANGER_LIFE = 40;
 
 /** Only life and energy count (the original, short-sighted scoring). */
-const FLAT: EvalWeights = { energy: 0.2, energyHigh: 0.2, energySoft: 100, ammo: 0, trap: 0, danger: 0 };
+const FLAT: EvalWeights = { energy: 0.2, energyHigh: 0.2, energySoft: 100, ammo: 0, trap: 0, danger: 0, hex: 0 };
 /** Full look-ahead. */
-const FULL: EvalWeights = { energy: 0.3, energyHigh: 0.1, energySoft: 50, ammo: 4, trap: 0.3, danger: 0.4 };
-const HALF: EvalWeights = { energy: 0.25, energyHigh: 0.15, energySoft: 50, ammo: 2, trap: 0.15, danger: 0.2 };
+const FULL: EvalWeights = { energy: 0.3, energyHigh: 0.1, energySoft: 50, ammo: 4, trap: 0.3, danger: 0.4, hex: 0.5 };
+const HALF: EvalWeights = { energy: 0.25, energyHigh: 0.15, energySoft: 50, ammo: 2, trap: 0.15, danger: 0.2, hex: 0.25 };
 
 export interface AiProfile {
   /** How many of our plans are used to guess the opponent's likely replies. */
@@ -102,7 +104,7 @@ export function enumeratePlans(player: PlayerState): Plan[] {
   const deck = player.deck;
   const slots = BALANCE.slotsPerRound;
   const cur: string[] = [];
-  const rec = (energy: number, reloaded: boolean) => {
+  const rec = (energy: number, reloaded: boolean, moved: boolean) => {
     if (cur.length === slots) {
       out.push([...cur]);
       return;
@@ -112,14 +114,16 @@ export function enumeratePlans(player: PlayerState): Plan[] {
       const card = getCard(id);
       // Ammo fighters can't fire a spent attack until a Reload earlier in the plan.
       if (!reloaded && card.kind === 'attack' && player.mods.ammo && player.spent.includes(id)) continue;
+      // Planted attacks can't follow a move.
+      if (moved && card.planted) continue;
       const e = energy + card.cost;
       if (e < 0) continue;
       cur.push(id);
-      rec(Math.min(e, player.energyMax), reloaded || card.kind === 'reload');
+      rec(Math.min(e, player.energyMax), reloaded || card.kind === 'reload', moved || card.kind === 'move');
       cur.pop();
     }
   };
-  rec(player.energy, false);
+  rec(player.energy, false, false);
   return out;
 }
 
@@ -133,6 +137,8 @@ interface Side {
   regen: number;
   energyMax: number;
   ammo: boolean;
+  /** Extra damage this side's next landed hit deals if the other side is hexed. */
+  hexHit: number;
 }
 
 function side(p: PlayerState): Side {
@@ -141,6 +147,7 @@ function side(p: PlayerState): Side {
     regen: BALANCE.energyPerRound + p.mods.energyPerRound,
     energyMax: p.energyMax,
     ammo: p.mods.ammo,
+    hexHit: BALANCE.hexDamage + p.mods.hexBonus,
   };
 }
 
@@ -181,6 +188,10 @@ function makeEvaluator(state: MatchState, seat: Seat, w: EvalWeights, aggression
         else near ? (tn = Math.max(tn, d)) : (tf = Math.max(tf, d));
       }
       v += w.trap * (mn + 0.25 * mf - tn - 0.25 * tf);
+    }
+    if (w.hex) {
+      if (r.hexed[o]) v += w.hex * me.hexHit;
+      if (r.hexed[seat]) v -= w.hex * them.hexHit;
     }
     return v;
   };

@@ -11,7 +11,11 @@ interface FastCard {
   cost: number;
   dr: number;
   dc: number;
+  /** Move card: columns are relative to facing. */
+  forward: boolean;
   heal: number;
+  /** Heals only at or below this life (Infinity = always). */
+  healMax: number;
   guard: number;
   isAttack: boolean;
   damage: number;
@@ -20,7 +24,10 @@ interface FastCard {
   counter: number;
   drain: number;
   reload: boolean;
-  burn: number;
+  recoil: number;
+  sap: number;
+  vsMoved: number;
+  hex: boolean;
   /** Trap card: damage of each trap it sets (0 otherwise). */
   trap: number;
   swap: boolean;
@@ -38,14 +45,17 @@ export function fastCard(id: string): FastCard {
     const cells: number[] = [];
     if ((isAttack || c.kind === 'trap') && c.pattern) {
       c.pattern.forEach((row, i) => {
-        for (let j = 0; j < 3; j++) if (row[j] === '1') cells.push(i - 1, j - 1);
+        const half = (row.length - 1) / 2;
+        for (let j = 0; j < row.length; j++) if (row[j] === '1') cells.push(i - 1, j - half);
       });
     }
     fc = {
       cost: c.cost,
       dr: c.step?.[0] ?? 0,
       dc: c.step?.[1] ?? 0,
+      forward: !!c.forward,
       heal: c.heal ?? 0,
+      healMax: c.healAtOrBelow ?? Infinity,
       guard: c.guard ?? 0,
       isAttack,
       damage: isAttack ? (c.damage ?? 0) : 0,
@@ -54,7 +64,10 @@ export function fastCard(id: string): FastCard {
       counter: c.counter ?? 0,
       drain: isAttack ? (c.drain ?? 0) : 0,
       reload: c.kind === 'reload',
-      burn: isAttack ? (c.burn ?? 0) : 0,
+      recoil: c.recoil ?? 0,
+      sap: isAttack ? (c.sap ?? 0) : 0,
+      vsMoved: isAttack ? (c.vsMoved ?? 0) : 0,
+      hex: isAttack && !!c.hex,
       trap: c.kind === 'trap' ? (c.trap ?? 0) : 0,
       swap: !!c.swap,
       cells,
@@ -77,6 +90,8 @@ export interface FastResult {
   spent: [number, number];
   /** Traps still on the board for the next round, flattened as [square, owner, damage, ...]. */
   traps: number[];
+  /** Who is hexed at the end of the round. */
+  hexed: [boolean, boolean];
 }
 
 function covers(card: FastCard, r: number, c: number, facing: number, tr: number, tc: number): boolean {
@@ -92,14 +107,14 @@ function covers(card: FastCard, r: number, c: number, facing: number, tr: number
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
 /** Same as rules.hitDamage. */
-function damageOf(card: FastCard, attackerLife: number, am: Mods, dm: Mods, guard: number, moved: boolean): number {
+function damageOf(card: FastCard, attackerLife: number, am: Mods, dm: Mods, guard: number, moved: boolean, hexed: boolean): number {
   let d = card.damage + am.damageBonus;
   if (am.lowLifeThreshold > 0 && attackerLife <= am.lowLifeThreshold) d += am.lowLifeBonus;
-  if (moved) d += am.vsMovedBonus - dm.movedReduction;
+  if (moved) d += am.vsMovedBonus + card.vsMoved - dm.movedReduction;
+  if (hexed) d += BALANCE.hexDamage + am.hexBonus;
   d -= guard + dm.damageReduction;
   return d > 0 ? d : 0;
 }
-
 
 /**
  * Simulate one round. Same semantics as rules.resolveRound, including fatigue, but without the
@@ -132,14 +147,12 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   const c = [P[0].pos.c, P[1].pos.c];
   const f = [P[0].facing as number, P[1].facing as number];
   const z = [P[0].dazed, P[1].dazed];
+  const hx = [!!P[0].hexed, !!P[1].hexed];
   // Spent attacks, tracked only for ammo fighters (null otherwise).
   const spent: (string[] | null)[] = [m[0].ammo ? [...P[0].spent] : null, m[1].ammo ? [...P[1].spent] : null];
   const ids = ['', ''];
   // Traps on the board (copied: they fire and get placed during the round). `keep` = still there next round.
   const traps = A.traps.map((t) => ({ at: t.at, owner: t.owner as number, damage: t.damage, keep: t.until > state.round }));
-  const burn = [P[0].burn, P[1].burn];
-  const burnNow = [0, 0];
-  const burnHit = [0, 0];
   const sr = [0, 0];
   const sc = [0, 0];
   const card: FastCard[] = [fastCard(plan0[0]), fastCard(plan1[0])];
@@ -149,7 +162,13 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   const dmg = [0, 0];
   const ctr = [0, 0];
   const drn = [0, 0];
+  const sap = [0, 0];
   const nc = [0, 0];
+  // Where each attack struck from (for breaking traps), and whether it struck at all.
+  const struck = [false, false];
+  const ar = [0, 0];
+  const ac = [0, 0];
+  const af = [0, 0];
   let outcome = -1;
 
   const face = () => {
@@ -161,6 +180,14 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       f[1] = 1;
     }
   };
+  const strike = (o: number) => {
+    struck[o] = true;
+    ar[o] = r[o];
+    ac[o] = c[o];
+    af[o] = f[o];
+  };
+  /** Same as rules.healAmount. */
+  const healOf = (fc: FastCard, l: number) => (fc.heal && l <= fc.healMax ? fc.heal : 0);
 
   for (let slot = 0; slot < plan0.length; slot++) {
     ids[0] = plan0[slot];
@@ -171,13 +198,13 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       const sp = spent[i];
       act[i] = !z[i] && en[i] + card[i].cost >= 0 && !(sp !== null && card[i].isAttack && sp.includes(ids[i]));
       nz[i] = false;
-      burnNow[i] = burn[i];
-      burnHit[i] = 0;
+      sap[i] = 0;
+      struck[i] = false;
       sr[i] = r[i];
       sc[i] = c[i];
       if (act[i] && (card[i].dr || card[i].dc)) {
         const nr = clamp(r[i] + card[i].dr, 0, rows - 1);
-        const ncc = clamp(c[i] + card[i].dc, 0, cols - 1);
+        const ncc = clamp(c[i] + (card[i].forward ? card[i].dc * f[i] : card[i].dc), 0, cols - 1);
         if (open(nr, ncc)) {
           r[i] = nr;
           c[i] = ncc;
@@ -211,43 +238,54 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         const i = 1 - o;
         if (life[o] <= 0) continue;
         const a = card[o];
+        strike(o);
         if (!covers(a, r[o], c[o], f[o], r[i], c[i])) continue;
-        const d = damageOf(a, life[o], m[o], m[i], 0, mv[i]);
+        const d = damageOf(a, life[o], m[o], m[i], 0, mv[i], hx[i]);
         life[i] = clamp(life[i] - d, 0, lifeMax[i]);
         if (a.drain && d > 0) life[o] = clamp(life[o] + Math.floor((d * a.drain) / 100), 0, lifeMax[o]);
         if (a.stun && d > 0) nz[i] = true;
-        if (a.burn && d > 0) burnHit[i] = a.burn + m[o].burnBonus;
+        if (a.sap) sap[i] = a.sap;
+        if (hx[i]) hx[i] = false;
+        else if (a.hex && d > 0) hx[i] = true;
         if (a.push && !m[i].immovable) {
           c[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
           face();
         }
       }
       for (let i = 0; i < 2; i++) {
-        if (!act[i]) continue;
-        life[i] = clamp(life[i] + card[i].heal, 0, lifeMax[i]);
-        en[i] = clamp(en[i] + card[i].cost, 0, energyMax[i]);
+        let l = life[i];
+        let e = en[i] - sap[i];
+        if (act[i]) {
+          l += healOf(card[i], l) - card[i].recoil;
+          e += card[i].cost;
+        }
+        life[i] = clamp(l, 0, lifeMax[i]);
+        en[i] = clamp(e, 0, energyMax[i]);
       }
     } else {
       for (let i = 0; i < 2; i++) {
         dmg[i] = ctr[i] = drn[i] = 0;
         nc[i] = c[i];
+        if (act[i] && card[i].isAttack) strike(i);
       }
       for (let i = 0; i < 2; i++) {
         const o = 1 - i;
         const a = card[o];
         if (!act[o] || !a.isAttack || !covers(a, r[o], c[o], f[o], r[i], c[i])) continue;
-        dmg[i] = damageOf(a, life[o], m[o], m[i], act[i] ? card[i].guard : 0, mv[i]);
+        dmg[i] = damageOf(a, life[o], m[o], m[i], act[i] ? card[i].guard : 0, mv[i], hx[i]);
         if (act[i] && card[i].counter) ctr[o] += card[i].counter;
         if (a.drain && dmg[i] > 0) drn[o] = Math.floor((dmg[i] * a.drain) / 100);
         if (a.stun && dmg[i] > 0) nz[i] = true;
-        if (a.burn && dmg[i] > 0) burnHit[i] = a.burn + m[o].burnBonus;
+        if (a.sap) sap[i] = a.sap;
+        if (hx[i]) hx[i] = false;
+        else if (a.hex && dmg[i] > 0) hx[i] = true;
         if (a.push && !m[i].immovable) nc[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
       }
       for (let i = 0; i < 2; i++) {
         let l = life[i] - dmg[i] - ctr[i] + drn[i];
-        let e = en[i];
+        let e = en[i] - sap[i];
         if (act[i]) {
-          l += card[i].heal;
+          l += healOf(card[i], l) - card[i].recoil;
           e += card[i].cost;
         }
         life[i] = clamp(l, 0, lifeMax[i]);
@@ -257,13 +295,23 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       c[1] = nc[1];
       face();
     }
+    // Attacks break the enemy traps they cover (same as rules.resolveStep).
+    if (traps.length) {
+      for (let o = 0; o < 2; o++) {
+        if (!struck[o]) continue;
+        for (let k = traps.length - 1; k >= 0; k--) {
+          const t = traps[k];
+          if (t.owner !== o && covers(card[o], ar[o], ac[o], af[o], Math.floor(t.at / cols), t.at % cols)) traps.splice(k, 1);
+        }
+      }
+    }
     // Square effects (same as rules.resolveStep).
     for (let i = 0; i < 2; i++) {
       const t = tiles[r[i] * cols + c[i]];
       if (t === 'spikes') life[i] = clamp(life[i] - BALANCE.tiles.spikes, 0, lifeMax[i]);
       else if (t === 'well') en[i] = clamp(en[i] + BALANCE.tiles.well, 0, energyMax[i]);
     }
-    // Enemy traps, then running burns, then new traps (same order as rules.resolveStep).
+    // Enemy traps, then new traps (same order as rules.resolveStep).
     if (traps.length) {
       for (let i = 0; i < 2; i++) {
         const at = r[i] * cols + c[i];
@@ -276,10 +324,6 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         }
         if (hurt) life[i] = clamp(life[i] - hurt, 0, lifeMax[i]);
       }
-    }
-    for (let i = 0; i < 2; i++) {
-      if (burnNow[i] > 0) life[i] = clamp(life[i] - burnNow[i], 0, lifeMax[i]);
-      if (burnHit[i] > burn[i]) burn[i] = burnHit[i];
     }
     for (let i = 0; i < 2; i++) {
       const tc = card[i];
@@ -325,5 +369,6 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
     facing: [f[0], f[1]],
     spent: [spent[0] ? spent[0].length : -1, spent[1] ? spent[1].length : -1],
     traps: left,
+    hexed: [hx[0], hx[1]],
   };
 }

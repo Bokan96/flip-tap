@@ -387,7 +387,6 @@ function matchSetup(mode: SetupMode): void {
       detail.style.setProperty('--clr', f.color);
       detail.innerHTML = `<div class="detail-head">${portraitHtml(f, 'detail-emblem')}
           <div><b>${f.name}</b><i>${f.title}</i><div class="detail-tags"><span class="role-tag">${f.role}</span>${starsHtml(f.complexity)}</div></div>
-          <span class="detail-stats">♥ ${f.lifeMax ?? BALANCE.lifeMax}<br>⚡ ${f.energyMax ?? BALANCE.energyMax}</span>
         </div>
         <p class="detail-blurb">${f.blurb}</p>
         ${passiveHtml(f)}`;

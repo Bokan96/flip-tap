@@ -29,7 +29,7 @@ export const NO_MODS: Mods = {
   pushBonus: 0,
   ammo: false,
   trapBonus: 0,
-  burnBonus: 0,
+  hexBonus: 0,
 };
 
 /** Combine modifier sets: numbers add up, flags combine with OR, thresholds take the highest. */
@@ -55,8 +55,8 @@ export function buildDeck(fighterId: string, bonusCards: string[] = []): string[
 
 function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier, arenaId: string): PlayerState {
   const f = getFighter(cfg.fighterId);
-  const lifeMax = f.lifeMax ?? BALANCE.lifeMax;
-  const energyMax = f.energyMax ?? BALANCE.energyMax;
+  const lifeMax = BALANCE.lifeMax;
+  const energyMax = BALANCE.energyMax;
   return {
     fighterId: f.id,
     life: Math.min(lifeMax, mod.startLife ?? lifeMax),
@@ -68,7 +68,7 @@ function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier, arenaId: 
     deck: buildDeck(f.id, cfg.bonusCards),
     mods: mergeMods(f.passive?.mods, mod.mods),
     spent: [],
-    burn: 0,
+    hexed: false,
     dazed: false,
   };
 }

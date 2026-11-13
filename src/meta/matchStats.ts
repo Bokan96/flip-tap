@@ -17,7 +17,7 @@ export interface MatchStats {
   rounds: number;
   /** Cards that actually resolved (stunned and unplayed ones don't count). */
   cardsPlayed: [number, number];
-  /** Damage each seat dealt with each card (hits, counters, traps and burns), largest first. */
+  /** Damage each seat dealt with each card (hits, counters and traps), largest first. */
   damageByCard: [{ card: string; damage: number }[], { card: string; damage: number }[]];
   damageDealt: [number, number];
   /** Per round, from seat 0's side: dealt more (win), less (loss) or the same (even). */
@@ -38,9 +38,8 @@ export function matchStats(start: MatchState, log: MatchLog): MatchStats {
   const trades: MatchStats['trades'] = [];
   let biggestHit: Highlight | null = null;
   let bestDodge: Highlight | null = null;
-  // Trap and burn damage lands steps after the card that caused it.
+  // Trap damage lands steps after the card that set it.
   const lastTrap: (string | null)[] = [null, null];
-  const lastBurn: (string | null)[] = [null, null];
 
   /** `card` is '' when the source isn't known (shown as "Other"). */
   const credit = (seat: Seat, card: string | null, n: number, round: number[]) => {
@@ -61,15 +60,13 @@ export function matchStats(start: MatchState, log: MatchLog): MatchStats {
         const mine = P[i];
         const card = getCard(mine.cardId);
         if (mine.active) cardsPlayed[i]++;
-        // Traps and burns from earlier cards (new ones only take effect from the next step).
+        // Traps from earlier cards (new ones only take effect from the next step).
         credit(i, lastTrap[i], P[o].trapDamage, inRound);
-        credit(i, lastBurn[i], P[o].burnDamage, inRound);
         if (mine.active && card.kind === 'trap') lastTrap[i] = mine.cardId;
         // Damage this seat's card did to the other seat this step.
         if (P[o].damageTaken > 0) {
           credit(i, mine.cardId, P[o].damageTaken, inRound);
           if (!biggestHit || P[o].damageTaken > biggestHit.damage) biggestHit = { seat: i, card: mine.cardId, damage: P[o].damageTaken, round };
-          if (card.burn) lastBurn[i] = mine.cardId;
         }
         credit(o, P[o].cardId, P[i].counterTaken, inRound);
         // A dodge: the other seat's attack missed because this seat moved out of the way.

@@ -28,7 +28,7 @@ const named = (spec: string): AiProfile => {
 };
 const baseNamed = (n: string): AiProfile => {
   if (n === 'sim') return SIM_PROFILE;
-  if (n === 'hard-flat') return { ...PROFILES.hard, weights: { energy: 0.2, energyHigh: 0.2, energySoft: 100, ammo: 0, trap: 0, danger: 0 } };
+  if (n === 'hard-flat') return { ...PROFILES.hard, weights: { energy: 0.2, energyHigh: 0.2, energySoft: 100, ammo: 0, trap: 0, danger: 0, hex: 0 } };
   if (n === 'expert-blind') return { ...PROFILES.expert, readPlayer: 0 };
   return PROFILES[n as keyof typeof PROFILES];
 };
