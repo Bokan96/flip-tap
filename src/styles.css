@@ -212,6 +212,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .card .stat.dmg { color: var(--fx-hit); }
 .card .stat.grd { color: var(--fx-guard); }
 .card .stat.heal { color: var(--life); }
+.card .stat .hexv { color: var(--fx-hex); white-space: nowrap; }
 .card .art { flex: 1; display: grid; place-items: center; }
 .big-glyph { font-size: 1.9rem; line-height: 1; }
 .card .big-glyph { font-size: 3em; }
@@ -353,6 +354,16 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   padding: 6px 10px; min-width: 0; cursor: pointer; transition: border-color .15s;
 }
 .panel:hover { border-color: var(--clr); }
+.panel { --seat: var(--p0); transition: border-color .15s, background-color .2s, box-shadow .2s; }
+.panel.p1 { --seat: var(--p1); }
+.panel.acting { background: color-mix(in srgb, var(--seat) 22%, var(--bg2)); box-shadow: inset 0 0 0 2px var(--seat), inset 0 0 18px color-mix(in srgb, var(--seat) 45%, transparent); }
+.panel.hurt { animation: panel-hurt .5s ease-out; }
+@keyframes panel-hurt {
+  0%, 20% { background-color: color-mix(in srgb, var(--danger) 45%, var(--bg2)); }
+  10% { translate: -5px 0; } 30% { translate: 5px 0; } 50% { translate: -3px 0; } 70% { translate: 2px 0; }
+}
+/* The recap rewinding to a round's start: bars jump instead of sliding. */
+.panel.snap .bar i, .panel.snap .bar .chip { transition: none !important; }
 .panel.p0 { border-left: 4px solid var(--p0); clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); }
 .panel.p1 { border-right: 4px solid var(--p1); flex-direction: row-reverse; text-align: right; clip-path: polygon(0 12px, 12px 0, 100% 0, 100% 100%, 0 100%); }
 .hud-emblem { width: 38px; height: 38px; flex: none; }
@@ -402,9 +413,9 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .tile.preview-move { background: color-mix(in srgb, var(--move) 35%, transparent); box-shadow: inset 0 0 0 2px var(--move); }
 /* Attack squares are always red; the outline shows whose attack it is. */
 .tile.area-p0, .tile.area-p1 { background: color-mix(in srgb, var(--attack) 45%, transparent); }
-.tile.area-p0 { box-shadow: inset 0 0 0 3px var(--p0), inset 0 0 20px color-mix(in srgb, var(--attack) 70%, transparent); }
-.tile.area-p1 { box-shadow: inset 0 0 0 3px var(--p1), inset 0 0 20px color-mix(in srgb, var(--attack) 70%, transparent); }
-.tile.area-p0.area-p1 { box-shadow: inset 0 0 0 3px var(--p0), inset 0 0 0 6px var(--p1), inset 0 0 20px color-mix(in srgb, var(--attack) 70%, transparent); }
+.tile.area-p0 { box-shadow: inset 0 0 0 4px var(--p0), inset 0 0 22px color-mix(in srgb, var(--p0) 65%, transparent); }
+.tile.area-p1 { box-shadow: inset 0 0 0 4px var(--p1), inset 0 0 22px color-mix(in srgb, var(--p1) 65%, transparent); }
+.tile.area-p0.area-p1 { box-shadow: inset 0 0 0 4px var(--p0), inset 0 0 0 8px var(--p1), inset 0 0 20px color-mix(in srgb, var(--attack) 70%, transparent); }
 @keyframes pulse { to { filter: brightness(1.35); } }
 
 .token, .ghost, .float, .fx {
@@ -453,7 +464,6 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .token.face-left .facing::before { clip-path: polygon(100% 0, 0 50%, 100% 100%); }
 .token.shared.p0 { transform: translateX(-18%) scale(.8); }
 .token.shared.p1 { transform: translateX(18%) scale(.8); }
-.token.shake { animation: shake .45s; }
 .token.ko { opacity: .25; filter: grayscale(1); }
 @keyframes shake { 20%, 60% { translate: -7px 0; } 40%, 80% { translate: 7px 0; } }
 .ghost { z-index: 1; }
@@ -519,12 +529,23 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 }
 .play-card.flipped .card { animation: flip-in .28s ease-out; }
 @keyframes flip-in { from { transform: perspective(400px) rotateY(90deg); } }
-.play-card.now { z-index: 2; transform: scale(1.1); filter: drop-shadow(0 0 9px var(--pc)) drop-shadow(0 0 2px var(--pc)); }
+.play-card.now { z-index: 2; transform: scale(1.12); }
+.play-card.now .play-face { animation: now-pulse .8s ease-in-out infinite alternate; }
+@keyframes now-pulse {
+  from { filter: drop-shadow(0 0 4px var(--pc)) drop-shadow(0 0 1px var(--pc)); }
+  to { filter: drop-shadow(0 0 14px var(--pc)) drop-shadow(0 0 3px var(--pc)) brightness(1.1); }
+}
 .play-card.now .play-step { color: var(--accent); }
 .play-card.now .play-step::before { content: '▶ '; }
+/* While its attack is live, the striking card lifts above the other card of the step. */
+.play-card.now.striking { z-index: 3; transform: scale(1.2); }
+.battle:has(.play-card.striking) .play-card.now:not(.striking) { opacity: .75; transform: scale(1.02); }
+/* The moment the card's effect happens on the board (a move, a guard, an attack firing). */
+.play-card.acting { animation: card-act .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes card-act { 35% { scale: 1.18; filter: brightness(1.45); } }
 /* During the reveal, finished steps step back; in the recap the replayed step stands out. */
 .battle[data-mode="reveal"] .play-card:not(.now):not(.face-down),
-.battle[data-mode="summary"]:has(.play-card.now) .play-card:not(.now) { opacity: .62; transform: scale(.95); }
+.battle[data-mode="summary"]:has(.play-card.now) .play-card:not(.now) { opacity: .45; filter: saturate(.5); transform: scale(.94); }
 .play-card.inactive .card, .play-card.stunned .card { opacity: .35; }
 .play-card.unplayed .card { opacity: .3; }
 .play-card.held .play-face::after { content: '🔒'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.1rem; }
@@ -715,6 +736,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .ring i { width: 72%; aspect-ratio: 1; border-radius: 50%; opacity: 0; }
 .ring.shield i { border: 3px solid var(--fx-guard); background: radial-gradient(circle, transparent 55%, color-mix(in srgb, var(--fx-guard) 35%, transparent)); animation: ring .6s ease-out forwards; }
 .ring.stun i { border: 3px dashed var(--fx-stun); animation: ring-spin .6s ease-out forwards; }
+.ring.impact i { border: 4px solid var(--danger); box-shadow: 0 0 14px var(--danger); animation: ring .45s ease-out forwards; }
 @keyframes ring { from { opacity: .95; transform: translate(-50%, -50%) scale(.5); } to { opacity: 0; transform: translate(-50%, -50%) scale(1.35); } }
 /* Focus: energy motes fly in to the fighter. */
 .particles.gather i { border-radius: 50%; opacity: 0; animation: gather .6s ease-in var(--delay, 0ms) forwards; }
@@ -744,10 +766,33 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 
 .token.hop { animation: hop .5s cubic-bezier(.3, .7, .3, 1); }
 @keyframes hop { 40% { translate: 0 -26%; scale: 1.06; } 80% { translate: 0 0; scale: 1.14 .84; } 100% { scale: 1; } }
-.token.charge { animation: charge .3s ease-in-out; }
-@keyframes charge { 50% { scale: 1.16; filter: brightness(1.6); } }
-.token.flash .token-body { animation: flash .35s; }
-@keyframes flash { 0%, 40% { filter: brightness(3.2) drop-shadow(0 0 10px #fff); } }
+/* Attacking: a ring in the player's colour around the piece while its squares are lit. */
+.token { --dir: 1; }
+.token.face-left { --dir: -1; }
+.token.attacking { z-index: 3; }
+.token.attacking::before {
+  content: ''; position: absolute; inset: 2%; border-radius: 50%; pointer-events: none;
+  border: 3px solid currentColor;
+  box-shadow: 0 0 16px currentColor, inset 0 0 12px color-mix(in srgb, currentColor 50%, transparent);
+  animation: atk-aura .5s ease-in-out infinite alternate;
+}
+@keyframes atk-aura { from { opacity: .55; scale: .88; } to { opacity: 1; scale: 1.04; } }
+.token.lunge { animation: lunge .45s cubic-bezier(.3, .7, .3, 1); }
+@keyframes lunge {
+  30% { translate: calc(var(--dir) * -8%) 0; scale: .94; }
+  55% { translate: calc(var(--dir) * 24%) 0; scale: 1.16; }
+}
+/* Hit: knocked away from the attacker (--kx: -1, 0 or 1) with a red flash. */
+.token.hurt { animation: hurt .5s ease-out; }
+@keyframes hurt {
+  18% { translate: calc(var(--kx, 0) * 22%) 0; rotate: calc(var(--kx, 0) * 12deg); scale: .9; }
+  45% { translate: calc(var(--kx, 0) * -5%) 0; rotate: 0deg; scale: 1.05; }
+}
+/* (.hexed.hurt: the flash beats the hex glow declared further down) */
+.token.hurt .token-body, .token.hexed.hurt .token-body { animation: hurt-flash .5s ease-out; }
+@keyframes hurt-flash { 0%, 30% { filter: brightness(1.5) drop-shadow(0 0 12px var(--danger)); } }
+.token.hurt .token-body::before { content: ''; position: absolute; inset: -2px; background: var(--danger); opacity: 0; animation: hurt-tint .5s ease-out; }
+@keyframes hurt-tint { 0%, 25% { opacity: .8; } }
 .token.skid { animation: skid .45s ease-out; }
 @keyframes skid { 30% { rotate: -12deg; } }
 .token.ko-fall { animation: ko-fall .9s cubic-bezier(.4, 0, .6, 1) both; }
@@ -907,6 +952,10 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .reduced-fx .token, .reduced-fx .token .token-body, .reduced-fx .arena, .reduced-fx .tile,
 .reduced-fx .play-card .card, .reduced-fx .result-fighter .emblem { animation: none !important; }
 .reduced-fx .play-card { transition: none; }
+.reduced-fx .play-card, .reduced-fx .play-face, .reduced-fx .panel { animation: none !important; }
+.reduced-fx .play-card.now .play-face { filter: drop-shadow(0 0 9px var(--pc)) drop-shadow(0 0 2px var(--pc)); }
+.reduced-fx .token.attacking::before { animation: none; }
+.reduced-fx .token.hurt .token-body::before { display: none; }
 
 /* ---------- progression: badges, loadout, daily, profile, toasts ---------- */
 .champ { font-style: normal; position: absolute; top: 6px; right: 8px; color: var(--accent); font-size: 1.1rem; text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
@@ -1007,14 +1056,36 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .badges .fx-trap { color: var(--trap); }
 .badges .fx-swap { color: var(--fx-push); }
 .tile.preview-trap { background: color-mix(in srgb, var(--trap) 30%, transparent); box-shadow: inset 0 0 0 2px var(--trap); }
+/* A trap covers its square: a faint tint and hatch in the owner's colour (player 2's hatch runs the
+   other way, so two traps on one square cross), with its damage small in a corner. Tap it for details. */
 .trap-mark {
-  position: absolute; right: 6%; bottom: 4%; z-index: 1; pointer-events: none;
-  font-size: clamp(.8rem, 3.6vw, 1.3rem); font-weight: 900; line-height: 1; text-shadow: 0 0 6px #000;
+  --tc: var(--p0); --hatch: 45deg;
+  position: absolute; inset: 0; z-index: 1; cursor: pointer;
+  background:
+    repeating-linear-gradient(var(--hatch), color-mix(in srgb, var(--tc) 16%, transparent) 0 1.5px, transparent 1.5px 8px),
+    color-mix(in srgb, var(--tc) 8%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tc) 45%, transparent);
 }
-.trap-mark.p0 { color: var(--p0); }
-.trap-mark.p1 { color: var(--p1); }
-.trap-mark.new { animation: trap-in .45s cubic-bezier(.3, 1.6, .5, 1); }
-@keyframes trap-in { from { transform: scale(2.2); opacity: 0; } }
+.trap-mark.p1 { --tc: var(--p1); --hatch: -45deg; }
+.trap-mark b {
+  position: absolute; right: 5%; bottom: 3%; pointer-events: none;
+  font-size: clamp(.55rem, 2.2vw, .8rem); font-weight: 800; line-height: 1; color: var(--tc); opacity: .75; text-shadow: 0 0 3px #000;
+}
+.trap-mark.p1 b { right: auto; left: 5%; }
+.trap-mark.new { animation: trap-in .5s ease-out; }
+@keyframes trap-in { from { opacity: 0; transform: scale(1.3); } }
+/* Trap details and fighter status (modals). */
+.trap-info, .status-list { width: min(440px, 100%); text-align: left; display: flex; flex-direction: column; gap: 6px; }
+.trap-info { --tc: var(--p0); border-left: 3px solid var(--tc); padding-left: 10px; }
+.trap-info.p1 { --tc: var(--p1); }
+.trap-info p, .status-fx { margin: 0; font-size: .88rem; line-height: 1.4; }
+.trap-until { color: var(--muted); }
+.seat-name.p0 { color: var(--p0); }
+.seat-name.p1 { color: var(--p1); }
+.status-list h3 { margin: 0; }
+.status-fx b { margin-right: 4px; }
+.status-fx.hex b { color: var(--fx-hex); }
+.status-fx.stun b { color: var(--fx-stun); }
 .token.hexed .token-body { animation: hexed 1.1s ease-in-out infinite alternate; }
 @keyframes hexed {
   from { filter: drop-shadow(0 0 3px var(--fx-hex)); }

@@ -40,7 +40,7 @@ Every card has:
 | `counter` | Guard effect: if an attack hits you this step, the attacker takes this much damage |
 | `drain` | Attack effect: heal this percentage of the damage the attack dealt |
 | `sap` | Attack effect: on a connecting hit (even a guarded one), the target loses this much energy |
-| `hex` | Attack effect: if the hit deals damage, the target is **hexed** (see below) |
+| `hex` | Attack effect: if the hit deals damage, the target is **hexed** with this value (see below) |
 | `vsMoved` | Attack effect: extra damage against a target that moved this step |
 | `recoil` | Attack effect: the user loses this much life when the card resolves, hit or miss |
 | `planted` | Attack rule: can't be planned after a move card in the same round |
@@ -69,10 +69,10 @@ Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, 
 - **Breaking traps:** an attack that strikes (an interrupted one doesn't) destroys every enemy trap on
   the squares it covers, right after the attacks and before any trap can spring that step. So a
   fighter standing on an enemy trap is safe if it attacks its own square.
-- **Hex:** a damaging hit from a `hex` attack marks a fighter who isn't already hexed. The next enemy hit
-  that *connects* on a hexed fighter deals `BALANCE.hexDamage` (10) plus the attacker's `hexBonus`
-  more damage (guard still applies) and removes the hex. A hex lasts across rounds until it is used.
-  A hexing attack that removes a hex doesn't put a new one on.
+- **Hex:** a damaging hit from a `hex` attack marks a fighter who isn't already hexed, with the card's
+  `hex` value (Hex Bolt and Malediction 20, Evil Eye 10). The next enemy hit that *connects* on a
+  hexed fighter deals that much more damage (guard still applies) and removes the hex. A hex lasts
+  across rounds until it is used. A hexing attack that removes a hex doesn't put a new one on.
 - **Sap** comes off the target's energy together with its own card's cost (clamped to 0). A later card
   it can no longer pay for this round does nothing.
 - **Recoil** is applied with the attacker's own cost, after the strikes. Guard doesn't reduce it, and it
@@ -84,7 +84,8 @@ Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, 
 - Trap and recoil damage is fixed: guard, counters and drains don't apply to it.
 
 ## Fighter passives
-Every fighter has one always-on passive ability, made of simple numeric modifiers:
+Most fighters have one always-on passive ability, made of simple numeric modifiers. Briar and Vex
+have none: their trap and hex damage is printed in full on their cards.
 
 | Fighter | Passive | Effect | Signature mechanic |
 |---|---|---|---|
@@ -95,8 +96,8 @@ Every fighter has one always-on passive ability, made of simple numeric modifier
 | Volta | Capacitor | Regains 10 extra energy every round | **Sap** attacks: weak, wide hits that drain energy |
 | Umbra | Ambush | Attacks deal +5 damage to a target that moved this step | **Pounce** / **Nightfall** deal much more to a target that moved |
 | Ferro | Magazine | Each attack fires once, then is **spent** until Ferro plays his **Reload** card | Reload |
-| Briar | Deep Roots | Your traps deal +10 damage | Cheap traps (attacks can break them) |
-| Vex | Malice | Breaking a hex deals +10 more damage | **Hex** attacks and Mirror Step (swap) |
+| Briar | — | — | Cheap traps (attacks can break them): Snare 35, Thorn Ring 25 |
+| Vex | — | — | **Hex** attacks (a hex worth 20) and Mirror Step (swap) |
 
 ### Ammo and Reload (Ferro)
 - An attack is spent as soon as it is played (hit or miss). A spent attack can't be planned again.
@@ -146,8 +147,8 @@ does nothing.
      (damage, drain, stun, push) before the second attacker acts, from wherever they stand after a
      push. A fighter knocked out by the first strike never makes their attack. Only if damage
      *and* life are equal do both attacks land at the same time.
-   - Damage = attack `damage` + the attacker's passive bonuses − *X*'s `guard` (if *X*'s own card is
-     active) − *X*'s passive reductions, never below 0. A hit with `guard > 0` counts as "guarded".
+   - Damage = attack `damage` + the attacker's passive bonuses + *X*'s hex (if any) − *X*'s `guard`
+     (if *X*'s own card is active) − *X*'s passive reductions, never below 0. A hit with `guard > 0` counts as "guarded".
    - Then: *X*'s counter hurts the attacker, the attacker's drain heals them, a stun marks *X*'s
      next card, and a push or pull is queued.
 3. **Self effects:** every active card applies its own `cost`, `heal` (if its condition holds) and
@@ -222,7 +223,7 @@ plausible opponent plans by simulating the round with a fast copy of the rules e
 - a KO is worth ±1000 and a draw −150;
 - otherwise, life swing, with extra weight on life below 40 (one bad round from a KO);
 - energy after next round's refill, where the first 50 points matter most;
-- Ferro's loaded shots, and the most dangerous lasting trap next to the enemy.
+- Ferro's loaded shots, the most dangerous lasting trap next to the enemy, and a hex on either side (by its value).
 
 **Difficulties:**
 - **Easy, Normal and Hard** guess the opponent's likely replies, then pick a strong plan against

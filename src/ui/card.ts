@@ -1,5 +1,4 @@
 import { ASSETS, assetUrl } from '../content/assets';
-import { BALANCE } from '../content/balance';
 import { BASIC_CARD_IDS, getCard } from '../content/cards';
 import { STRINGS } from '../content/strings';
 import type { FighterDef } from '../engine/types';
@@ -84,7 +83,9 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
   let stat = '';
   if (c.kind === 'attack' && c.pattern) {
     art = attackGrid(c.pattern, opts.facing ?? 1);
-    stat = `<span class="stat dmg" title="${STRINGS.cardTips.damage}">⚔ ${c.damage}</span>`;
+    // A hex shows its full extra damage next to the hit's own.
+    const hex = c.hex ? ` <span class="hexv" title="${STRINGS.effectNames.hex}">${STRINGS.effectIcons.hex} +${c.hex}</span>` : '';
+    stat = `<span class="stat dmg" title="${STRINGS.cardTips.damage}">⚔ ${c.damage}${hex}</span>`;
   } else if (c.kind === 'trap' && c.pattern) {
     art = attackGrid(c.pattern, opts.facing ?? 1, 'trap');
     stat = `<span class="stat trap" title="${STRINGS.cardTips.trap}">${STRINGS.effectIcons.trap} ${c.trap}</span>`;
@@ -145,7 +146,7 @@ export function describeCard(id: string): string {
   if (c.counter) parts.push(STRINGS.descCounter(c.counter));
   if (c.drain) parts.push(STRINGS.descDrain(c.drain));
   if (c.sap) parts.push(STRINGS.descSap(c.sap));
-  if (c.hex) parts.push(STRINGS.descHex(BALANCE.hexDamage));
+  if (c.hex) parts.push(STRINGS.descHex(c.hex));
   if (c.vsMoved) parts.push(STRINGS.descVsMoved(c.vsMoved));
   if (c.planted) parts.push(STRINGS.descPlanted);
   if (c.recoil) parts.push(STRINGS.descRecoil(c.recoil));

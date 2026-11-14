@@ -37,12 +37,19 @@ export function loadSavedMatch(): SavedMatch | null {
   if (!m || m.version !== 1 || !m.state || m.state.outcome) return null;
   try {
     m.state.arena ??= arenaState('quarters'); // saved before arenas existed (played on 3×4)
-    for (const p of m.state.players) {
+    m.state.players.forEach((p, i) => {
       getFighter(p.fighterId);
       p.deck.forEach(getCard);
       p.spent ??= [];
-      p.hexed ??= false; // saved before hexes existed
-    }
+      // Saved when a hex was only on/off (its damage came from a passive): give it the strongest
+      // hex the opponent's cards put on now. Saved before hexes existed: none.
+      const old = p as typeof p & { hexed?: boolean };
+      if (typeof p.hex !== 'number') {
+        const foe = m.state.players[i === 0 ? 1 : 0];
+        p.hex = old.hexed ? Math.max(0, ...foe.deck.map((id) => getCard(id).hex ?? 0)) : 0;
+      }
+      delete old.hexed;
+    });
     return m;
   } catch {
     clearSavedMatch();

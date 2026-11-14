@@ -256,7 +256,7 @@ export function hitDamage(
   let dmg = (card.damage ?? 0) + am.damageBonus;
   if (am.lowLifeThreshold > 0 && attacker.life <= am.lowLifeThreshold) dmg += am.lowLifeBonus;
   if (defenderMoved) dmg += am.vsMovedBonus + (card.vsMoved ?? 0) - dm.movedReduction;
-  if (defender.hexed) dmg += BALANCE.hexDamage + am.hexBonus;
+  dmg += defender.hex;
   dmg -= defenderGuard + dm.damageReduction;
   return Math.max(0, dmg);
 }
@@ -360,13 +360,13 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const reface = () => {
     for (const i of [0, 1] as const) ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
   };
-  /** A hit on `i` connected: it breaks a hex, or a damaging hexing attack hexes them. */
+  /** A hit on `i` connected: it breaks a hex, or a damaging hexing attack hexes them with the card's value. */
   const hexHit = (i: 0 | 1, atk: CardDef, dealt: number) => {
-    if (ps[i].hexed) {
-      ps[i].hexed = false;
+    if (ps[i].hex) {
+      ps[i].hex = 0;
       hexBroken[i] = true;
     } else if (atk.hex && dealt > 0) {
-      ps[i].hexed = true;
+      ps[i].hex = atk.hex;
       hexApplied[i] = true;
     }
   };
@@ -444,7 +444,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       if (atk.drain && damage[i] > 0) drained[o] = Math.floor((damage[i] * atk.drain) / 100);
       if (atk.stun && damage[i] > 0) dazed[i] = true;
       if (atk.sap) sapped[i] = atk.sap;
-      // Only touches ps[i].hexed, which the other side's damage (worked out next) doesn't read.
+      // Only touches ps[i].hex, which the other side's damage (worked out next) doesn't read.
       hexHit(i, atk, damage[i]);
       if (atk.push && !ps[i].mods.immovable) pushTo[i] = displace(state.arena, ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
     }
@@ -493,7 +493,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   // New traps go down last, so they can only spring from the next step on.
   for (const i of [0, 1] as const) {
     if (!active[i] || cards[i].kind !== 'trap') continue;
-    const damage = (cards[i].trap ?? 0) + ps[i].mods.trapBonus;
+    const damage = cards[i].trap ?? 0;
     for (const sq of attackArea(state.arena, cards[i], ps[i].pos, ps[i].facing)) {
       const at = sq.r * cols + sq.c;
       // One trap per owner per square: a new one replaces the old.
@@ -541,7 +541,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     energyLost: sapped[i],
     hexApplied: hexApplied[i],
     hexBroken: hexBroken[i],
-    hexed: ps[i].hexed,
+    hex: ps[i].hex,
     healed: healed[i],
     life: ps[i].life,
     energy: ps[i].energy,

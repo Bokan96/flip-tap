@@ -94,6 +94,21 @@ const TIMING = { intro: 500, place: 700, move: 650, area: 1150, hit: 1000, quiet
 const MIN_STEP_MS = 2000;
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** One-shot animations on a fighter's piece (class = keyframes name): one plays at a time (see tokenAnim). */
+const TOKEN_ANIMS = ['hop', 'skid', 'lunge', 'hurt'];
+/** Animation name → the class that plays it, taken off when it ends so lasting looks (the hex glow) come back. */
+const ANIM_CLASS: Record<string, string> = { ...Object.fromEntries(TOKEN_ANIMS.map((a) => [a, a])), 'focus-glow': 'focusing' };
+
+/** The board and HUD as a round starts (the recap rewinds to this). */
+interface RoundStart {
+  pos: [Pos, Pos];
+  facing: [number, number];
+  traps: Trap[];
+  hex: [number, number];
+  lives: [number, number];
+  energies: [number, number];
+}
+
 /** Human input, fed by the planner UI below. */
 export class HumanPlanSource implements PlanSource {
   readonly kind = 'human' as const;
@@ -123,8 +138,10 @@ export class BattleView {
   private slow = 1;
   /** Bumped to cancel a running recap replay. */
   private replayRun = 0;
-  /** Traps currently drawn on the board (to spot newly placed ones). */
+  /** Traps currently drawn on the board (to spot newly placed ones, and for tapping one). */
   private shownTraps: Trap[] = [];
+  /** Hex on each fighter as drawn (it changes mid-reveal, before `state` catches up). */
+  private shownHex: [number, number] = [0, 0];
   /** The round being revealed or recapped. */
   private shownRound = 0;
   /** On touch, a tapped hand card is first only selected (previewed); a second tap adds it (unless Instant select is on). */
@@ -335,7 +352,13 @@ export class BattleView {
     measure();
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(measure).observe(hud);
     this.renderTraps(this.state.arena.traps);
-    this.showHexes([this.state.players[0].hexed, this.state.players[1].hexed]);
+    this.showHexes([this.state.players[0].hex, this.state.players[1].hex]);
+    this.el.querySelectorAll<HTMLElement>('.token').forEach((t) =>
+      t.addEventListener('animationend', (e) => {
+        const cls = ANIM_CLASS[e.animationName];
+        if (cls) t.classList.remove(cls);
+      }),
+    );
 
     this.el.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
@@ -343,7 +366,10 @@ export class BattleView {
       if (t.closest('[data-act="menu"]')) return this.openMenu();
       if (t.closest('.planner, .slots')) return this.onPlannerClick(e);
       const seatEl = t.closest<HTMLElement>('.token, .panel');
-      if (seatEl) this.showDeck(Number(seatEl.dataset.seat) as Seat);
+      if (seatEl) return this.showDeck(Number(seatEl.dataset.seat) as Seat);
+      // A fighter standing on a trap sits above it, so tapping that square opens the fighter.
+      const trapEl = t.closest<HTMLElement>('.trap-mark');
+      if (trapEl) this.showTrap(Number(trapEl.dataset.at));
     });
     this.el.addEventListener('pointerdown', (e) => (this.lastPointer = e.pointerType), true);
     this.el.addEventListener('pointerover', (e) => {
@@ -413,6 +439,15 @@ export class BattleView {
     });
   }
 
+  /** Set the bars straight to these numbers, without sliding (the recap rewinding to a round's start). */
+  private snapHud(lives: [number, number], energies: [number, number]): void {
+    const panels = this.el.querySelectorAll<HTMLElement>('.hud .panel');
+    panels.forEach((p) => p.classList.add('snap'));
+    this.renderHud(lives, energies);
+    void panels[0]?.offsetWidth; // apply the new widths before transitions come back
+    requestAnimationFrame(() => panels.forEach((p) => p.classList.remove('snap')));
+  }
+
   /** Striped segment on the planner's energy bar from current energy to what the plan leaves. */
   private showPlannedEnergy(after: number | null): void {
     this.el.querySelectorAll<HTMLElement>('.bar.energy .planned').forEach((el) => (el.style.display = 'none'));
@@ -433,8 +468,48 @@ export class BattleView {
   // ---------- board ----------
 
   /** The hex mark on each fighter's token. */
-  private showHexes(hexed: [boolean, boolean]): void {
-    hexed.forEach((h, i) => this.q(`.token.p${i}`).classList.toggle('hexed', h));
+  private showHexes(hex: [number, number]): void {
+    hex.forEach((h, i) => this.setHex(i, h));
+  }
+
+  private setHex(seat: number, hex: number): void {
+    this.shownHex[seat] = hex;
+    this.q(`.token.p${seat}`).classList.toggle('hexed', hex > 0);
+  }
+
+  /** Play a one-shot animation on a fighter's piece, cutting off any other one still playing. */
+  private tokenAnim(seat: number, cls: string): void {
+    const t = this.q(`.token.p${seat}`);
+    t.classList.remove(...TOKEN_ANIMS);
+    retrigger(t, cls);
+  }
+
+  /** The attacker stands out: its piece glows and lunges, its HUD panel lights up and its card pops. */
+  private strikeFx(seat: number, slot: number): void {
+    this.q(`.token.p${seat}`).classList.add('attacking');
+    this.tokenAnim(seat, 'lunge');
+    this.q(`.panel.p${seat}`).classList.add('acting');
+    this.cardActs(seat, slot);
+    this.playCard(seat, slot).classList.add('striking');
+  }
+
+  /**
+   * A fighter takes damage: a red flash on the piece (knocked away from `from`, if a fighter hit it)
+   * and a jolt on its HUD panel.
+   */
+  private hurtFx(seat: number, at: Pos, from: Pos | null): void {
+    const t = this.q(`.token.p${seat}`);
+    // Knocked away from the attacker; on the same column, back from the way it faces.
+    const away = from ? Math.sign(at.c - from.c) || (t.classList.contains('face-left') ? 1 : -1) : 0;
+    t.style.setProperty('--kx', String(away));
+    this.tokenAnim(seat, 'hurt');
+    if (from) this.fx.ring(at, 'impact');
+    retrigger(this.q(`.panel.p${seat}`), 'hurt');
+  }
+
+  /** Pop a player's card for this step: its effect is happening on the board right now. */
+  private cardActs(seat: number, slot: number): void {
+    retrigger(this.playCard(seat, slot), 'acting');
   }
 
   private placeTokens(pos: [Pos, Pos], facing?: [number, number]): void {
@@ -458,7 +533,9 @@ export class BattleView {
     requestAnimationFrame(() => tokens.forEach((t) => t.classList.remove('snap')));
   }
 
+  /** Clear highlighted squares, and the attacker marks that go with an attack's squares. */
   private clearAreas(): void {
+    this.el.querySelectorAll('.token.attacking, .panel.acting, .play-card.striking').forEach((e) => e.classList.remove('attacking', 'acting', 'striking'));
     this.el.querySelectorAll<HTMLElement>('.tile').forEach((t) => {
       t.classList.remove('area-p0', 'area-p1', 'preview', 'preview-atk', 'preview-move', 'preview-trap', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake');
       t.style.removeProperty('--d');
@@ -479,13 +556,37 @@ export class BattleView {
     const cols = this.state.arena.cols;
     for (const t of traps) {
       const tile = this.q(`.tile[data-r="${Math.floor(t.at / cols)}"][data-c="${t.at % cols}"]`);
+      // Covers the whole square, quietly; tapping it explains the trap (see showTrap).
       const mark = document.createElement('span');
       mark.className = `trap-mark p${t.owner}${fresh.has(key(t)) ? ' new' : ''}`;
-      mark.textContent = STRINGS.effectIcons.trap;
+      mark.dataset.at = String(t.at);
       mark.title = `${STRINGS.effectNames.trap} ${t.damage}`;
+      mark.innerHTML = `<b>${STRINGS.effectIcons.trap} ${t.damage}</b>`;
       tile.appendChild(mark);
     }
     return fresh.size > 0;
+  }
+
+  /** What the traps on a square do, and whose they are. */
+  private showTrap(at: number): void {
+    const traps = this.shownTraps.filter((t) => t.at === at);
+    if (!traps.length) return;
+    play('click');
+    const T = STRINGS.trapInfo;
+    const who = (seat: number) => `<b class="seat-name p${seat}">${this.seats[seat].name}</b>`;
+    const info = traps
+      .map((t) => {
+        const victim = t.owner === 0 ? 1 : 0;
+        return `<div class="trap-info p${t.owner}">
+          <p>${T.text(who(t.owner), who(victim), t.damage)}</p>
+          <p>${T.breaks(who(victim))}</p>
+          <p class="trap-until">${T.lasts(t.until)}</p>
+        </div>`;
+      })
+      .join('');
+    this.openModal(
+      `<h2>${STRINGS.effectIcons.trap} ${T.title}</h2>${info}<button class="btn" data-modal="close">${STRINGS.close}</button>`,
+    );
   }
 
   /** Highlight squares. Attack areas light up outward from the attacker in the card's style. */
@@ -563,6 +664,7 @@ export class BattleView {
     const f = getFighter(p.fighterId);
     this.openModal(
       `<div class="deck-head" style="--clr:${f.color}">${emblemHtml(f, 'hud-emblem')}<h2>${STRINGS.deckOf(this.seats[seat].name, f.name)}</h2></div>
+       ${this.statusHtml(seat)}
        ${passiveHtml(f)}
        ${
          this.lastPlans
@@ -575,6 +677,19 @@ export class BattleView {
        <div class="hand grouped" style="--row-n:${handRowLength(p.deck)}">${groupedCardsHtml(p.deck, (id) => cardHtml(id, { facing: p.facing, readonly: true, spent: isSpent(p, id) }))}</div>
        <button class="btn" data-modal="close">${STRINGS.close}</button>`,
     );
+  }
+
+  /** The status effects on a fighter right now, as the board shows them (empty if none). */
+  private statusHtml(seat: Seat): string {
+    const S = STRINGS.status;
+    const name = this.seats[seat].name;
+    const rows: string[] = [];
+    const hex = this.shownHex[seat];
+    if (hex > 0) rows.push(`<p class="status-fx hex"><b>${STRINGS.effectIcons.hex} ${S.hex}</b> ${S.hexText(name, hex)}</p>`);
+    if (this.q(`.token.p${seat}`).classList.contains('dazed')) {
+      rows.push(`<p class="status-fx stun"><b>${STRINGS.effectIcons.stun} ${S.stun}</b> ${S.stunText(name)}</p>`);
+    }
+    return rows.length ? `<div class="status-list"><h3>${S.title}</h3>${rows.join('')}</div>` : '';
   }
 
   private openMenu(): void {
@@ -999,11 +1114,14 @@ export class BattleView {
 
   private async animateRound(plans: [Plan, Plan]): Promise<void> {
     const result = resolveRound(this.state, plans);
-    const start = {
-      pos: this.state.players.map((p) => ({ ...p.pos })) as [Pos, Pos],
-      facing: this.state.players.map((p) => p.facing) as [number, number],
+    const ps = this.state.players;
+    const start: RoundStart = {
+      pos: [{ ...ps[0].pos }, { ...ps[1].pos }],
+      facing: [ps[0].facing, ps[1].facing],
       traps: this.state.arena.traps.map((t) => ({ ...t })),
-      hexed: this.state.players.map((p) => p.hexed) as [boolean, boolean],
+      hex: [ps[0].hex, ps[1].hex],
+      lives: [ps[0].life, ps[1].life],
+      energies: [ps[0].energy, ps[1].energy],
     };
     this.resetPlayCards();
     this.markHeld();
@@ -1025,12 +1143,12 @@ export class BattleView {
     this.log.rounds.push({ plans: this.lastPlans, result });
     this.showDazed();
     this.renderTraps(this.state.arena.traps);
-    this.showHexes([this.state.players[0].hexed, this.state.players[1].hexed]);
+    this.showHexes([this.state.players[0].hex, this.state.players[1].hex]);
     if (result.fatigue > 0) {
       const tokens = [this.q('.token.p0'), this.q('.token.p1')];
       this.state.players.forEach((p, i) => {
         this.floatText(p.pos, STRINGS.fatigueFloat(result.fatigue), 'damage fatigue', 0, result.fatigue);
-        retrigger(tokens[i], 'shake');
+        this.hurtFx(i, p.pos, null);
       });
       play('hit');
       this.renderHud();
@@ -1087,6 +1205,7 @@ export class BattleView {
     players.forEach((p, i) => {
       if (p.reloaded) {
         this.floatText(p.from, STRINGS.reloaded, 'reload');
+        this.cardActs(i, step.slot);
         play('reload');
       }
       if (!p.stunned) return;
@@ -1101,10 +1220,12 @@ export class BattleView {
       players.forEach((p) => this.floatText(p.to, STRINGS.swappedFloat, 'swap'));
       play('swap');
     }
+    const moveCards = this.movesPlayed(players);
+    moveCards.forEach((i) => this.cardActs(i, step.slot));
     if (players.some((p) => p.moved)) {
       players.forEach((p, i) => {
         if (!p.moved) return;
-        retrigger(tokens[i], 'hop');
+        this.tokenAnim(i, 'hop');
         setTimeout(() => this.fx.particles(p.to, themeColor('--fx-dust'), 6, 'dust'), ms(420));
       });
       play('step');
@@ -1116,11 +1237,11 @@ export class BattleView {
     const stacks = [0, 0];
 
     // Guard raises a shield for the rest of the step; Focus draws energy in.
-    if (this.showStances(players, posNow, tokens, stacks)) await this.tick(450);
+    if (this.showStances(step, posNow, stacks)) await this.tick(450);
 
-    /** Attackers wind up, then their squares light up outward from them. */
+    /** Attackers stand out and wind up, then their squares light up outward from them. */
     const windUp = async (who: number[]) => {
-      who.forEach((i) => retrigger(tokens[i], 'charge'));
+      who.forEach((i) => this.strikeFx(i, step.slot));
       await this.tick(260);
       for (const i of who) {
         const kind = fxKind(getCard(players[i].cardId));
@@ -1144,8 +1265,7 @@ export class BattleView {
         const o = i === 0 ? 1 : 0;
         const token = tokens[i];
         if (p.hit === 'hit' || (p.hit === 'guard' && p.damageTaken > 0)) {
-          retrigger(token, 'shake');
-          retrigger(token, 'flash');
+          this.hurtFx(i, posNow[i], posNow[o]);
           this.fx.particles(posNow[i], color(o), 10);
           if (p.hit === 'guard') this.fx.ring(posNow[i], 'shield');
           this.floatText(posNow[i], `-${p.damageTaken}`, p.hit === 'guard' ? 'guarded' : 'damage', stacks[i]++, p.damageTaken);
@@ -1164,8 +1284,7 @@ export class BattleView {
           this.fx.travel(posNow[o], posNow[i], themeColor('--fx-counter'), 4, 'spark');
           const k = stacks[i]++;
           setTimeout(() => {
-            retrigger(token, 'shake');
-            retrigger(token, 'flash');
+            this.hurtFx(i, posNow[i], posNow[o]);
             this.floatText(posNow[i], `${STRINGS.effectIcons.counter} -${p.counterTaken}`, 'damage', k, p.counterTaken);
           }, ms(fullEffects() ? 420 : 0));
           biggest = Math.max(biggest, p.counterTaken);
@@ -1192,10 +1311,11 @@ export class BattleView {
           this.floatText(posNow[i], STRINGS.hexedFloat, 'hex', stacks[i]++);
           sounds.push('shimmer');
         }
-        token.classList.toggle('hexed', p.hexed);
+        this.setHex(i, p.hex);
       }
       for (const j of healers) {
         const p = players[j];
+        if (p.active && getCard(p.cardId).kind === 'heal') this.cardActs(j, step.slot);
         if (p.drained > 0) {
           this.fx.travel(posNow[j === 0 ? 1 : 0], posNow[j], themeColor('--fx-drain'), 6, 'mote');
           sounds.push('shimmer');
@@ -1208,7 +1328,7 @@ export class BattleView {
       for (const j of healers) {
         const p = players[j];
         if (p.recoilTaken <= 0) continue;
-        retrigger(tokens[j], 'shake');
+        this.hurtFx(j, posNow[j], null);
         this.fx.particles(posNow[j], themeColor('--fx-recoil'), 8);
         this.floatText(posNow[j], STRINGS.recoiled(p.recoilTaken), 'recoil', stacks[j]++, p.recoilTaken);
         sounds.push('burn');
@@ -1226,7 +1346,7 @@ export class BattleView {
       if (displaced.length) {
         await this.tick(300);
         displaced.forEach((i) => {
-          retrigger(tokens[i], 'skid');
+          this.tokenAnim(i, 'skid');
           this.fx.particles(posNow[i], themeColor('--fx-dust'), 6, 'dust');
           posNow[i] = players[i].final;
         });
@@ -1278,7 +1398,7 @@ export class BattleView {
     players.forEach((p, i) => {
       if (p.tile === 'spikes') {
         this.floatText(p.final, `-${BALANCE.tiles.spikes}`, 'damage', stacks[i]++, BALANCE.tiles.spikes);
-        retrigger(tokens[i], 'shake');
+        this.hurtFx(i, p.final, null);
         play('thud');
       } else if (p.tile === 'well') {
         this.floatText(p.final, `+${BALANCE.tiles.well}⚡`, 'energy', stacks[i]++);
@@ -1290,11 +1410,12 @@ export class BattleView {
     players.forEach((p, i) => {
       if (p.trapDamage > 0) {
         this.floatText(p.final, STRINGS.trapped(p.trapDamage), 'damage', stacks[i]++, p.trapDamage);
-        retrigger(tokens[i], 'shake');
+        this.hurtFx(i, p.final, null);
         play('trap');
       }
     });
     if (this.renderTraps(step.traps, true)) play('place');
+    this.trapsSet(players).forEach((i) => this.cardActs(i, step.slot));
     if (players.some((p) => p.trapDamage > 0)) {
       this.renderHud([players[0].life, players[1].life], [players[0].energy, players[1].energy]);
     }
@@ -1319,15 +1440,27 @@ export class BattleView {
     this.clearAreas();
   }
 
+  /** Seats whose card this step is an active move. */
+  private movesPlayed(players: StepResult['players']): number[] {
+    return [0, 1].filter((i) => players[i].active && getCard(players[i].cardId).kind === 'move');
+  }
+
+  /** Seats whose card this step set traps. */
+  private trapsSet(players: StepResult['players']): number[] {
+    return [0, 1].filter((i) => players[i].active && getCard(players[i].cardId).kind === 'trap');
+  }
+
   /**
    * Shield for fighters guarding this step, an energy charge for those focusing (with the energy
-   * they gain). Returns whether anything was shown.
+   * they gain); their cards pop. Returns whether anything was shown.
    */
-  private showStances(players: StepResult['players'], at: [Pos, Pos], tokens: HTMLElement[], stacks?: number[], quiet = false): boolean {
+  private showStances(step: StepResult, at: [Pos, Pos], stacks?: number[], quiet = false): boolean {
+    const tokens = [this.q('.token.p0'), this.q('.token.p1')];
     let shown = false;
-    players.forEach((p, i) => {
+    step.players.forEach((p, i) => {
       if (!p.active) return;
       const c = getCard(p.cardId);
+      if (c.kind === 'guard' || c.kind === 'focus') this.cardActs(i, step.slot);
       if (c.kind === 'guard') {
         tokens[i].classList.add('guarding');
         this.fx.ring(at[i], 'shield');
@@ -1348,14 +1481,15 @@ export class BattleView {
   private restoreBoard(): void {
     this.clearAreas();
     this.renderTraps(this.state.arena.traps);
-    this.showHexes([this.state.players[0].hexed, this.state.players[1].hexed]);
+    this.showHexes([this.state.players[0].hex, this.state.players[1].hex]);
     this.markStep(null);
+    this.renderHud();
     const ps = this.state.players;
     this.snapTokens([ps[0].pos, ps[1].pos], [ps[0].facing, ps[1].facing]);
     const o = this.state.outcome;
     [0, 1].forEach((i) => {
       const t = this.q(`.token.p${i}`);
-      t.classList.remove('dazed', 'hop', 'shake', 'flash', 'guarding', 'focusing');
+      t.classList.remove('dazed', 'guarding', 'focusing', ...TOKEN_ANIMS);
       t.classList.toggle('ko', !!o && (o.winner === null || o.winner !== i));
       t.classList.remove('ko-fall');
     });
@@ -1380,13 +1514,9 @@ export class BattleView {
 
   /**
    * Loop the round on the board (silently): moves, attacks in their real order, hits and pushes,
-   * with a short pause before each loop. Runs until `replayRun` changes.
+   * with the HUD bars following along, and a short pause before each loop. Runs until `replayRun` changes.
    */
-  private async replayRound(
-    result: RoundResult,
-    start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[]; hexed: [boolean, boolean] },
-    run: number,
-  ): Promise<void> {
+  private async replayRound(result: RoundResult, start: RoundStart, run: number): Promise<void> {
     const CANCELLED = Symbol('cancelled');
     const tokens = [this.q('.token.p0'), this.q('.token.p1')];
     const pause = async (ms: number) => {
@@ -1395,64 +1525,123 @@ export class BattleView {
       if (this.replayRun !== run || this.destroyed) throw CANCELLED;
     };
     const mark = (slot: number | null) => this.markStep(slot);
+    const knockOut = (o: MatchOutcome) =>
+      tokens.forEach((t, i) => {
+        if (o.winner === null || o.winner !== i) t.classList.add('ko', 'ko-fall');
+      });
     try {
       for (;;) {
         mark(null);
         tokens.forEach((t) => t.classList.remove('ko', 'ko-fall', 'dazed'));
         this.clearAreas();
         this.renderTraps(start.traps);
-        this.showHexes(start.hexed);
+        this.showHexes(start.hex);
         this.snapTokens(start.pos, start.facing);
+        this.snapHud(start.lives, start.energies);
         await pause(700);
         for (const step of result.steps) {
           const t0 = performance.now();
           const P = step.players;
           const facing: [number, number] = [P[0].facing, P[1].facing];
           const posNow: [Pos, Pos] = [P[0].to, P[1].to];
+          const lives: [number, number] = [P[0].life, P[1].life];
+          const energies: [number, number] = [P[0].energy, P[1].energy];
+          const stacks = [0, 0];
           mark(step.slot);
+          P.forEach((p, i) => {
+            if (!p.reloaded) return;
+            this.floatText(p.from, STRINGS.reloaded, 'reload', stacks[i]++);
+            this.cardActs(i, step.slot);
+          });
           this.placeTokens(posNow, facing);
-          P.forEach((p, i) => p.moved && retrigger(tokens[i], 'hop'));
+          this.movesPlayed(P).forEach((i) => this.cardActs(i, step.slot));
+          P.forEach((p, i) => p.moved && this.tokenAnim(i, 'hop'));
           await pause(P.some((p) => p.moved) ? 550 : 250);
-          if (this.showStances(P, posNow, tokens, undefined, true)) await pause(350);
+          if (this.showStances(step, posNow, stacks, true)) await pause(350);
 
           // Same order as the real reveal: one strike at a time when both attack.
           const strikes = step.sequence
             ? step.sequence.filter((o) => !P[o].interrupted).map((o) => [o])
             : [[0, 1].filter((i) => P[i].area.length > 0)];
-          for (const group of strikes) {
+          for (const [k, group] of strikes.entries()) {
             if (!group.length) continue;
-            for (const o of group) this.showArea(P[o].area, `area-p${o}`, posNow[o], fxKind(getCard(P[o].cardId)));
+            for (const o of group) {
+              this.strikeFx(o, step.slot);
+              this.showArea(P[o].area, `area-p${o}`, posNow[o], fxKind(getCard(P[o].cardId)));
+            }
             await pause(650);
             for (const o of group) {
               const d = o === 0 ? 1 : 0;
               if (P[d].damageTaken > 0) {
-                retrigger(tokens[d], 'flash');
-                retrigger(tokens[d], 'shake');
-                this.floatText(posNow[d], `-${P[d].damageTaken}`, 'damage', 0, P[d].damageTaken);
+                this.hurtFx(d, posNow[d], posNow[o]);
+                this.floatText(posNow[d], `-${P[d].damageTaken}`, P[d].hit === 'guard' ? 'guarded' : 'damage', stacks[d]++, P[d].damageTaken);
               } else if (P[d].hit === 'guard') {
-                this.floatText(posNow[d], STRINGS.guarded, 'guarded');
+                this.floatText(posNow[d], STRINGS.guarded, 'guarded', stacks[d]++);
               }
-              if (P[o].counterTaken > 0) this.floatText(posNow[o], `${STRINGS.effectIcons.counter} -${P[o].counterTaken}`, 'damage', 1);
-              if (P[o].recoilTaken > 0) this.floatText(posNow[o], STRINGS.recoiled(P[o].recoilTaken), 'recoil', 2);
-              if (P[d].energyLost > 0) this.floatText(posNow[d], STRINGS.sapped(P[d].energyLost), 'sap', 1);
-              tokens[d].classList.toggle('hexed', P[d].hexed);
+              if (P[o].counterTaken > 0) {
+                this.hurtFx(o, posNow[o], posNow[d]);
+                this.floatText(posNow[o], `${STRINGS.effectIcons.counter} -${P[o].counterTaken}`, 'damage', stacks[o]++, P[o].counterTaken);
+              }
+              if (P[o].drained > 0) this.floatText(posNow[o], `+${P[o].drained}`, 'heal', stacks[o]++);
+              if (P[o].recoilTaken > 0) {
+                this.hurtFx(o, posNow[o], null);
+                this.floatText(posNow[o], STRINGS.recoiled(P[o].recoilTaken), 'recoil', stacks[o]++, P[o].recoilTaken);
+              }
+              if (P[d].energyLost > 0) this.floatText(posNow[d], STRINGS.sapped(P[d].energyLost), 'sap', stacks[d]++);
+              this.setHex(d, P[d].hex);
               posNow[d] = P[d].final;
             }
+            // The first of two strikes shows the life left in between.
+            this.renderHud(step.sequence && k === 0 && step.midLives ? step.midLives : lives, energies);
             this.placeTokens(posNow, facing);
             await pause(500);
             this.clearAreas();
           }
+
+          // Heal cards, arena squares and traps, then the step's final numbers.
+          P.forEach((p, i) => {
+            if (p.active && getCard(p.cardId).kind === 'heal') {
+              this.cardActs(i, step.slot);
+              if (p.healed > 0) this.floatText(p.final, `+${p.healed}`, 'heal', stacks[i]++);
+            }
+            if (p.tile === 'spikes') {
+              this.hurtFx(i, p.final, null);
+              this.floatText(p.final, `-${BALANCE.tiles.spikes}`, 'damage', stacks[i]++, BALANCE.tiles.spikes);
+            } else if (p.tile === 'well') {
+              this.floatText(p.final, `+${BALANCE.tiles.well}⚡`, 'energy', stacks[i]++);
+            }
+            if (p.trapDamage > 0) {
+              this.hurtFx(i, p.final, null);
+              this.floatText(p.final, STRINGS.trapped(p.trapDamage), 'damage', stacks[i]++, p.trapDamage);
+            }
+          });
+          this.trapsSet(P).forEach((i) => this.cardActs(i, step.slot));
           this.placeTokens([P[0].final, P[1].final], facing);
           this.renderTraps(step.traps);
-          this.showHexes([P[0].hexed, P[1].hexed]);
+          this.showHexes([P[0].hex, P[1].hex]);
+          this.renderHud(lives, energies);
+          if (step.outcome) knockOut(step.outcome);
           await pause(300);
           const rest = MIN_STEP_MS - (performance.now() - t0) / speedMultiplier();
           if (rest > 0) await pause(rest);
           tokens.forEach((t) => t.classList.remove('guarding'));
         }
+        // End of the round: fatigue, then the energy refill; the bars land on the round's final numbers.
+        mark(null);
+        const end = this.state.players;
+        if (result.fatigue > 0) {
+          end.forEach((p, i) => {
+            this.hurtFx(i, p.pos, null);
+            this.floatText(p.pos, STRINGS.fatigueFloat(result.fatigue), 'damage fatigue', 0, result.fatigue);
+          });
+          if (result.state.outcome && !result.steps.some((s) => s.outcome)) knockOut(result.state.outcome);
+        }
+        if (!result.state.outcome) {
+          end.forEach((p) => this.floatText(p.pos, STRINGS.energyBack(energyRecovery(p)), 'energy', result.fatigue > 0 ? 1 : 0));
+        }
+        this.renderHud();
         // Hold the final position a while before starting over.
         await pause(2400);
-        mark(null);
       }
     } catch (e) {
       if (e !== CANCELLED) throw e;
@@ -1539,7 +1728,7 @@ export class BattleView {
     roundNo: number,
     plans: [Plan, Plan],
     result: RoundResult,
-    start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[]; hexed: [boolean, boolean] },
+    start: RoundStart,
   ): Promise<void> {
     const summary = this.q('.summary');
     // Cards never played (the match ended first) are shown crossed out. In Two-tap the card held

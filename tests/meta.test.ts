@@ -132,10 +132,10 @@ describe('achievements', () => {
   });
 
   it('overkill and payback', () => {
-    // Flare (40) on a hexed target: +10 for the hex, +10 for Vex's Malice.
+    // Flare (40) on a target hexed by Hex Bolt: +20.
     const crush = oneRound((s) => {
       s.players[0].pos = s.players[1].pos = { r: 1, c: 1 };
-      s.players[1].hexed = true;
+      s.players[1].hex = 20;
     }, [['vexFlare', 'guard', 'up'], ['focus', 'guard', 'up']], 'vex', 'marin');
     expect(matchAchievements({ mode: 'cpu', difficulty: 'easy', outcome: crush.state.outcome ?? { winner: null, draw: true }, log: crush.log })).toContain('overkill');
 

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE } from '../src/content/balance';
 import { CARDS, FIGHTERS } from '../src/content/cards';
 import { enumeratePlans } from '../src/engine/ai';
 import { canPlace, planError, resolveRound } from '../src/engine/rules';
@@ -20,7 +19,7 @@ function duel(a: string, b: string, posA: Pos, posB: Pos, bonusA: string[] = [],
   return s;
 }
 
-const snare = CARDS.briarSnare.trap! + 10; // Deep Roots: +10
+const snare = CARDS.briarSnare.trap!;
 
 describe('traps', () => {
   it('a trap set this step springs on the enemy who ends a later step on it, then is gone', () => {
@@ -75,37 +74,48 @@ describe('hex (Vex)', () => {
     const r = resolveRound(s, [['vexHex', 'vexFlare', 'guard'], ['focus', 'down', 'up']]);
     const marin = r.steps.map((st) => st.players[1]);
     expect(marin[0].hexApplied).toBe(true);
-    expect(marin[0].hexed).toBe(true);
+    expect(marin[0].hex).toBe(CARDS.vexHex.hex);
     expect(marin[0].damageTaken).toBe(CARDS.vexHex.damage);
-    // Flare cashes it in: +10 for the hex, +10 for Malice.
+    // Flare cashes it in: the full hex value comes from the Hex Bolt card.
     expect(marin[1].hexBroken).toBe(true);
-    expect(marin[1].hexed).toBe(false);
-    expect(marin[1].damageTaken).toBe(CARDS.vexFlare.damage! + BALANCE.hexDamage + 10);
+    expect(marin[1].hex).toBe(0);
+    expect(marin[1].damageTaken).toBe(CARDS.vexFlare.damage! + CARDS.vexHex.hex!);
+  });
+
+  it('the hex is worth what the hexing card says, whoever plays it', () => {
+    expect(CARDS.vexHex.hex).toBe(20);
+    expect(CARDS.ignite.hex).toBe(10);
+    // Marin with the Evil Eye bonus card: its hex is worth 10, then a Splash cashes it in.
+    const s = duel('marin', 'vex', { r: 1, c: 1 }, { r: 1, c: 2 }, ['ignite']);
+    const r = resolveRound(s, [['ignite', 'marinSplash', 'guard'], ['focus', 'guard', 'up']]);
+    expect(r.steps[0].players[1].hex).toBe(10);
+    expect(r.steps[1].players[1].hexBroken).toBe(true);
+    expect(r.steps[1].players[1].damageTaken).toBe(CARDS.marinSplash.damage! + 10 - CARDS.guard.guard!);
   });
 
   it('lasts across rounds until a hit lands, and a hexing hit on a hexed target only breaks it', () => {
     const s = duel('vex', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
     let r = resolveRound(s, [['vexHex', 'guard', 'focus'], ['focus', 'guard', 'up']]);
-    expect(r.state.players[1].hexed).toBe(true);
+    expect(r.state.players[1].hex).toBe(20);
     r = resolveRound(r.state, [['guard', 'focus', 'up'], ['guard', 'focus', 'down']]);
-    expect(r.state.players[1].hexed).toBe(true);
+    expect(r.state.players[1].hex).toBe(20);
     const t = duel('vex', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
-    t.players[1].hexed = true;
+    t.players[1].hex = 20;
     const u = resolveRound(t, [['vexHex', 'guard', 'focus'], ['focus', 'guard', 'up']]);
     expect(u.steps[0].players[1].hexBroken).toBe(true);
     expect(u.steps[0].players[1].hexApplied).toBe(false);
-    expect(u.state.players[1].hexed).toBe(false);
+    expect(u.state.players[1].hex).toBe(0);
   });
 
   it('needs damage to hex, but any connecting hit breaks it', () => {
     const s = duel('marin', 'vex', { r: 1, c: 1 }, { r: 1, c: 2 }, ['bulwark']);
     let r = resolveRound(s, [['bulwark', 'guard', 'focus'], ['vexHex', 'guard', 'focus']]);
-    expect(r.steps[0].players[0].hexed).toBe(false);
+    expect(r.steps[0].players[0].hex).toBe(0);
     const t = duel('vex', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
-    t.players[0].hexed = true;
+    t.players[0].hex = 10;
     r = resolveRound(t, [['guard', 'focus', 'up'], ['marinSplash', 'guard', 'focus']]);
     expect(r.steps[0].players[0].hexBroken).toBe(true);
-    expect(r.steps[0].players[0].damageTaken).toBe(CARDS.marinSplash.damage! + BALANCE.hexDamage - CARDS.guard.guard!);
+    expect(r.steps[0].players[0].damageTaken).toBe(CARDS.marinSplash.damage! + 10 - CARDS.guard.guard!);
   });
 });
 

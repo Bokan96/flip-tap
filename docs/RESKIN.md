@@ -32,8 +32,8 @@ engine (`src/engine/`) never needs to change for a reskin. Work through the sect
 ## 2. Fighters and cards
 In **`cards.ts`**:
 - `FIGHTERS`: `name`, `title`, `blurb`, `color` (the fighter's own colour, used for glows and emblems),
-  `emblem` (built-in vector shape, used until you add art), `signature` (their cards), `passive`
-  (name, text and the numbers it changes), optional `lifeMax` / `energyMax`.
+  `emblem` (built-in vector shape, used until you add art), `signature` (their cards), an optional
+  `passive` (name, text and the numbers it changes), optional `lifeMax` / `energyMax`.
 - Card lists (`basics`, `bonus`, `signature`): `name`, `cost` (negative spends energy), `damage`,
   `pattern` (3×3, written facing right, centre = the user), and effects (`push`, `stun`, `counter`,
   `drain`), plus `fx` for the attack animation style (`slash`, `burst`, `wave`, `beam`, `quake`).

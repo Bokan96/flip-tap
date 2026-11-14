@@ -44,8 +44,11 @@ export interface CardDef {
   sap?: number;
   /** Attack: extra damage against a target that moved this step. */
   vsMoved?: number;
-  /** Attack: if the hit deals damage, the target is hexed (see Mods.hexBonus and BALANCE.hexDamage). */
-  hex?: boolean;
+  /**
+   * Attack: if the hit deals damage, the target is hexed with this value: the next enemy hit that
+   * connects on them deals this much more damage and breaks the hex.
+   */
+  hex?: number;
   /** Attack: can't be planned after a move card in the same round. */
   planted?: boolean;
   /** Trap card: damage a trap on each of the pattern's squares deals to the first enemy to end a step there. */
@@ -85,10 +88,6 @@ export interface Mods {
   pushBonus: number;
   /** Attacks are spent once played and can't be used again until a Reload card is played. */
   ammo: boolean;
-  /** Extra damage this player's traps deal. */
-  trapBonus: number;
-  /** Extra damage this player's hits deal when they break a hex. */
-  hexBonus: number;
 }
 
 export interface Passive {
@@ -137,8 +136,8 @@ export interface PlayerState {
   mods: Mods;
   /** Ammo fighters only: attack cards already fired and not yet reloaded. */
   spent: string[];
-  /** Hexed: the next enemy hit that connects deals extra damage and breaks the hex. Lasts across rounds. */
-  hexed: boolean;
+  /** Hex on this player (0 = none): the next enemy hit that connects deals this much more damage and breaks it. Lasts across rounds. */
+  hex: number;
   /** Stunned: this player's next card is cancelled. Cleared at the end of every round (except in Two-tap). */
   dazed: boolean;
   /** Two-tap only: the card locked in last round, which plays first this round (null in round 1). */
@@ -229,8 +228,8 @@ export interface StepPlayerResult {
   hexApplied: boolean;
   /** A hit broke the hex on this player this step (its extra damage is in damageTaken). */
   hexBroken: boolean;
-  /** Hexed after the step (for the status glow). */
-  hexed: boolean;
+  /** Hex on this player after the step (0 = none; for the status glow). */
+  hex: number;
   healed: number;
   life: number;
   energy: number;

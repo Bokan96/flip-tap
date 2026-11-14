@@ -34,6 +34,20 @@ describe('saved match', () => {
     expect(next.state.round).toBe(3);
   });
 
+  it('turns an old on/off hex into the value of the hex the opponent can cast', () => {
+    const s = createMatch({ fighterId: 'briar' }, { fighterId: 'vex' });
+    const old = (p: object, hexed: boolean) => {
+      const { hex: _, ...rest } = p as { hex: number };
+      return { ...rest, hexed };
+    };
+    // Saved before hexes carried a value: Briar hexed by Vex (Hex Bolt is worth 20), Vex not hexed.
+    const players = [old(s.players[0], true), old(s.players[1], false)] as unknown as typeof s.players;
+    saveMatch({ ...midMatch(), fighters: ['briar', 'vex'], state: { ...s, players }, lastPlans: null, log: { rounds: [] } });
+    const back = loadSavedMatch()!;
+    expect(back.state.players.map((p) => p.hex)).toEqual([20, 0]);
+    expect('hexed' in back.state.players[0]).toBe(false);
+  });
+
   it('is dropped when finished, cleared or no longer matching the content', () => {
     const m = midMatch();
     saveMatch({ ...m, state: { ...m.state, outcome: { winner: 0 } } });

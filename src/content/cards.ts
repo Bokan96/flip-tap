@@ -34,7 +34,7 @@ const bonus: CardDef[] = [
   { id: 'tripwire', name: 'Tripwire', kind: 'trap', cost: -10, trap: 15, pattern: ['000', '001', '000'], bonus: true },
   { id: 'caltrops', name: 'Caltrops', kind: 'trap', cost: -15, trap: 10, pattern: ['010', '000', '010'], bonus: true },
   // Was Ignite (a burn); the id stays so saved collections keep the card.
-  { id: 'ignite', name: 'Evil Eye', kind: 'attack', cost: -15, damage: 10, pattern: ['000', '011', '000'], hex: true, bonus: true, fx: 'beam' },
+  { id: 'ignite', name: 'Evil Eye', kind: 'attack', cost: -15, damage: 10, pattern: ['000', '011', '000'], hex: 10, bonus: true, fx: 'beam' },
   { id: 'phaseStep', name: 'Phase Step', kind: 'move', cost: -15, swap: true, bonus: true },
 ];
 
@@ -79,15 +79,15 @@ const signature: CardDef[] = [
   { id: 'ferroReload', name: 'Reload', kind: 'reload', cost: 0 },
 
   // Briar: sets traps (which attacks can break), then pulls rivals onto them
-  { id: 'briarSnare', name: 'Snare', kind: 'trap', cost: -5, trap: 25, pattern: ['000', '001', '000'] },
-  { id: 'briarField', name: 'Thorn Ring', kind: 'trap', cost: -10, trap: 15, pattern: ['010', '101', '010'] },
+  { id: 'briarSnare', name: 'Snare', kind: 'trap', cost: -5, trap: 35, pattern: ['000', '001', '000'] },
+  { id: 'briarField', name: 'Thorn Ring', kind: 'trap', cost: -10, trap: 25, pattern: ['010', '101', '010'] },
   { id: 'briarLash', name: 'Lash', kind: 'attack', cost: -15, damage: 20, pattern: ['001', '001', '001'], push: -1, fx: 'slash' },
   { id: 'briarBloom', name: 'Bloom', kind: 'attack', cost: -40, damage: 35, pattern: ['111', '101', '111'], fx: 'burst' },
 
   // Vex: hexes a rival, then cashes the hex in; trades places
-  { id: 'vexHex', name: 'Hex Bolt', kind: 'attack', cost: -10, damage: 20, pattern: ['000', '011', '000'], hex: true, fx: 'beam' },
+  { id: 'vexHex', name: 'Hex Bolt', kind: 'attack', cost: -10, damage: 20, pattern: ['000', '011', '000'], hex: 20, fx: 'beam' },
   { id: 'vexSwap', name: 'Mirror Step', kind: 'move', cost: -5, swap: true },
-  { id: 'vexCurse', name: 'Malediction', kind: 'attack', cost: -15, damage: 15, pattern: ['010', '111', '010'], hex: true, fx: 'burst' },
+  { id: 'vexCurse', name: 'Malediction', kind: 'attack', cost: -15, damage: 15, pattern: ['010', '111', '010'], hex: 20, fx: 'burst' },
   { id: 'vexFlare', name: 'Flare', kind: 'attack', cost: -45, damage: 40, pattern: ['001', '011', '001'], fx: 'wave' },
 
   // Umbra: flanking shapes that hit hardest when the rival moves
@@ -207,7 +207,6 @@ export const FIGHTERS: FighterDef[] = [
     role: 'Trapper',
     complexity: 3,
     ai: { caution: 0.1 },
-    passive: { name: 'Deep Roots', text: 'Your traps deal 10 more damage.', mods: { trapBonus: 10 } },
   },
   {
     id: 'vex',
@@ -220,7 +219,6 @@ export const FIGHTERS: FighterDef[] = [
     role: 'Trickster',
     complexity: 3,
     ai: { aggression: 0.15 },
-    passive: { name: 'Malice', text: 'Breaking a hex deals 10 more damage (20 in all).', mods: { hexBonus: 10 } },
   },
 ];
 

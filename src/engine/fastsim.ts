@@ -29,7 +29,8 @@ interface FastCard {
   recoil: number;
   sap: number;
   vsMoved: number;
-  hex: boolean;
+  /** Hex value it puts on a target (0 = none). */
+  hex: number;
   /** Trap card: damage of each trap it sets (0 otherwise). */
   trap: number;
   swap: boolean;
@@ -69,7 +70,7 @@ export function fastCard(id: string): FastCard {
       recoil: c.recoil ?? 0,
       sap: isAttack ? (c.sap ?? 0) : 0,
       vsMoved: isAttack ? (c.vsMoved ?? 0) : 0,
-      hex: isAttack && !!c.hex,
+      hex: isAttack ? (c.hex ?? 0) : 0,
       trap: c.kind === 'trap' ? (c.trap ?? 0) : 0,
       swap: !!c.swap,
       cells,
@@ -92,8 +93,8 @@ export interface FastResult {
   spent: [number, number];
   /** Traps still on the board for the next round, flattened as [square, owner, damage, ...]. */
   traps: number[];
-  /** Who is hexed at the end of the round. */
-  hexed: [boolean, boolean];
+  /** Hex on each player at the end of the round (0 = none). */
+  hex: [number, number];
 }
 
 function covers(card: FastCard, r: number, c: number, facing: number, tr: number, tc: number): boolean {
@@ -109,11 +110,11 @@ function covers(card: FastCard, r: number, c: number, facing: number, tr: number
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
 /** Same as rules.hitDamage. */
-function damageOf(card: FastCard, attackerLife: number, am: Mods, dm: Mods, guard: number, moved: boolean, hexed: boolean): number {
+function damageOf(card: FastCard, attackerLife: number, am: Mods, dm: Mods, guard: number, moved: boolean, hex: number): number {
   let d = card.damage + am.damageBonus;
   if (am.lowLifeThreshold > 0 && attackerLife <= am.lowLifeThreshold) d += am.lowLifeBonus;
   if (moved) d += am.vsMovedBonus + card.vsMoved - dm.movedReduction;
-  if (hexed) d += BALANCE.hexDamage + am.hexBonus;
+  d += hex;
   d -= guard + dm.damageReduction;
   return d > 0 ? d : 0;
 }
@@ -150,7 +151,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   const c = [P[0].pos.c, P[1].pos.c];
   const f = [P[0].facing as number, P[1].facing as number];
   const z = [P[0].dazed, P[1].dazed];
-  const hx = [!!P[0].hexed, !!P[1].hexed];
+  const hx = [P[0].hex || 0, P[1].hex || 0];
   // Spent attacks, tracked only for ammo fighters (null otherwise).
   const spent: (string[] | null)[] = [m[0].ammo ? [...P[0].spent] : null, m[1].ammo ? [...P[1].spent] : null];
   const ids = ['', ''];
@@ -265,8 +266,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (a.drain && d > 0) life[o] = clamp(life[o] + Math.floor((d * a.drain) / 100), 0, lifeMax[o]);
         if (a.stun && d > 0) nz[i] = true;
         if (a.sap) sap[i] = a.sap;
-        if (hx[i]) hx[i] = false;
-        else if (a.hex && d > 0) hx[i] = true;
+        if (hx[i]) hx[i] = 0;
+        else if (a.hex && d > 0) hx[i] = a.hex;
         if (a.push && !m[i].immovable) {
           c[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
           face();
@@ -297,8 +298,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (a.drain && dmg[i] > 0) drn[o] = Math.floor((dmg[i] * a.drain) / 100);
         if (a.stun && dmg[i] > 0) nz[i] = true;
         if (a.sap) sap[i] = a.sap;
-        if (hx[i]) hx[i] = false;
-        else if (a.hex && dmg[i] > 0) hx[i] = true;
+        if (hx[i]) hx[i] = 0;
+        else if (a.hex && dmg[i] > 0) hx[i] = a.hex;
         if (a.push && !m[i].immovable) nc[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
       }
       for (let i = 0; i < 2; i++) {
@@ -355,7 +356,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (!open(tr, tcc)) continue;
         const at = tr * cols + tcc;
         for (let q = traps.length - 1; q >= 0; q--) if (traps[q].at === at && traps[q].owner === i) traps.splice(q, 1);
-        traps.push({ at, owner: i, damage: tc.trap + m[i].trapBonus, keep: true });
+        traps.push({ at, owner: i, damage: tc.trap, keep: true });
       }
     }
     z[0] = nz[0];
@@ -389,6 +390,6 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
     facing: [f[0], f[1]],
     spent: [spent[0] ? spent[0].length : -1, spent[1] ? spent[1].length : -1],
     traps: left,
-    hexed: [hx[0], hx[1]],
+    hex: [hx[0], hx[1]],
   };
 }

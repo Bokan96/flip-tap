@@ -226,7 +226,7 @@ describe('fast simulator with every card, modifier and arena', () => {
         p.energy = rng.int(p.energyMax + 1);
         p.dazed = rng.int(5) === 0;
         if (p.mods.ammo) p.spent = p.deck.filter((id) => CARDS[id].kind === 'attack' && rng.int(2) === 0);
-        p.hexed = rng.int(3) === 0;
+        p.hex = rng.int(3) === 0 ? 10 + rng.int(2) * 10 : 0;
       }
       // A few traps already on the board, owned by either side.
       for (let k = rng.int(3); k > 0; k--) {
@@ -245,7 +245,7 @@ describe('fast simulator with every card, modifier and arena', () => {
       const ps = real.state.players;
       expect(fast.facing).toEqual([ps[0].facing, ps[1].facing]);
       expect(fast.spent).toEqual(ps.map((p) => (p.mods.ammo ? p.spent.length : -1)));
-      expect(fast.hexed).toEqual([ps[0].hexed, ps[1].hexed]);
+      expect(fast.hex).toEqual([ps[0].hex, ps[1].hex]);
       const key = (at: number, owner: number, dmg: number) => `${at}:${owner}:${dmg}`;
       const fastTraps: string[] = [];
       for (let k = 0; k < fast.traps.length; k += 3) fastTraps.push(key(fast.traps[k], fast.traps[k + 1], fast.traps[k + 2]));
@@ -263,8 +263,10 @@ describe('content and match runner', () => {
       if (c.counter) expect(['guard', 'move'], c.id).toContain(c.kind);
       if (c.forward) expect(c.kind, c.id).toBe('move');
       if (c.healAtOrBelow !== undefined) expect(c.kind, c.id).toBe('heal');
+      if (c.hex !== undefined) expect(c.hex, c.id).toBeGreaterThan(0);
     }
-    for (const f of FIGHTERS) expect(f.passive?.name).toBeTruthy();
+    // A passive is optional (Briar's and Vex's damage lives on their cards), but a present one needs words.
+    for (const f of FIGHTERS) if (f.passive) expect(f.passive.name && f.passive.text, f.id).toBeTruthy();
   });
 
   it('runMatch is deterministic for a seed', () => {

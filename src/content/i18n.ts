@@ -22,7 +22,8 @@ export const LANGUAGES: { id: Lang; name: string }[] = [
 /** Names and descriptions of the content, by id. */
 export interface ContentText {
   cards: Record<string, { name: string; text?: string }>;
-  fighters: Record<string, { title: string; blurb: string; role: string; passive: { name: string; text: string } }>;
+  /** `passive` only for fighters that have one. */
+  fighters: Record<string, { title: string; blurb: string; role: string; passive?: { name: string; text: string } }>;
   arenas: Record<string, { name: string; text: string }>;
   modifiers: Record<string, { name: string; text: string }>;
   achievements: Record<string, { name: string; text: string }>;
@@ -64,7 +65,7 @@ export function applyTranslation(t: Translation): void {
     const tf = t.content.fighters[f.id];
     if (!tf) continue;
     Object.assign(f, { title: tf.title, blurb: tf.blurb, role: tf.role });
-    if (f.passive) Object.assign(f.passive, tf.passive);
+    if (f.passive && tf.passive) Object.assign(f.passive, tf.passive);
   }
   for (const a of ARENAS) Object.assign(a, t.content.arenas[a.id] ?? {});
   for (const m of MODIFIERS) Object.assign(m, t.content.modifiers[m.id] ?? {});

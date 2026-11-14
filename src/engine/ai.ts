@@ -198,8 +198,6 @@ interface Side {
   regen: number;
   energyMax: number;
   ammo: boolean;
-  /** Extra damage this side's next landed hit deals if the other side is hexed. */
-  hexHit: number;
 }
 
 function side(p: PlayerState): Side {
@@ -208,7 +206,6 @@ function side(p: PlayerState): Side {
     regen: energyRecovery(p),
     energyMax: p.energyMax,
     ammo: p.mods.ammo,
-    hexHit: BALANCE.hexDamage + p.mods.hexBonus,
   };
 }
 
@@ -250,10 +247,8 @@ function makeEvaluator(state: MatchState, seat: Seat, w: EvalWeights, aggression
       }
       v += w.trap * (mn + 0.25 * mf - tn - 0.25 * tf);
     }
-    if (w.hex) {
-      if (r.hexed[o]) v += w.hex * me.hexHit;
-      if (r.hexed[seat]) v -= w.hex * them.hexHit;
-    }
+    // A hex is worth the extra damage the next hit on its holder will deal.
+    if (w.hex) v += w.hex * (r.hex[o] - r.hex[seat]);
     return v;
   };
 }
