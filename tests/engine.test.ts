@@ -31,14 +31,15 @@ describe('content', () => {
 });
 
 describe('setup', () => {
-  it('starts both fighters full at opposite ends', () => {
+  it('starts both fighters one square in from opposite ends, at full life and half energy', () => {
     const s = match();
-    expect(s.players[0].pos).toEqual({ r: 1, c: 0 });
-    expect(s.players[1].pos).toEqual({ r: 1, c: 4 });
+    expect(s.players[0].pos).toEqual({ r: 1, c: 1 });
+    expect(s.players[1].pos).toEqual({ r: 1, c: 3 });
     expect(s.arena.id).toBe('classic');
     expect([s.arena.rows, s.arena.cols]).toEqual([3, 5]);
     expect(s.players[0].life).toBe(100);
-    expect(s.players[1].energy).toBe(100);
+    expect(s.players[1].energy).toBe(BALANCE.energyStart);
+    expect(BALANCE.energyStart).toBe(50);
     expect(s.players[0].facing).toBe(1);
     expect(s.players[1].facing).toBe(-1);
   });
@@ -102,8 +103,8 @@ describe('resolution', () => {
     expect(r.steps[0].players[1].hit).toBe('hit');
     expect(r.steps[0].players[1].damageTaken).toBe(25);
     expect(r.state.players[1].life).toBe(75);
-    // 100 - 15 (jab), then end-of-round recovery.
-    expect(r.state.players[0].energy).toBe(100 - 15 + BALANCE.energyPerRound);
+    // Start energy - 15 (jab), then end-of-round recovery.
+    expect(r.state.players[0].energy).toBe(BALANCE.energyStart - 15 + BALANCE.energyPerRound);
   });
 
   it('guard reduces damage', () => {
@@ -120,6 +121,7 @@ describe('resolution', () => {
 
   it('movement is clamped to the board', () => {
     const s = match();
+    s.players[0].pos = { r: 1, c: 0 };
     const r = resolveRound(s, [['left', 'up', 'down'], IDLE]);
     expect(r.steps[0].players[0].to).toEqual({ r: 1, c: 0 });
   });
@@ -127,6 +129,7 @@ describe('resolution', () => {
   it('heal restores life up to max', () => {
     const s = match('cinder', 'marin', ['renew']);
     s.players[0].life = 50;
+    s.players[0].energy = 100; // Renew costs more than the starting energy
     const r = resolveRound(s, [['renew', 'up', 'down'], IDLE]);
     expect(r.state.players[0].life).toBe(85);
   });
@@ -154,6 +157,7 @@ describe('resolution', () => {
   it('energy recovers at the end of a round, capped at max', () => {
     const s = match();
     s.players[0].energy = 30;
+    s.players[1].energy = 95;
     const r = resolveRound(s, [IDLE, IDLE]);
     expect(r.state.players[0].energy).toBe(30 + BALANCE.energyPerRound);
     expect(r.state.players[1].energy).toBe(100);

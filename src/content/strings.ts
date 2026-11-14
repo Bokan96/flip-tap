@@ -32,6 +32,7 @@ export const STRINGS = {
     vibration: 'Vibration',
     effects: 'Effects',
     fullscreen: 'Fullscreen',
+    instantSelect: 'Instant select',
     language: 'Language',
     on: 'On',
     off: 'Off',
@@ -180,6 +181,7 @@ export const STRINGS = {
   deckOf: (who: string, fighter: string) => `${who} · ${fighter}`,
   tapHint: 'Tap a fighter to see their cards',
   previewHint: 'Tap a card to see what it does.',
+  previewHintInstant: 'Tap a card to add it to your plan; tap a planned card to take it back.',
   previewHint2: 'Tap a fighter on the board to see all of their cards.',
   vs: 'VS',
   vsShort: 'vs',
@@ -322,11 +324,10 @@ export const STRINGS = {
 
   glossary: {
     title: 'Glossary',
-    tabs: { fighters: 'Fighters', cards: 'Cards', effects: 'Effects', arenas: 'Arenas' } as Record<string, string>,
+    tabs: { fighters: 'Fighters', cards: 'Other cards', effects: 'Effects', arenas: 'Arenas' } as Record<string, string>,
     tapCard: 'Tap any card for its full description.',
     basicCards: 'Basic cards',
     basicNote: 'Every fighter has these.',
-    fighterCards: (fighter: string) => `${fighter}’s cards`,
     bonusCards: 'Bonus cards',
     bonusNote: 'Won in the Tournament. Equip up to three for Tournament and Versus CPU matches.',
     basicOwner: 'Basic card',
@@ -391,7 +392,7 @@ export const STRINGS = {
 
   rules: [
     'Both players secretly plan 3 cards, then the cards resolve one step at a time, simultaneously.',
-    'Tap a card to see what it does and tap it again to put it in the next free slot (with a mouse, one click does both), or drag it into any slot. Drag between slots to reorder; tap a planned card or drag it out to remove it.',
+    'Tap a card to see what it does and tap it again to put it in the next free slot (with a mouse one click does both, and so does one tap with Instant select on in Settings), or drag it into any slot. Drag between slots to reorder; tap a planned card or drag it out to remove it.',
     'Movement happens first, then attacks. Step out of an attack’s area to dodge it.',
     'Attack cards hit the highlighted squares around you, aimed at the side your opponent is on.',
     'Cards cost energy. Your plan must stay affordable step by step. Focus gives energy back.',

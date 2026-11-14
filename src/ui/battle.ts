@@ -20,7 +20,7 @@ import {
 } from '../engine/rules';
 import type { MatchLog, MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult, Trap } from '../engine/types';
 import type { PlanSource } from '../net/transport';
-import { fullEffects, getPlanTimer, speedMultiplier } from '../settings';
+import { fullEffects, getPlanTimer, isInstantSelect, speedMultiplier } from '../settings';
 import { cardHtml, describeCard, groupedCardsHtml, handRowLength, passiveHtml } from './card';
 import { enableDrag } from './drag';
 import { Fx, fxKind, haptic, retrigger, type FxKind } from './fx';
@@ -47,6 +47,8 @@ export interface BattleOptions {
   hooks?: BattleHooks;
   /** Ignore the plan timer setting (e.g. in the tutorial). */
   noTimer?: boolean;
+  /** Always select a tapped card before adding it, whatever the Instant select setting (the tutorial's tips say "tap it again"). */
+  twoTap?: boolean;
   /** Short label under the round counter, e.g. the daily challenge's rule twist. */
   tag?: string;
   /** Continue a saved match: the previous round's plans and the log so far. */
@@ -121,7 +123,7 @@ export class BattleView {
   private shownTraps: Trap[] = [];
   /** The round being revealed or recapped. */
   private shownRound = 0;
-  /** On touch, a tapped hand card is first only selected (previewed); a second tap adds it. */
+  /** On touch, a tapped hand card is first only selected (previewed); a second tap adds it (unless Instant select is on). */
   private armed: string | null = null;
   /** Pointer type of the latest press, so a mouse click can still add a card straight away. */
   private lastPointer = 'mouse';
@@ -825,11 +827,16 @@ export class BattleView {
     this.showArea(squares, cls);
   }
 
+  private instantSelect(): boolean {
+    return !this.opts.twoTap && isInstantSelect();
+  }
+
   /** Side panel with the focused card shown large and described in words. */
   private renderPreviewPanel(): void {
     const panel = this.q('.card-preview');
     if (!this.previewCard) {
-      panel.innerHTML = `<p class="preview-hint">${STRINGS.previewHint}</p><p class="preview-hint">${STRINGS.previewHint2}</p>`;
+      const hint = this.instantSelect() ? STRINGS.previewHintInstant : STRINGS.previewHint;
+      panel.innerHTML = `<p class="preview-hint">${hint}</p><p class="preview-hint">${STRINGS.previewHint2}</p>`;
       return;
     }
     const slot = this.hovered?.slot ?? Math.max(0, this.nextEmptySlot());
@@ -877,8 +884,9 @@ export class BattleView {
       const slot = this.nextEmptySlot();
       const id = cardEl.dataset.card!;
       // Touch: the first tap only selects the card (its details and squares show); the second adds it.
-      // A mouse already previews on hover, so a click adds straight away.
-      if (this.lastPointer !== 'mouse' && this.armed !== id) {
+      // A mouse already previews on hover, so a click adds straight away, and so does a tap with
+      // Instant select on.
+      if (this.lastPointer !== 'mouse' && !this.instantSelect() && this.armed !== id) {
         this.armed = id;
         this.previewCard = id;
         if (slot >= 0) this.hovered = { slot, card: id };

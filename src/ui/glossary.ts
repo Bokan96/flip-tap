@@ -3,7 +3,7 @@ import { BASIC_CARD_IDS, BONUS_CARD_IDS, FIGHTERS, getCard } from '../content/ca
 import { STRINGS } from '../content/strings';
 import { arenaMiniHtml } from './arenaPreview';
 import { cardHtml, describeCard, passiveHtml } from './card';
-import { emblemHtml, portraitHtml } from './emblems';
+import { portraitHtml } from './emblems';
 
 export type GlossaryTab = 'fighters' | 'cards' | 'effects' | 'arenas';
 export const GLOSSARY_TABS: GlossaryTab[] = ['fighters', 'cards', 'effects', 'arenas'];
@@ -61,13 +61,13 @@ function fightersHtml(): string {
   ).join('');
 }
 
+/** Basic and bonus cards. Each fighter's own cards are on the Fighters tab. */
 function cardsHtml(): string {
   const G = STRINGS.glossary;
   const section = (head: string, ids: string[], note = '') =>
     `<section class="gl-section"><h3>${head}</h3>${note ? `<p class="note">${note}</p>` : ''}<div class="gl-cards">${ids.map(cardRow).join('')}</div></section>`;
   return (
     section(G.basicCards, BASIC_CARD_IDS, G.basicNote) +
-    FIGHTERS.map((f) => section(`${emblemHtml(f, 'hud-emblem')} ${G.fighterCards(f.name)}`, f.signature)).join('') +
     section(G.bonusCards, BONUS_CARD_IDS, G.bonusNote)
   );
 }

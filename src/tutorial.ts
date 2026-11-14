@@ -29,7 +29,9 @@ export const TUTORIAL = {
 export function createTutorialMatch(): MatchState {
   const state = createMatch({ fighterId: TUTORIAL.player }, { fighterId: TUTORIAL.dummy });
   state.players[1].life = TUTORIAL.dummyLife;
-  // Two columns closer than a normal start, so "Step Right, then Ember Jab" lands in round 1.
+  // The script is built for these squares (the dummy steps left as you step right in round 1, so
+  // "Step Right, then Ember Jab" lands), whatever the normal start is.
+  state.players[0].pos = { r: 1, c: 0 };
   state.players[1].pos = { r: 1, c: state.arena.cols - 2 };
   return state;
 }

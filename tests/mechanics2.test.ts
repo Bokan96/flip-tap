@@ -15,6 +15,8 @@ function duel(a: string, b: string, posA: Pos, posB: Pos, bonusA: string[] = [],
   s.players[1].pos = posB;
   s.players[0].facing = posB.c >= posA.c ? 1 : -1;
   s.players[1].facing = posA.c > posB.c ? 1 : -1;
+  // Full energy, so the plans under test are affordable (a match itself starts at BALANCE.energyStart).
+  for (const p of s.players) p.energy = p.energyMax;
   return s;
 }
 

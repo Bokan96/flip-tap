@@ -39,6 +39,7 @@ const strings: Strings = {
     vibration: 'Vibracija',
     effects: 'Efekti',
     fullscreen: 'Ceo ekran',
+    instantSelect: 'Izbor jednim dodirom',
     language: 'Jezik',
     on: 'Da',
     off: 'Ne',
@@ -182,6 +183,7 @@ const strings: Strings = {
   deckOf: (who: string, fighter: string) => `${who} · ${fighter}`,
   tapHint: 'Dodirni borca da vidiš njegove karte',
   previewHint: 'Dodirni kartu da vidiš šta radi.',
+  previewHintInstant: 'Dodirni kartu da je dodaš u plan; dodirni isplaniranu kartu da je vratiš.',
   previewHint2: 'Dodirni borca na tabli da vidiš sve njegove karte.',
   vs: 'VS',
   vsShort: 'vs',
@@ -311,11 +313,10 @@ const strings: Strings = {
 
   glossary: {
     title: 'Pojmovnik',
-    tabs: { fighters: 'Borci', cards: 'Karte', effects: 'Efekti', arenas: 'Arene' },
+    tabs: { fighters: 'Borci', cards: 'Ostale karte', effects: 'Efekti', arenas: 'Arene' },
     tapCard: 'Dodirni bilo koju kartu za pun opis.',
     basicCards: 'Osnovne karte',
     basicNote: 'Ima ih svaki borac.',
-    fighterCards: (fighter: string) => `Karte: ${fighter}`,
     bonusCards: 'Bonus karte',
     bonusNote: 'Osvajaju se na Turniru. Opremi do tri za mečeve na Turniru i protiv CPU-a.',
     basicOwner: 'Osnovna karta',
@@ -379,7 +380,7 @@ const strings: Strings = {
 
   rules: [
     'Oba igrača tajno planiraju 3 karte, a zatim se karte izvršavaju korak po korak, istovremeno.',
-    'Dodirni kartu da vidiš šta radi, pa je dodirni ponovo da je staviš u sledeće slobodno mesto (mišem jedan klik radi oboje), ili je prevuci u bilo koje mesto. Prevlačenjem između mesta menjaš redosled; dodirni isplaniranu kartu ili je izvuci da je ukloniš.',
+    'Dodirni kartu da vidiš šta radi, pa je dodirni ponovo da je staviš u sledeće slobodno mesto (mišem jedan klik radi oboje, a isto i jedan dodir kad je u Podešavanjima uključen Izbor jednim dodirom), ili je prevuci u bilo koje mesto. Prevlačenjem između mesta menjaš redosled; dodirni isplaniranu kartu ili je izvuci da je ukloniš.',
     'Prvo se izvršava kretanje, pa napadi. Izađi iz polja napada da ga izbegneš.',
     'Karte napada pogađaju označena polja oko tebe, usmerene ka strani na kojoj je protivnik.',
     'Karte koštaju energiju. Plan mora da bude izvodljiv korak po korak. Fokus vraća energiju.',
@@ -529,7 +530,7 @@ export const SR: Translation = {
     },
     modifiers: {
       glass: { name: 'Stakleni top', text: 'Svi napadi nanose 10 štete više.' },
-      lowBattery: { name: 'Slabe baterije', text: 'Oba borca počinju sa 50 energije.' },
+      lowBattery: { name: 'Slabe baterije', text: 'Oba borca počinju sa 20 energije.' },
       fastCharge: { name: 'Brzo punjenje', text: 'Oba borca svake runde vraćaju 10 energije više.' },
       ironSkin: { name: 'Gvozdena koža', text: 'Sva šteta je manja za 5.' },
       suddenDeath: { name: 'Iznenadna smrt', text: 'Oba borca počinju sa 50 života.' },

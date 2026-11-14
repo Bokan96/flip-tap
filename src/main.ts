@@ -72,8 +72,34 @@ let arenaId = DEFAULT_ARENA;
 function screen(html: string, cls = ''): HTMLElement {
   app.innerHTML = `<div class="screen ${cls}">${html}</div>`;
   setMusic(cls === 'battle-screen' || cls === 'versus' ? 'battle' : 'menu');
+  pinBack();
+  requestAnimationFrame(pinBack);
   return app.firstElementChild as HTMLElement;
 }
+
+const portraitPhone = matchMedia('(orientation: portrait) and (max-width: 600px)');
+
+/**
+ * On a phone held upright, a menu screen whose Back (or Menu) button sits below the fold pins that
+ * button to the bottom-left corner, so leaving never takes scrolling. The setup screen has its own
+ * sticky Back / Fight bar.
+ */
+function pinBack(): void {
+  const root = app.firstElementChild as HTMLElement | null;
+  if (!root?.classList.contains('screen') || root.classList.contains('battle-screen')) return;
+  root.classList.remove('pin-back');
+  const back = root.querySelector<HTMLElement>('[data-act="back"], [data-act="menu"]');
+  if (!back || back.closest('.setup-actions') || !portraitPhone.matches) return;
+  if (back.getBoundingClientRect().bottom + window.scrollY > window.innerHeight) root.classList.add('pin-back');
+}
+// Only when the width changes (rotation included): phones also resize as the address bar slides
+// in and out while scrolling, and re-measuring then could nudge the scroll position.
+let pinWidth = window.innerWidth;
+window.addEventListener('resize', () => {
+  if (window.innerWidth === pinWidth) return;
+  pinWidth = window.innerWidth;
+  pinBack();
+});
 
 /** Simple modal for screens outside a battle (the battle view has its own). */
 function modal(html: string, bind: (box: HTMLElement) => void = () => undefined): void {
@@ -612,7 +638,7 @@ function startTutorial(): void {
     difficulty: null,
     state: createTutorialMatch(),
     opponent: new ScriptedPlanSource(),
-    options: { hooks: tutorialHooks(), noTimer: true },
+    options: { hooks: tutorialHooks(), noTimer: true, twoTap: true },
     onEnd: (outcome) => {
       setTutorialDone();
       if (outcome.winner === 0) play('win');

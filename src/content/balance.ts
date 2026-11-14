@@ -3,6 +3,8 @@ export const BALANCE = {
   slotsPerRound: 3,
   lifeMax: 100,
   energyMax: 100,
+  /** Fighters start a match with this much energy (life starts full). */
+  energyStart: 50,
   energyPerRound: 15,
   /** From the round after this one, both fighters lose `fatigueDamage` life at the end of every round. */
   fatigueAfterRound: 7,

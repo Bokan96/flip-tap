@@ -37,6 +37,14 @@ button { font: inherit; color: inherit; }
   animation: screen-in .35s ease-out;
 }
 @keyframes screen-in { from { opacity: 0; transform: translateY(12px); } }
+/* Phone held upright: a long menu screen pins its Back button to the bottom-left corner (see pinBack
+   in main.ts). Its entry animation only fades, since a transform would carry the fixed button along. */
+@keyframes screen-fade { from { opacity: 0; } }
+.screen.pin-back { padding-bottom: calc(88px + env(safe-area-inset-bottom)); animation-name: screen-fade; }
+.screen.pin-back :is([data-act="back"], [data-act="menu"]) {
+  position: fixed; z-index: 20; left: calc(16px + env(safe-area-inset-left)); bottom: calc(16px + env(safe-area-inset-bottom));
+  background: var(--panel); border-color: var(--line-hi); box-shadow: 0 6px 20px rgba(0, 0, 0, .6);
+}
 
 h1, h2, h3 { margin: 0; letter-spacing: .02em; }
 h2 { font-size: clamp(1.2rem, 4vw, 1.6rem); text-transform: uppercase; }
@@ -338,7 +346,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .bar.energy i { background: linear-gradient(90deg, var(--energy-lo), var(--energy)); }
 /* White numbers with a dark outline stay readable over the coloured fill and the empty bar alike. */
 .bar span {
-  position: relative; z-index: 2; display: block; font-size: .66rem; font-weight: 800; padding: 0 8px; line-height: 15px;
+  position: relative; z-index: 2; display: block; font-size: .66rem; font-weight: 800; padding: 0 8px; line-height: 15px; text-align: center;
   color: #fff; text-shadow: 0 0 2px #000, 0 1px 2px #000, 0 0 4px rgba(0, 0, 0, .9); transform: skewX(18deg);
 }
 /* Energy bar split into 10-point segments (--seg is set per fighter from its max energy). */
@@ -759,11 +767,101 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 @keyframes confetti { 0% { opacity: 1; transform: translate(0, 0) rotate(0); } 100% { opacity: 1; transform: translate(var(--drift), 110vh) rotate(var(--spin)); } }
 
 /* settings panel */
-.settings { display: flex; flex-direction: column; gap: 8px; width: 100%; }
-.setting { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.setting > span { color: var(--muted); font-size: .9rem; }
+.settings { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
+.setting > span { color: var(--muted); font-size: .9rem; text-align: left; flex: none; }
 .setting .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .modal-box > .settings { min-width: min(320px, 100%); }
+
+/* language flags: the chosen one gets a yellow frame, the others fade back */
+.flags { display: flex; gap: 8px; }
+.flag {
+  --cut: 7px;
+  width: 48px; height: 34px; padding: 2px; border: 0; cursor: pointer; background: var(--line-hi);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  opacity: .6;
+  transition: opacity .15s, background .15s, transform .1s;
+}
+.flag svg {
+  --c: calc(var(--cut) - 1.2px);
+  display: block; width: 100%; height: 100%;
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
+}
+.flag:hover, .flag:focus-visible { opacity: .9; outline: none; }
+.flag:active { transform: translateY(1px); }
+.flag.on { background: var(--accent); opacity: 1; }
+
+/* on/off switch: a clipped-corner track (its 1px rim is the button showing around ::before) and a sliding knob */
+.switch {
+  --cut: 7px;
+  position: relative; flex: none; width: 62px; height: 28px; padding: 0; border: 0; cursor: pointer;
+  background: var(--line-hi);
+  clip-path: polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut));
+  transition: background .18s;
+}
+.switch::before {
+  --c: calc(var(--cut) - .6px);
+  content: ''; position: absolute; inset: 1px; background: var(--board);
+  clip-path: polygon(var(--c) 0, 100% 0, 100% calc(100% - var(--c)), calc(100% - var(--c)) 100%, 0 100%, 0 var(--c));
+  transition: background .18s;
+}
+.switch.on, .switch.on::before { background: var(--accent); }
+.switch:focus-visible { outline: none; background: var(--accent); }
+.switch.on:focus-visible::before { background: var(--accent-hi); }
+.sw-knob {
+  position: absolute; top: 4px; left: 4px; width: 20px; height: 20px;
+  background: linear-gradient(180deg, var(--text), var(--muted));
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition: transform .2s cubic-bezier(.3, 1.4, .5, 1), width .1s, background .18s;
+}
+.switch.on .sw-knob { transform: translateX(34px); background: var(--on-accent); }
+.switch:active .sw-knob { width: 24px; }
+.switch.on:active .sw-knob { transform: translateX(30px); }
+.sw-text {
+  position: absolute; top: 50%; width: 34px; transform: translateY(-50%); text-align: center; pointer-events: none;
+  font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; line-height: 1; transition: opacity .15s;
+}
+.sw-on { left: 4px; color: var(--on-accent); opacity: 0; }
+.sw-off { right: 4px; color: var(--muted); }
+.switch.on .sw-on { opacity: 1; }
+.switch.on .sw-off { opacity: 0; }
+
+/* stepped slider: a fader thumb on a rail with a notch at every stop; the value reads out on the right */
+/* a fixed basis so every slider lines up whatever its label's length */
+.slider { --thumb: 14px; flex: 0 1 186px; min-width: 0; display: flex; align-items: center; gap: 10px; }
+.slider-rail { position: relative; flex: 1; min-width: 72px; }
+.slider .ticks { position: absolute; left: calc(var(--thumb) / 2); right: calc(var(--thumb) / 2); top: 50%; pointer-events: none; }
+.slider .ticks i { position: absolute; left: calc(var(--k) * 100%); top: -7px; width: 2px; height: 14px; margin-left: -1px; background: var(--line-hi); }
+.slider .ticks i.lit { background: var(--accent); }
+.slider input {
+  -webkit-appearance: none; appearance: none; position: relative; display: block;
+  width: 100%; height: 32px; margin: 0; background: transparent; cursor: pointer;
+}
+.slider input:focus { outline: none; }
+.slider input::-webkit-slider-runnable-track {
+  height: 6px; border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--accent) calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--p)), var(--line) 0);
+}
+.slider input::-moz-range-track { height: 6px; border-radius: var(--radius); background: var(--line); }
+.slider input::-moz-range-progress { height: 6px; border-radius: var(--radius); background: var(--accent); }
+.slider input::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: var(--thumb); height: 26px; margin-top: -10px; border: 0; border-radius: var(--radius);
+  background: linear-gradient(90deg, transparent 5px, var(--on-accent) 5px 6px, transparent 6px 8px, var(--on-accent) 8px 9px, transparent 9px), var(--accent);
+  box-shadow: 0 0 0 2px var(--bg2), 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+  transition: transform .1s;
+}
+.slider input::-moz-range-thumb {
+  width: var(--thumb); height: 26px; border: 0; border-radius: var(--radius);
+  background: linear-gradient(90deg, transparent 5px, var(--on-accent) 5px 6px, transparent 6px 8px, var(--on-accent) 8px 9px, transparent 9px), var(--accent);
+  box-shadow: 0 0 0 2px var(--bg2), 0 0 12px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.slider input:active::-webkit-slider-thumb { transform: scaleY(1.12); }
+.slider input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--bg2), 0 0 0 4px var(--text); }
+.slider input:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 2px var(--bg2), 0 0 0 4px var(--text); }
+.slider output {
+  min-width: 4.8em; text-align: right; color: var(--accent); font-size: .82rem; font-weight: 800;
+  letter-spacing: .03em; font-variant-numeric: tabular-nums;
+}
 .install-setting { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 2px; }
 .install-chip { font-weight: 700; }
 .install-note { margin: -2px 0 0; font-size: .8rem; text-align: left; }

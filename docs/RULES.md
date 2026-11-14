@@ -13,8 +13,8 @@ All tunable numbers live in [`src/content/balance.ts`](../src/content/balance.ts
 
 ## Board and fighters
 - Matches are played in an **arena** ([`src/content/arenas.ts`](../src/content/arenas.ts)). The default,
-  **Classic**, is a grid of **3 rows × 5 columns**; Player 1 starts at row 2, column 1 and Player 2 at
-  row 2, column 5.
+  **Classic**, is a grid of **3 rows × 5 columns**; Player 1 starts at row 2, column 2 and Player 2 at
+  row 2, column 4, one square in from each edge (Close Quarters and Thorn Garden start at the edges).
 - Other arenas change the size (Close Quarters 3×4, the original board; Grand Court 4×5) or add
   special squares (Pillars, Hot Springs and Thorn Garden are 3×5):
   - **Pillars (blocked squares):** nobody can stand on them. A move onto one does nothing, a push or
@@ -23,7 +23,7 @@ All tunable numbers live in [`src/content/balance.ts`](../src/content/balance.ts
   - **Springs:** a fighter who ends a step on one gains 10 energy.
 - Every arena is point-symmetric, so neither side has an advantage **(design choice)**.
 - Both fighters may stand on the same square.
-- Every fighter has **Life** (max 100) and **Energy** (max 100). Both start full.
+- Every fighter has **Life** (max 100) and **Energy** (max 100). Life starts full, Energy at 50.
 
 ## Cards
 Every card has:

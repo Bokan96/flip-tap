@@ -12,7 +12,7 @@ export interface SeatConfig {
 /** Rule changes applied to both players for a whole match (e.g. the daily challenge). */
 export interface MatchModifier {
   mods?: Partial<Mods>;
-  /** Start values instead of full life / energy. */
+  /** Start values instead of full life / BALANCE.energyStart. */
   startLife?: number;
   startEnergy?: number;
 }
@@ -60,7 +60,7 @@ function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier, arenaId: 
   return {
     fighterId: f.id,
     life: Math.min(lifeMax, mod.startLife ?? lifeMax),
-    energy: Math.min(energyMax, mod.startEnergy ?? energyMax),
+    energy: Math.min(energyMax, mod.startEnergy ?? BALANCE.energyStart),
     lifeMax,
     energyMax,
     pos: arenaStart(arenaId, seat),

@@ -19,6 +19,8 @@ function duel(a: string, b: string, posA: Pos, posB: Pos, bonusA: string[] = [],
   s.players[1].pos = posB;
   s.players[0].facing = posB.c >= posA.c ? 1 : -1;
   s.players[1].facing = posA.c > posB.c ? 1 : -1;
+  // Full energy, so the plans under test are affordable (a match itself starts at BALANCE.energyStart).
+  for (const p of s.players) p.energy = p.energyMax;
   return s;
 }
 
@@ -178,7 +180,7 @@ describe('passives', () => {
   it('every fighter starts with the same life and energy', () => {
     for (const f of FIGHTERS) {
       const p = createMatch({ fighterId: f.id }, { fighterId: 'marin' }).players[0];
-      expect([p.life, p.lifeMax, p.energy, p.energyMax], f.id).toEqual([BALANCE.lifeMax, BALANCE.lifeMax, BALANCE.energyMax, BALANCE.energyMax]);
+      expect([p.life, p.lifeMax, p.energy, p.energyMax], f.id).toEqual([BALANCE.lifeMax, BALANCE.lifeMax, BALANCE.energyStart, BALANCE.energyMax]);
     }
     const s = createMatch({ fighterId: 'basalt' }, { fighterId: 'volta' });
     expect(s.players[0].mods.immovable).toBe(true);

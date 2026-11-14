@@ -19,7 +19,8 @@ export interface ArenaDef {
 }
 
 export const ARENAS: ArenaDef[] = [
-  { id: 'classic', name: 'Classic', text: 'The standard 3×5 board.', rows: 3, cols: 5, start: [[1, 0], [1, 4]] },
+  { id: 'classic', name: 'Classic', text: 'The standard 3×5 board.', rows: 3, cols: 5, start: [[1, 1], [1, 3]] },
+  // Keeps its edge start: one step in on a 4-wide board would put the fighters side by side.
   { id: 'quarters', name: 'Close Quarters', text: 'The old 3×4 board: less room, faster fights.', rows: 3, cols: 4, start: [[1, 0], [1, 3]] },
   {
     id: 'pillars',
@@ -27,7 +28,7 @@ export const ARENAS: ArenaDef[] = [
     text: 'Two stone pillars block movement and stop pushes.',
     rows: 3,
     cols: 5,
-    start: [[1, 0], [1, 4]],
+    start: [[1, 1], [1, 3]],
     blocked: [[0, 1], [2, 3]],
   },
   {
@@ -36,7 +37,7 @@ export const ARENAS: ArenaDef[] = [
     text: 'Ending a step on a spring restores energy.',
     rows: 3,
     cols: 5,
-    start: [[1, 0], [1, 4]],
+    start: [[1, 1], [1, 3]],
     tiles: [
       { at: [0, 2], kind: 'well' },
       { at: [2, 2], kind: 'well' },
@@ -48,6 +49,7 @@ export const ARENAS: ArenaDef[] = [
     text: 'Thorns in the middle lane hurt whoever stops on them.',
     rows: 3,
     cols: 5,
+    // Starts at the edges: the squares one step in are thorns.
     start: [[1, 0], [1, 4]],
     tiles: [
       { at: [1, 1], kind: 'spikes' },
@@ -61,7 +63,7 @@ export const ARENAS: ArenaDef[] = [
     text: 'A big 4×5 court with two pillars.',
     rows: 4,
     cols: 5,
-    start: [[1, 0], [2, 4]],
+    start: [[1, 1], [2, 3]],
     blocked: [[0, 2], [3, 2]],
   },
 ];
