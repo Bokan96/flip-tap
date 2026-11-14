@@ -88,7 +88,7 @@ Every fighter has one always-on passive ability, made of simple numeric modifier
 
 | Fighter | Passive | Effect | Signature mechanic |
 |---|---|---|---|
-| Cinder | Kindle | Attacks deal +10 damage while Cinder is at 50 life or less | Every attack has **recoil**; **Rekindle** heals only at 50 life or less |
+| Cinder | Kindle | Attacks deal +10 damage while Cinder is at 50 life or less | His big attacks have **recoil**; **Rekindle** (25 energy, +20 life) works only at 50 life or less |
 | Marin | Riptide | Pushes and pulls move the target 1 extra square | **Tidal Lure** pulls from 2 squares away; **Geyser** shoves foes in his own column |
 | Zephyr | Slipstream | Takes 10 less damage on steps where Zephyr moved | **Gale Dash** / **Sky Lunge**: costly forward moves with a counter |
 | Basalt | Bedrock | Can't be pushed or pulled | **Planted** attacks: cheap and strong, but not after a move |

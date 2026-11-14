@@ -118,9 +118,9 @@ describe('fatigue', () => {
     const s = duel('classic', 'cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
     s.round = 15;
     s.players[1].life = 10;
-    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['focus', 'guard', 'up']]);
+    const r = resolveRound(s, [['cinderRing', 'guard', 'focus'], ['focus', 'guard', 'up']]);
     expect(r.fatigue).toBe(0);
-    expect(r.state.players[0].life).toBe(100 - 5); // only Ember Jab's recoil
+    expect(r.state.players[0].life).toBe(100 - 5); // only Fire Ring's recoil
   });
 });
 

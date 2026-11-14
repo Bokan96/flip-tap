@@ -40,11 +40,11 @@ const bonus: CardDef[] = [
 
 const signature: CardDef[] = [
   // Cinder: big hits that burn himself too, and a heal once he is low
-  { id: 'cinderJab', name: 'Ember Jab', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '011', '000'], recoil: 5, fx: 'slash' },
+  { id: 'cinderJab', name: 'Ember Jab', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '011', '000'], fx: 'slash' },
   { id: 'cinderRing', name: 'Fire Ring', kind: 'attack', cost: -20, damage: 20, pattern: ['111', '101', '111'], push: 1, recoil: 5 },
   { id: 'cinderPillar', name: 'Flame Pillar', kind: 'attack', cost: -20, damage: 30, pattern: ['010', '010', '010'], stun: true },
   { id: 'cinderBlaze', name: 'Wildfire', kind: 'attack', cost: -45, damage: 45, pattern: ['011', '011', '011'], recoil: 10, fx: 'burst' },
-  { id: 'cinderRekindle', name: 'Rekindle', kind: 'heal', cost: -10, heal: 30, healAtOrBelow: 50 },
+  { id: 'cinderRekindle', name: 'Rekindle', kind: 'heal', cost: -25, heal: 20, healAtOrBelow: 50 },
 
   // Marin: cheap pulls and shoves that put rivals where he wants them
   { id: 'marinSplash', name: 'Splash', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '111', '000'] },

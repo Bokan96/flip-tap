@@ -123,7 +123,7 @@ describe('counter and drain', () => {
     const [a, b] = r.steps[0].players;
     expect(b.damageTaken).toBe(25 - 20);
     expect(a.counterTaken).toBe(20);
-    expect(a.life).toBe(100 - 20 - 5); // counter, then Ember Jab's recoil
+    expect(a.life).toBe(100 - 20); // the counter (Ember Jab has no recoil)
   });
 
   it('counter does nothing on a miss', () => {
@@ -319,7 +319,7 @@ describe('attack priority', () => {
     expect(step.players[1].final).toEqual({ r: 1, c: 3 });
     expect(step.players[0].hit).toBe('miss');
     expect(step.players[0].life).toBe(100);
-    expect(step.players[1].life).toBe(60 - 5); // the Jab still burns Cinder
+    expect(step.players[1].life).toBe(60);
   });
 
   it('only applies when both fighters attack', () => {

@@ -112,20 +112,20 @@ describe('hex (Vex)', () => {
 describe('recoil and Rekindle (Cinder)', () => {
   it('recoil hurts on a hit or a miss', () => {
     const s = duel('cinder', 'marin', { r: 1, c: 0 }, { r: 0, c: 3 });
-    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], IDLE]);
+    const r = resolveRound(s, [['cinderRing', 'guard', 'focus'], IDLE]);
     expect(r.steps[0].players[1].hit).toBe('miss');
-    expect(r.steps[0].players[0].recoilTaken).toBe(CARDS.cinderJab.recoil);
-    expect(r.steps[0].players[0].life).toBe(100 - CARDS.cinderJab.recoil!);
+    expect(r.steps[0].players[0].recoilTaken).toBe(CARDS.cinderRing.recoil);
+    expect(r.steps[0].players[0].life).toBe(100 - CARDS.cinderRing.recoil!);
   });
 
   it('can knock Cinder out, and a double knockout is a draw', () => {
     let s = duel('cinder', 'marin', { r: 1, c: 0 }, { r: 0, c: 3 });
     s.players[0].life = 5;
-    expect(resolveRound(s, [['cinderJab', 'guard', 'focus'], IDLE]).state.outcome).toEqual({ winner: 1 });
+    expect(resolveRound(s, [['cinderRing', 'guard', 'focus'], IDLE]).state.outcome).toEqual({ winner: 1 });
     s = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
     s.players[0].life = 5;
     s.players[1].life = 20;
-    expect(resolveRound(s, [['cinderJab', 'guard', 'focus'], ['focus', 'guard', 'up']]).state.outcome).toEqual({ winner: null, draw: true });
+    expect(resolveRound(s, [['cinderRing', 'guard', 'focus'], ['focus', 'guard', 'up']]).state.outcome).toEqual({ winner: null, draw: true });
   });
 
   it('Rekindle only heals at 50 life or less (after this step’s hits)', () => {
