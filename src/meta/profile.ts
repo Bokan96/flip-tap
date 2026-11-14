@@ -20,6 +20,8 @@ export interface Profile {
   tutorialDone: boolean;
   /** The last few finished matches as replay codes, newest first (see meta/replay.ts). */
   recent: RecentMatch[];
+  /** First-time tips already shown in real matches (see ui/battle.ts). */
+  tipsSeen: string[];
 }
 
 export interface RecentMatch {
@@ -73,6 +75,7 @@ function emptyProfile(): Profile {
     daily: { lastWin: null, streak: 0, best: 0, results: {} },
     tutorialDone: false,
     recent: [],
+    tipsSeen: [],
   };
 }
 
@@ -123,6 +126,14 @@ export function resetProfile(): void {
 export const isTutorialDone = () => profile().tutorialDone;
 export function setTutorialDone(): void {
   profile().tutorialDone = true;
+  save();
+}
+
+// ---------- first-time tips ----------
+export const tipSeen = (id: string) => profile().tipsSeen.includes(id);
+export function markTipSeen(id: string): void {
+  if (tipSeen(id)) return;
+  profile().tipsSeen.push(id);
   save();
 }
 

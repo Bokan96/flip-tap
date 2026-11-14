@@ -74,6 +74,8 @@ export interface CardOpts {
   readonly?: boolean;
   /** Ammo fighters: an attack that was fired and needs a Reload. */
   spent?: boolean;
+  /** Greyed out for a reason: a small icon in the corner (⚡ energy, ⟳ reload, ⊥ planted). */
+  why?: string;
 }
 
 /** HTML for one card. `facing` flips the pattern preview so it matches the board. */
@@ -109,7 +111,7 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
   const costCls = c.cost > 0 ? 'gain' : c.cost < 0 ? 'spend' : 'free';
   const effects = cardEffects(id);
   const badges = effects.length
-    ? `<span class="badges">${effects.map((e) => `<i class="fx-${e}" title="${STRINGS.effectNames[e]}">${STRINGS.effectIcons[e]}</i>`).join('')}</span>`
+    ? `<span class="badges">${effects.map((e) => `<i class="fx-${e}" title="${STRINGS.effectNames[e]}" data-tip="${e}">${STRINGS.effectIcons[e]}</i>`).join('')}</span>`
     : '';
   const cls = [
     'card',
@@ -129,7 +131,7 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     <span class="cost ${costCls}" title="${STRINGS.cardTips.energy}">${STRINGS.cardCost(c.cost)}</span>${badges}
     <span class="art">${art}</span>
     <span class="name">${c.name}</span>
-    ${stat}${opts.spent ? `<span class="spent-tag">${STRINGS.spentTag}</span>` : ''}
+    ${stat}${opts.spent ? `<span class="spent-tag">${STRINGS.spentTag}</span>` : ''}${opts.why ? `<span class="why">${opts.why}</span>` : ''}
   </${tag}>`;
 }
 

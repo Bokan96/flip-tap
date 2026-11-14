@@ -693,7 +693,7 @@ function startTutorial(): void {
     difficulty: null,
     state: createTutorialMatch(),
     opponent: new ScriptedPlanSource(),
-    options: { hooks: tutorialHooks(), noTimer: true, confirmTap: true },
+    options: { hooks: tutorialHooks(), noTimer: true, confirmTap: true, tutorial: true },
     onEnd: (outcome) => {
       setTutorialDone();
       if (outcome.winner === 0) play('win');

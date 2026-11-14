@@ -219,6 +219,43 @@ export function canPlace(player: PlayerState, plan: Plan, slot: number, cardId: 
   return partialPlanOk(player, next);
 }
 
+/** Why a card can't go into a slot of a partial plan (see placeIssue). */
+export type PlaceIssue =
+  | { kind: 'full' }
+  | { kind: 'used' }
+  | { kind: 'reload' }
+  | { kind: 'planted' }
+  /** The card itself costs more than the energy left at that step. */
+  | { kind: 'energy'; need: number; have: number; step: number }
+  /** The card is affordable, but then a card planned after it can't be paid for. */
+  | { kind: 'later'; step: number }
+  | { kind: 'other' };
+
+/**
+ * Why `cardId` can't be placed into `slot` (-1: no free slot), or null if it can (same checks and
+ * order as partialPlanOk). Used to explain a greyed-out card.
+ */
+export function placeIssue(player: PlayerState, plan: Plan, slot: number, cardId: string): PlaceIssue | null {
+  if (slot < 0 || slot >= plan.length) return { kind: 'full' };
+  if (canPlace(player, plan, slot, cardId)) return null;
+  const next = [...plan];
+  next[slot] = cardId;
+  if (BALANCE.uniqueCardsPerPlan && plan.some((id, k) => k !== slot && id === cardId)) return { kind: 'used' };
+  if (!ammoOk(player, next)) return { kind: 'reload' };
+  if (!plantedOk(next)) return { kind: 'planted' };
+  const without = [...plan];
+  without[slot] = '';
+  const before = playerTrace(player, without);
+  if (before && !playerTrace(player, next)) {
+    // Energy left after an empty slot is the energy going into it (Two-tap's refill included).
+    const have = before[slot];
+    const cost = getCard(cardId).cost;
+    if (have + cost < 0) return { kind: 'energy', need: -cost, have, step: slot + 1 };
+    for (let k = slot + 1; k < next.length; k++) if (!playerTrace(player, next.slice(0, k + 1))) return { kind: 'later', step: k + 1 };
+  }
+  return { kind: 'other' };
+}
+
 /**
  * Fill the empty slots of a partial plan with free cards so it can be locked in
  * (used when the plan timer runs out). Prefers Guard, then movement, then Focus.

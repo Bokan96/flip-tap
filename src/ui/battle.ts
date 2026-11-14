@@ -16,13 +16,16 @@ import {
   faceTowards,
   movePos,
   partialPlanOk,
+  placeIssue,
   planError,
   playerTrace,
   resolveRound,
   samePos,
   stepsPerRound,
 } from '../engine/rules';
+import type { PlaceIssue } from '../engine/rules';
 import type { Facing, MatchLog, MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult, Trap } from '../engine/types';
+import { markTipSeen, tipSeen } from '../meta/profile';
 import type { PlanSource } from '../net/transport';
 import { fullEffects, getPlanTimer, isInstantSelect, speedMultiplier } from '../settings';
 import { cardHtml, describeCard, groupedCardsHtml, handRowLength, passiveHtml } from './card';
@@ -31,6 +34,8 @@ import { Fx, fxKind, haptic, retrigger, type FxKind } from './fx';
 import { bindSettings, settingsHtml } from './settingsPanel';
 import { themeColor } from './skin';
 import { emblemHtml, tokenArtHtml } from './emblems';
+import { beatCaption, beatStamp, endCaption, roundTips, whyNotText } from './narrate';
+import { closeTip, showTip } from './tips';
 
 export interface BattleSeat {
   name: string;
@@ -55,6 +60,8 @@ export interface BattleOptions {
   confirmTap?: boolean;
   /** Short label under the round counter, e.g. the daily challenge's rule twist. */
   tag?: string;
+  /** The guided tutorial: no round banners or first-time tips (it coaches by itself). */
+  tutorial?: boolean;
   /** Continue a saved match: the previous round's plans and the log so far. */
   resume?: { lastPlans: [Plan, Plan] | null; log: MatchLog };
   /** Called at the start of every round, before anyone plans (used to save the match). */
@@ -96,6 +103,10 @@ const CARD_MS = 1500;
 const FLOAT_MS = 2000;
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+/** Thrown by a recap's waits once it has been stopped or restarted. */
+const CANCELLED = Symbol('cancelled');
+/** Corner icon on a greyed-out card, by why it can't be planned (see placeIssue). */
+const WHY_ICONS: Partial<Record<PlaceIssue['kind'], string>> = { energy: '⚡', later: '⚡', reload: '⟳', planted: '⊥' };
 
 /** One-shot animations on a fighter's piece (class = keyframes name): one plays at a time (see tokenAnim). */
 const TOKEN_ANIMS = ['hop', 'skid', 'lunge', 'hurt'];
@@ -168,6 +179,8 @@ export class BattleView {
   private shownHex: [number, number] = [0, 0];
   /** The round being revealed or recapped. */
   private shownRound = 0;
+  /** The round the recap plays (for its loop, the tap-a-card replay and restoring the stamps). */
+  private recap: { result: RoundResult; start: RoundStart } | null = null;
   /** On touch, a tapped hand card is first only selected (previewed); a second tap adds it (unless Instant select is on). */
   private armed: string | null = null;
   /** Pointer type of the latest press, so a mouse click can still add a card straight away. */
@@ -222,6 +235,7 @@ export class BattleView {
     this.paused = false;
     this.replayRun++;
     this.stopTimer();
+    closeTip();
     duckMusic(false);
   }
 
@@ -230,6 +244,8 @@ export class BattleView {
     const playing = (m?: string) => m === 'reveal' || m === 'summary';
     const from = playing(this.el.dataset.mode) !== playing(mode) && fullEffects() ? this.q('.arena').getBoundingClientRect() : null;
     this.el.dataset.mode = mode;
+    closeTip();
+    this.el.querySelector('.status')?.classList.remove('why');
     if (from) this.zoomBoardFrom(from);
     if (mode !== 'plan') {
       // Never leave a planned path, planned energy or hover highlight for the other player to see.
@@ -269,6 +285,8 @@ export class BattleView {
         const src = this.seats[seat].source;
         return src.kind === 'cpu' ? src.requestPlan(this.state, seat, this.log) : null;
       });
+      // From round 2: a short banner with what carries into this round.
+      if (this.state.round > 1 && this.tipsOn()) await this.roundBanner();
       for (const seat of [0, 1] as Seat[]) {
         const src = this.seats[seat].source;
         if (src.kind === 'human' && bothHuman) await this.passScreen(seat);
@@ -299,7 +317,7 @@ export class BattleView {
       if (A.blocked.includes(i)) return `<div class="tile blocked" data-r="${r}" data-c="${c}" title="${STRINGS.tileNames.blocked}"></div>`;
       const kind = A.tiles[i];
       const icon = kind ? `<span class="tile-icon">${STRINGS.tileIcons[kind]}</span>` : '';
-      return `<div class="tile${kind ? ` tile-${kind}` : ''}" data-r="${r}" data-c="${c}"${kind ? ` title="${STRINGS.tileNames[kind]}"` : ''}>${icon}</div>`;
+      return `<div class="tile${kind ? ` tile-${kind}` : ''}" data-r="${r}" data-c="${c}"${kind ? ` title="${STRINGS.tileNames[kind]}" data-tip="${kind}"` : ''}>${icon}</div>`;
     }).join('');
     // Plain pieces in the player's colour (no fighter emblem); a reskin may still give them a picture.
     const tokens = this.state.players
@@ -380,14 +398,19 @@ export class BattleView {
 
     this.el.addEventListener('click', (e) => {
       const t = e.target as HTMLElement;
-      if (t.closest('.modal, .pass, .summary')) return;
+      if (t.closest('.modal, .pass, .summary, .round-banner')) return;
       if (t.closest('[data-act="menu"]')) return this.openMenu();
       if (t.closest('.planner, .slots')) return this.onPlannerClick(e);
-      const seatEl = t.closest<HTMLElement>('.token, .panel');
-      if (seatEl) return this.showDeck(Number(seatEl.dataset.seat) as Seat);
       // A fighter standing on a trap sits above it, so tapping that square opens the fighter.
       const trapEl = t.closest<HTMLElement>('.trap-mark');
-      if (trapEl) this.showTrap(Number(trapEl.dataset.at));
+      if (trapEl) return this.showTrap(Number(trapEl.dataset.at));
+      // Icons explain themselves: card badges, status chips, square effects.
+      const tipEl = t.closest<HTMLElement>('[data-tip]');
+      if (tipEl) return showTip(tipEl.dataset.tip!, tipEl);
+      const seatEl = t.closest<HTMLElement>('.token, .panel');
+      if (seatEl) return this.showDeck(Number(seatEl.dataset.seat) as Seat);
+      const cardEl = t.closest<HTMLElement>('.play-card');
+      if (cardEl) this.onPlayCardTap(cardEl);
     });
     this.el.addEventListener('pointerdown', (e) => (this.lastPointer = e.pointerType), true);
     this.el.addEventListener('pointerover', (e) => {
@@ -434,7 +457,7 @@ export class BattleView {
       const panel = this.q(`.panel.p${i}`);
       if (!panel.dataset.ready) {
         panel.innerHTML = `${emblemHtml(f, 'hud-emblem')}
-          <div class="who"><b>${this.seats[i].name}</b><span>${f.name}</span></div>
+          <div class="who"><b>${this.seats[i].name}</b><span>${f.name}</span><div class="status-chips"></div></div>
           <div class="bars">
             <div class="bar life"><b class="chip"></b><i></i><span></span></div>
             <div class="bar energy"><i></i><em class="planned"></em><span></span></div>
@@ -451,10 +474,31 @@ export class BattleView {
       // The pale "chip" trails behind so the damage just taken stays visible for a moment.
       (lb.querySelector('.chip') as HTMLElement).style.width = lifePct;
       lb.querySelector('span')!.textContent = `♥ ${life}`;
+      // Low on life: the bar pulses red.
+      panel.classList.toggle('low', life > 0 && life <= p.lifeMax * 0.3);
       const eb = panel.querySelector('.bar.energy')!;
       (eb.querySelector('i') as HTMLElement).style.width = `${(energy / p.energyMax) * 100}%`;
       eb.querySelector('span')!.textContent = `⚡ ${energy}`;
     });
+    this.renderChips();
+  }
+
+  /** Status chips under each fighter's name: hex, stun, their traps on the board, spent shots. */
+  private renderChips(): void {
+    const chip = (key: string, text: string) => `<i class="chip-fx ${key}" data-tip="${key}">${text}</i>`;
+    for (const i of [0, 1]) {
+      const box = this.el.querySelector(`.panel.p${i} .status-chips`);
+      if (!box) continue;
+      const p = this.state.players[i];
+      const traps = this.shownTraps.filter((t) => t.owner === i).length;
+      const spent = p.mods.ammo ? p.spent.length : 0;
+      box.innerHTML = [
+        this.shownHex[i] ? chip('hex', `${STRINGS.effectIcons.hex}+${this.shownHex[i]}`) : '',
+        this.q(`.token.p${i}`).classList.contains('dazed') ? chip('stun', STRINGS.effectIcons.stun) : '',
+        traps ? chip('trap', `${STRINGS.effectIcons.trap}${traps}`) : '',
+        spent ? chip('spent', `⟳${spent}`) : '',
+      ].join('');
+    }
   }
 
   /** Set the bars straight to these numbers, without sliding (the recap rewinding to a round's start). */
@@ -493,6 +537,73 @@ export class BattleView {
   private setHex(seat: number, hex: number): void {
     this.shownHex[seat] = hex;
     this.q(`.token.p${seat}`).classList.toggle('hexed', hex > 0);
+    this.renderChips();
+  }
+
+  /** Mark (or clear) a fighter as stunned: their next card is cancelled. */
+  private setDazed(seat: number, on: boolean): void {
+    this.q(`.token.p${seat}`).classList.toggle('dazed', on);
+    this.renderChips();
+  }
+
+  /** The caption line under the board: what the card playing now does. */
+  private setCaption(text: string): void {
+    const el = this.el.querySelector('.summary .caption');
+    if (el) el.textContent = text;
+  }
+
+  /** Stamp a played card with its outcome, replacing any earlier stamp. */
+  private stamp(seat: number, slot: number, kind: string, text: string): void {
+    const face = this.playCard(seat, slot).querySelector('.play-face')!;
+    face.querySelector('.play-stamp')?.remove();
+    const el = document.createElement('span');
+    el.className = `play-stamp ${kind}`;
+    el.textContent = text;
+    face.appendChild(el);
+  }
+
+  /** Every played card of the recapped round with its stamp (after the recap stops part-way). */
+  private stampAll(): void {
+    for (const step of this.recap?.result.steps ?? []) {
+      for (const i of [0, 1] as Seat[]) {
+        const st = beatStamp(step, i);
+        if (st) this.stamp(i, step.slot, st.kind, st.text);
+      }
+    }
+  }
+
+  /** Banners and first-time tips: real matches only (the tutorial coaches by itself). */
+  private tipsOn(): boolean {
+    return !this.opts.tutorial && !this.opts.replay;
+  }
+
+  /** A short banner as a round starts: the round number and what carries into it. */
+  private async roundBanner(): Promise<void> {
+    this.setMode('idle');
+    const B = STRINGS.banner;
+    const st = this.state;
+    const names = [this.seats[0].name, this.seats[1].name];
+    const gain = st.players.map(energyRecovery);
+    const lines = [gain[0] === gain[1] ? B.energy(gain[0]) : B.energyEach(names[0], gain[0], names[1], gain[1])];
+    if (st.arena.traps.some((t) => t.until === st.round)) lines.push(B.trapsFade);
+    st.players.forEach((p, i) => {
+      if (p.hex) lines.push(B.hexed(names[i], p.hex));
+      if (p.dazed && heldCard(p)) lines.push(B.stunned(names[i]));
+    });
+    const after = fatigueAfterRound(st);
+    if (st.round === after) lines.push(B.fatigueSoon);
+    else if (st.round > after) lines.push(B.fatigue(fatigueDamage(st)));
+    const el = document.createElement('div');
+    el.className = 'round-banner';
+    el.innerHTML = `<b>${STRINGS.round(st.round)}</b>${lines.map((l) => `<span>${l}</span>`).join('')}`;
+    this.q('.arena-wrap').appendChild(el);
+    // Gone after a moment, or at a tap.
+    await new Promise<void>((res) => {
+      el.addEventListener('click', () => res());
+      void this.hold(1800).then(res);
+    });
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 260);
   }
 
   /** Play a one-shot animation on a fighter's piece, cutting off any other one still playing. */
@@ -580,6 +691,7 @@ export class BattleView {
       mark.innerHTML = `<b>${STRINGS.effectIcons.trap} ${t.damage}</b>`;
       tile.appendChild(mark);
     }
+    this.renderChips();
     return fresh.size > 0;
   }
 
@@ -692,6 +804,11 @@ export class BattleView {
        }
        <div class="hand grouped" style="--row-n:${handRowLength(p.deck)}">${groupedCardsHtml(p.deck, (id) => cardHtml(id, { facing: p.facing, readonly: true, spent: isSpent(p, id) }))}</div>
        <button class="btn" data-modal="close">${STRINGS.close}</button>`,
+      (box) =>
+        box.addEventListener('click', (e) => {
+          const tip = (e.target as HTMLElement).closest<HTMLElement>('[data-tip]');
+          if (tip) showTip(tip.dataset.tip!, tip);
+        }),
     );
   }
 
@@ -756,6 +873,10 @@ export class BattleView {
       this.renderPlanner();
       void (async () => {
         await this.opts.hooks?.planStart?.(this, state.round, seat);
+        if (held && this.tipsOn() && !tipSeen('twoTap') && this.resolvePlan === res) {
+          await this.coach(STRINGS.firstTips.twoTap);
+          markTipSeen('twoTap');
+        }
         if (this.resolvePlan === res) this.startTimer();
       })();
     });
@@ -862,6 +983,26 @@ export class BattleView {
     if (this.coachHighlight) this.el.querySelectorAll(this.coachHighlight).forEach((e) => e.classList.add('coach-hl'));
   }
 
+  /** Why `id` can't go into `slot` of `plan` right now, in words (null if it can). */
+  private whyNot(id: string, plan = this.plan, slot = this.nextEmptySlot()): string | null {
+    const issue = placeIssue(this.state.players[this.planSeat], plan, slot, id);
+    return issue && whyNotText(issue, getCard(id).name);
+  }
+
+  /** Refuse a card: a buzz, and the reason in the status line. */
+  private deny(id: string, plan?: Plan, slot?: number): void {
+    play('deny');
+    const why = this.whyNot(id, plan, slot);
+    if (why) this.setStatus(why, true);
+  }
+
+  /** The planner's status line; a reason a card can't be planned reads as a plain sentence. */
+  private setStatus(text: string, why = false): void {
+    const el = this.q('.status');
+    el.textContent = text;
+    el.classList.toggle('why', why);
+  }
+
   private nextEmptySlot(): number {
     return this.plan.findIndex((id) => !id);
   }
@@ -903,12 +1044,16 @@ export class BattleView {
     this.q('.hand').innerHTML = groupedCardsHtml(me.deck, (id) => {
       const used = this.plan.includes(id);
       const ok = target >= 0 && canPlace(me, this.plan, target, id);
-      return cardHtml(id, { facing: facings[Math.max(0, target)], disabled: used || !ok, selected: used, spent: isSpent(me, id) });
+      const issue = !ok && !used && target >= 0 ? placeIssue(me, this.plan, target, id) : null;
+      const why = issue ? WHY_ICONS[issue.kind] : undefined;
+      return cardHtml(id, { facing: facings[Math.max(0, target)], disabled: used || !ok, selected: used, spent: isSpent(me, id), why });
     });
     this.q<HTMLButtonElement>('[data-act="lock"]').disabled = planError(me, this.plan) !== null;
     const armedOk = !!this.armed && target >= 0 && canPlace(me, this.plan, target, this.armed);
     if (this.armed) this.q('.hand').querySelector(`.card[data-card="${this.armed}"]`)?.classList.add('armed');
-    this.q('.status').textContent = armedOk ? STRINGS.tapAgainToAdd(getCard(this.armed!).name) : this.planningText();
+    // A selected card that can't be planned says why.
+    const why = !armedOk && this.armed ? this.whyNot(this.armed) : null;
+    this.setStatus(armedOk ? STRINGS.tapAgainToAdd(getCard(this.armed!).name) : why || this.planningText(), !!why);
     this.renderPreview();
     this.renderPreviewPanel();
     this.applyHighlight();
@@ -1059,7 +1204,7 @@ export class BattleView {
         this.renderPlanner();
         return;
       }
-      if (slot < 0 || !canPlace(me, this.plan, slot, id)) return play('deny');
+      if (slot < 0 || !canPlace(me, this.plan, slot, id)) return this.deny(id);
       play('place');
       haptic('tap');
       this.previewCard = id;
@@ -1114,8 +1259,11 @@ export class BattleView {
     const next = this.dropResult(under, src);
     if (!next) return;
     if (!partialPlanOk(this.state.players[this.planSeat], next)) {
-      play('deny');
       const target = under?.closest<HTMLElement>('.slots [data-slot]');
+      // A card from the hand that can't go there says why.
+      const id = src.dataset.card!;
+      if (target && !src.closest('[data-slot]')) this.deny(id, this.plan.map((x) => (x === id ? '' : x)), Number(target.dataset.slot));
+      else play('deny');
       target?.classList.remove('shake');
       void target?.offsetWidth;
       target?.classList.add('shake');
@@ -1130,6 +1278,7 @@ export class BattleView {
 
   private async animateRound(plans: [Plan, Plan]): Promise<void> {
     const result = resolveRound(this.state, plans);
+    this.recap = null;
     const ps = this.state.players;
     const start: RoundStart = {
       pos: [{ ...ps[0].pos }, { ...ps[1].pos }],
@@ -1194,32 +1343,51 @@ export class BattleView {
       await this.sleep('energy');
     }
     if (this.destroyed) return;
-    await this.showSummary(roundNo, plans, result, start);
+    this.setCaption('');
+    // First-time tips for what this round showed (two at most, each only ever once).
+    const tips = this.tipsOn() ? roundTips(result).filter((id) => !tipSeen(id)).slice(0, 2) : [];
+    await this.showSummary(roundNo, plans, result, start, tips);
   }
 
   /**
    * Play one step on the board, one card after the other (moves, then guard/focus/reload, then
-   * attacks in strike order, then heals and traps), every card taking at least CARD_MS. Then square
-   * effects, traps springing and a knockout. The reveal plays it live (sounds, cards flipping face up
-   * as they play); the recap plays it silently. `view` is what the board and HUD show, carried from
-   * step to step; it ends on the step's exact result.
+   * attacks in strike order, then heals and traps), every card taking at least CARD_MS, each with a
+   * caption and an outcome stamp on its card. Then square effects, traps springing and a knockout.
+   * The reveal plays it live (sounds, cards flipping face up as they play); the recap plays it
+   * silently. `view` is what the board and HUD show, carried from step to step; it ends on the
+   * step's exact result.
+   *
+   * With `only` (a seat), just that player's card plays: a card before it in the step applies at
+   * once without any effects, and nothing after it plays (the recap's tap-a-card replay).
    */
-  private async playStep(step: StepResult, pb: Playback, view: BoardView, plans?: [Plan, Plan]): Promise<void> {
+  private async playStep(step: StepResult, pb: Playback, view: BoardView, plans?: [Plan, Plan], only?: number): Promise<void> {
     const P = step.players;
     const ps = this.state.players;
+    const names: [string, string] = [this.seats[0].name, this.seats[1].name];
     const tokens = [this.q('.token.p0'), this.q('.token.p1')];
     const color = (i: number) => getFighter(ps[i].fighterId).color;
-    const sfx = (id: SoundId) => pb.live && play(id);
     const ms = (n: number) => n * pb.pace();
+    /** A card applied at once and silently (before the tapped card in `only` mode). */
+    let ghost = false;
+    const show = (f: () => void) => {
+      if (!ghost) f();
+    };
+    const sfx = (id: SoundId) => show(() => pb.live && play(id));
+    const pause = (n: number) => (ghost ? Promise.resolve() : pb.wait(n));
     const stacks = [0, 0];
-    const float = (i: number, text: string, cls: string, amount = 0) => this.floatText(view.pos[i], text, cls, stacks[i]++, amount);
+    const float = (i: number, text: string, cls: string, amount = 0) => show(() => this.floatText(view.pos[i], text, cls, stacks[i]++, amount));
     const life = (i: number, n: number) => (view.lives[i] = clamp(view.lives[i] + n, 0, ps[i].lifeMax));
     const energy = (i: number, n: number) => (view.energies[i] = clamp(view.energies[i] + n, 0, ps[i].energyMax));
     const hud = () => this.renderHud(view.lives, view.energies);
+    const stampCard = (i: number) => {
+      const s = beatStamp(step, i as Seat);
+      if (s) this.stamp(i, step.slot, s.kind, s.text);
+    };
     /** Put the pieces where the view has them, facing each other (as the rules do after every move). */
     const place = () => {
       for (const i of [0, 1] as const) view.facing[i] = faceTowards(view.pos[i], view.pos[i === 0 ? 1 : 0], view.facing[i]);
-      this.placeTokens(view.pos, view.facing);
+      if (ghost) this.snapTokens(view.pos, view.facing);
+      else this.placeTokens(view.pos, view.facing);
     };
 
     /** An attack: the attacker stands out, its squares light up, then the hit lands. */
@@ -1232,28 +1400,32 @@ export class BattleView {
         return;
       }
       if (step.sequence?.[0] === a) float(a, STRINGS.firstStrike, 'first');
-      this.strikeFx(a);
-      tokens[d].classList.add('dimmed');
-      await pb.wait(260);
+      show(() => {
+        this.strikeFx(a);
+        tokens[d].classList.add('dimmed');
+      });
+      await pause(260);
       const kind = fxKind(getCard(pa.cardId));
-      this.showArea(pa.area, `area-p${a}`, view.pos[a], kind);
+      show(() => this.showArea(pa.area, `area-p${a}`, view.pos[a], kind));
       sfx(kind);
-      await pb.wait(600);
+      await pause(600);
 
       // A short hit-stop before the impact.
-      if (pb.live && fullEffects() && (pd.damageTaken > 0 || pa.counterTaken > 0)) await wait(90);
+      if (!ghost && pb.live && fullEffects() && (pd.damageTaken > 0 || pa.counterTaken > 0)) await wait(90);
       const sounds: SoundId[] = [];
       let biggest = 0;
       if (pd.hit === 'hit' || (pd.hit === 'guard' && pd.damageTaken > 0)) {
-        this.hurtFx(d, view.pos[d], view.pos[a]);
-        this.fx.particles(view.pos[d], color(a), 10);
-        if (pd.hit === 'guard') this.fx.ring(view.pos[d], 'shield');
+        show(() => {
+          this.hurtFx(d, view.pos[d], view.pos[a]);
+          this.fx.particles(view.pos[d], color(a), 10);
+          if (pd.hit === 'guard') this.fx.ring(view.pos[d], 'shield');
+        });
         float(d, `-${pd.damageTaken}`, pd.hit === 'guard' ? 'guarded' : 'damage', pd.damageTaken);
         life(d, -pd.damageTaken);
         biggest = pd.damageTaken;
         sounds.push(pd.hit === 'hit' ? 'hit' : 'guard');
       } else if (pd.hit === 'guard') {
-        this.fx.ring(view.pos[d], 'shield');
+        show(() => this.fx.ring(view.pos[d], 'shield'));
         float(d, STRINGS.guarded, 'guarded');
         sounds.push('guard');
       } else if (pd.hit === 'miss') {
@@ -1262,55 +1434,59 @@ export class BattleView {
       }
       if (pa.counterTaken > 0) {
         // Sparks fly back from the defender into the attacker.
-        this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-counter'), 4, 'spark');
-        const k = stacks[a]++;
-        const at = { ...view.pos[a] };
-        const from = { ...view.pos[d] };
-        setTimeout(() => {
-          this.hurtFx(a, at, from);
-          this.floatText(at, `${STRINGS.effectIcons.counter} -${pa.counterTaken}`, 'damage', k, pa.counterTaken);
-        }, ms(fullEffects() ? 420 : 0));
+        if (!ghost) {
+          this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-counter'), 4, 'spark');
+          const k = stacks[a]++;
+          const at = { ...view.pos[a] };
+          const from = { ...view.pos[d] };
+          setTimeout(() => {
+            this.hurtFx(a, at, from);
+            this.floatText(at, `${STRINGS.effectIcons.counter} -${pa.counterTaken}`, 'damage', k, pa.counterTaken);
+          }, ms(fullEffects() ? 420 : 0));
+        }
         life(a, -pa.counterTaken);
         biggest = Math.max(biggest, pa.counterTaken);
         sounds.push('clang');
       }
       if (pd.dazed) {
-        tokens[d].classList.add('dazed');
-        this.fx.ring(view.pos[d], 'stun');
+        this.setDazed(d, true);
+        show(() => this.fx.ring(view.pos[d], 'stun'));
         float(d, STRINGS.dazed, 'stun');
         sounds.push('zap');
       }
       if (pd.energyLost > 0) {
         // Energy crackles out of the target toward the attacker.
-        this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-sap'), 5, 'spark');
+        show(() => this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-sap'), 5, 'spark'));
         float(d, STRINGS.sapped(pd.energyLost), 'sap');
         energy(d, -pd.energyLost);
         sounds.push('zap');
       }
       if (pd.hexBroken) {
-        this.fx.particles(view.pos[d], themeColor('--fx-hex'), 14);
+        show(() => this.fx.particles(view.pos[d], themeColor('--fx-hex'), 14));
         float(d, STRINGS.hexBrokenFloat, 'hex');
         sounds.push('shimmer');
       } else if (pd.hexApplied) {
-        this.fx.gather(view.pos[d], themeColor('--fx-hex'), 8);
+        show(() => this.fx.gather(view.pos[d], themeColor('--fx-hex'), 8));
         float(d, STRINGS.hexedFloat, 'hex');
         sounds.push('shimmer');
       }
       this.setHex(d, pd.hex);
       if (pa.drained > 0) {
-        this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-drain'), 6, 'mote');
+        show(() => this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-drain'), 6, 'mote'));
         float(a, `+${pa.drained}`, 'heal');
         life(a, pa.drained);
         sounds.push('shimmer');
       }
       if (pa.recoilTaken > 0) {
-        this.hurtFx(a, view.pos[a], null);
-        this.fx.particles(view.pos[a], themeColor('--fx-recoil'), 8);
+        show(() => {
+          this.hurtFx(a, view.pos[a], null);
+          this.fx.particles(view.pos[a], themeColor('--fx-recoil'), 8);
+        });
         float(a, STRINGS.recoiled(pa.recoilTaken), 'recoil', pa.recoilTaken);
         life(a, -pa.recoilTaken);
         sounds.push('burn');
       }
-      if (pb.live) {
+      if (pb.live && !ghost) {
         [...new Set(sounds)].forEach((id, k) => setTimeout(() => play(id), k * 110));
         if (biggest > 0) {
           const strength = biggest >= 40 ? 3 : biggest >= 25 ? 2 : 1;
@@ -1319,6 +1495,8 @@ export class BattleView {
         }
       }
       hud();
+      // A guard that met this attack gets its stamp now.
+      if (getCard(pd.cardId).kind === 'guard') stampCard(d);
 
       // The attack shatters the enemy traps it covered.
       const cols = this.state.arena.cols;
@@ -1326,16 +1504,18 @@ export class BattleView {
         (t) => t.owner !== a && step.brokenTraps.includes(t.at) && pa.area.some((q) => q.r * cols + q.c === t.at),
       );
       if (broken.length) {
-        for (const t of broken) this.fx.particles({ r: Math.floor(t.at / cols), c: t.at % cols }, themeColor('--trap'), 8, 'dust');
+        show(() => broken.forEach((t) => this.fx.particles({ r: Math.floor(t.at / cols), c: t.at % cols }, themeColor('--trap'), 8, 'dust')));
         this.renderTraps(this.shownTraps.filter((t) => !broken.includes(t)));
         sfx('thud');
       }
 
       // A push or pull lands just after the hit.
       if (!samePos(view.pos[d], pd.final)) {
-        await pb.wait(300);
-        this.tokenAnim(d, 'skid');
-        this.fx.particles(view.pos[d], themeColor('--fx-dust'), 6, 'dust');
+        await pause(300);
+        show(() => {
+          this.tokenAnim(d, 'skid');
+          this.fx.particles(view.pos[d], themeColor('--fx-dust'), 6, 'dust');
+        });
         view.pos[d] = { ...pd.final };
         place();
         sfx('thud');
@@ -1348,33 +1528,40 @@ export class BattleView {
       return c.kind === 'move' ? (c.swap ? 1.5 : 1) : c.kind === 'attack' ? 3 : c.kind === 'heal' || c.kind === 'trap' ? 4 : 2;
     };
     const order = [0, 1].sort((x, y) => phase(x) - phase(y) || (step.sequence ? step.sequence.indexOf(x as Seat) - step.sequence.indexOf(y as Seat) : x - y));
+    const last = only === undefined ? order.length - 1 : order.indexOf(only);
 
-    for (const i of order) {
+    for (const [k, i] of order.entries()) {
+      if (k > last) break;
+      ghost = only !== undefined && k < last;
       const p = P[i];
       const o = i === 0 ? 1 : 0;
       const c = getCard(p.cardId);
       const t0 = performance.now();
       const card = this.playCard(i, step.slot);
-      this.markCard(i, step.slot);
+      if (!ghost) {
+        this.markCard(i, step.slot);
+        card.querySelector('.play-stamp')?.remove();
+      }
       if (pb.live && plans) {
         // The card steps forward face down, then flips over.
         card.className = `play-card now face-down${p.active ? '' : ' inactive'}${p.stunned ? ' stunned' : ''}`;
         card.querySelector('.play-face')!.innerHTML =
           cardHtml(plans[i][step.slot], { facing: p.facing, readonly: true }) + (p.stunned ? `<span class="play-tag">${STRINGS.stunned}</span>` : '');
         sfx('place');
-        await pb.wait(200);
+        await pause(200);
         card.classList.remove('face-down');
         card.classList.add('flipped');
         sfx('flip');
       }
-      await pb.wait(250);
+      if (!ghost) this.setCaption(beatCaption(step, i as Seat, names));
+      await pause(250);
 
       if (p.stunned) {
         // Cancelled by a stun: the card plays out as nothing.
-        tokens[i].classList.remove('dazed');
+        this.setDazed(i, false);
         float(i, STRINGS.stunned, 'stun');
       } else if (p.active) {
-        this.cardActs(i, step.slot);
+        show(() => this.cardActs(i, step.slot));
         energy(i, c.cost);
         hud();
         if (c.kind === 'move' && c.swap) {
@@ -1382,9 +1569,9 @@ export class BattleView {
           if (p.swapped && !(samePos(view.pos[0], P[0].to) && samePos(view.pos[1], P[1].to))) {
             view.pos = [{ ...P[0].to }, { ...P[1].to }];
             place();
-            [0, 1].forEach((k) => {
-              this.tokenAnim(k, 'hop');
-              float(k, STRINGS.swappedFloat, 'swap');
+            [0, 1].forEach((j) => {
+              show(() => this.tokenAnim(j, 'hop'));
+              float(j, STRINGS.swappedFloat, 'swap');
             });
             sfx('swap');
           }
@@ -1394,18 +1581,22 @@ export class BattleView {
           if (!samePos(dest, view.pos[i])) {
             view.pos[i] = { ...dest };
             place();
-            this.tokenAnim(i, 'hop');
-            setTimeout(() => this.fx.particles(dest, themeColor('--fx-dust'), 6, 'dust'), ms(420));
+            show(() => {
+              this.tokenAnim(i, 'hop');
+              setTimeout(() => this.fx.particles(dest, themeColor('--fx-dust'), 6, 'dust'), ms(420));
+            });
             sfx('step');
           }
         } else if (c.kind === 'guard') {
           // The shield stays up for the rest of the step.
           tokens[i].classList.add('guarding');
-          this.fx.ring(view.pos[i], 'shield');
+          show(() => this.fx.ring(view.pos[i], 'shield'));
           sfx('guard');
         } else if (c.kind === 'focus') {
-          retrigger(tokens[i], 'focusing');
-          this.fx.gather(view.pos[i], themeColor('--energy'), 10);
+          show(() => {
+            retrigger(tokens[i], 'focusing');
+            this.fx.gather(view.pos[i], themeColor('--energy'), 10);
+          });
           if (c.cost > 0) float(i, STRINGS.energyBack(c.cost), 'energy');
           sfx('shimmer');
         } else if (c.kind === 'reload') {
@@ -1424,19 +1615,26 @@ export class BattleView {
           // This player's new traps appear (springing and breaking show at their own moments).
           const mine = step.traps.filter((t) => t.owner === i);
           const kept = this.shownTraps.filter((t) => t.owner !== i || !mine.some((m) => m.at === t.at));
-          if (this.renderTraps([...kept, ...mine], true)) sfx('place');
+          if (this.renderTraps([...kept, ...mine], !ghost)) sfx('place');
         }
       }
+      // Guard cards are stamped by the attack they meet (see strike).
+      if (c.kind !== 'guard') stampCard(i);
       // Every card gets the same time on the board, however little it does.
       const rest = CARD_MS - (performance.now() - t0) / pb.pace();
-      if (rest > 0) await pb.wait(rest);
-      this.clearAreas();
+      if (rest > 0) await pause(rest);
+      if (!ghost) this.clearAreas();
     }
+    // The tap-a-card replay stops after its card.
+    if (only !== undefined) return;
 
     // Arena squares and enemy traps, for whoever ends the step on one. No card does this, so no card
     // stays in the spotlight while it happens.
-    const extra = P.some((p) => p.tile || p.trapDamage > 0);
-    if (extra) this.markCard(null);
+    const end = endCaption(step, names);
+    if (end) {
+      this.markCard(null);
+      this.setCaption(end);
+    }
     P.forEach((p, i) => {
       if (p.tile === 'spikes') {
         this.hurtFx(i, p.final, null);
@@ -1461,7 +1659,7 @@ export class BattleView {
     hud();
     this.renderTraps(step.traps);
     this.showHexes([P[0].hex, P[1].hex]);
-    if (extra) await pb.wait(CARD_MS * 0.6);
+    if (end) await pb.wait(CARD_MS * 0.6);
 
     // Knockout: flash, and the loser falls.
     if (step.outcome) {
@@ -1487,12 +1685,14 @@ export class BattleView {
     this.showHexes([this.state.players[0].hex, this.state.players[1].hex]);
     this.markCard(null);
     this.renderHud();
+    this.stampAll();
+    if (this.recap) this.setCaption(STRINGS.narrate.tapCard);
     const ps = this.state.players;
     this.snapTokens([ps[0].pos, ps[1].pos], [ps[0].facing, ps[1].facing]);
     const o = this.state.outcome;
     [0, 1].forEach((i) => {
       const t = this.q(`.token.p${i}`);
-      t.classList.remove('dazed', 'guarding', 'focusing', ...TOKEN_ANIMS);
+      t.classList.remove('guarding', 'focusing', ...TOKEN_ANIMS);
       t.classList.toggle('ko', !!o && (o.winner === null || o.winner !== i));
       t.classList.remove('ko-fall');
     });
@@ -1501,7 +1701,7 @@ export class BattleView {
 
   /** Stun marks for whoever is still stunned between rounds (only in Two-tap: it cancels the held card). */
   private showDazed(): void {
-    this.state.players.forEach((p, i) => this.q(`.token.p${i}`).classList.toggle('dazed', p.dazed));
+    this.state.players.forEach((p, i) => this.setDazed(i, p.dazed));
   }
 
   /** Two-tap: the card each player holds over for next round stays face down, with a lock. */
@@ -1515,14 +1715,9 @@ export class BattleView {
     }
   }
 
-  /**
-   * Loop the round on the board (silently), card by card exactly like the reveal, with the HUD bars
-   * following along and a short pause before each loop. Runs until `replayRun` changes.
-   */
-  private async replayRound(result: RoundResult, start: RoundStart, run: number): Promise<void> {
-    const CANCELLED = Symbol('cancelled');
-    const tokens = [this.q('.token.p0'), this.q('.token.p1')];
-    const recap: Playback = {
+  /** Silent recap playback; its waits throw CANCELLED once `replayRun` moves on from `run`. */
+  private recapPlayback(run: number): Playback {
+    return {
       live: false,
       pace: speedMultiplier,
       wait: async (ms: number) => {
@@ -1531,21 +1726,54 @@ export class BattleView {
         if (this.replayRun !== run || this.destroyed) throw CANCELLED;
       },
     };
+  }
+
+  /**
+   * Put the board and HUD back to how they were as step `slot` of the recapped round began
+   * (the round's start plus the steps before it). Returns that view.
+   */
+  private rewindTo(slot: number): BoardView {
+    const { result, start } = this.recap!;
+    const prev = slot > 0 ? result.steps[slot - 1] : null;
+    const view: BoardView = prev
+      ? {
+          pos: [{ ...prev.players[0].final }, { ...prev.players[1].final }],
+          facing: [prev.players[0].facing, prev.players[1].facing],
+          lives: [prev.players[0].life, prev.players[1].life],
+          energies: [prev.players[0].energy, prev.players[1].energy],
+        }
+      : boardView(start);
+    this.markCard(null);
+    this.setCaption('');
+    this.clearAreas();
+    [0, 1].forEach((i) => {
+      this.q(`.token.p${i}`).classList.remove('ko', 'ko-fall', 'guarding', ...TOKEN_ANIMS);
+      this.setDazed(i, !!prev?.players[i].dazed);
+    });
+    this.renderTraps(prev ? prev.traps : start.traps);
+    this.showHexes(prev ? [prev.players[0].hex, prev.players[1].hex] : start.hex);
+    this.snapTokens(view.pos, view.facing);
+    this.snapHud(view.lives, view.energies);
+    return view;
+  }
+
+  /**
+   * Loop the round on the board (silently), card by card exactly like the reveal, with the HUD bars
+   * following along and a short pause before each loop. Runs until `replayRun` changes.
+   */
+  private async replayRound(run: number): Promise<void> {
+    const { result } = this.recap!;
+    const tokens = [this.q('.token.p0'), this.q('.token.p1')];
+    const recap = this.recapPlayback(run);
     try {
       for (;;) {
-        this.markCard(null);
-        tokens.forEach((t) => t.classList.remove('ko', 'ko-fall', 'dazed'));
-        this.clearAreas();
-        this.renderTraps(start.traps);
-        this.showHexes(start.hex);
-        this.snapTokens(start.pos, start.facing);
-        this.snapHud(start.lives, start.energies);
-        const view = boardView(start);
+        const view = this.rewindTo(0);
         await recap.wait(700);
         for (const step of result.steps) await this.playStep(step, recap, view);
 
         // End of the round: fatigue, then the energy refill; the bars land on the round's final numbers.
         this.markCard(null);
+        this.setCaption(STRINGS.narrate.tapCard);
         const end = this.state.players;
         if (result.fatigue > 0) {
           end.forEach((p, i) => {
@@ -1569,6 +1797,33 @@ export class BattleView {
     } catch (e) {
       if (e !== CANCELLED) throw e;
     }
+  }
+
+  /** Recap: replay one played card from the start of its step, then put the board back. */
+  private async replayCard(seat: number, slot: number): Promise<void> {
+    const run = ++this.replayRun;
+    const btn = this.el.querySelector<HTMLElement>('.summary [data-act="replay"]');
+    if (btn) btn.textContent = STRINGS.replay;
+    const recap = this.recapPlayback(run);
+    try {
+      const view = this.rewindTo(slot);
+      await recap.wait(300);
+      await this.playStep(this.recap!.result.steps[slot], recap, view, undefined, seat);
+      await recap.wait(900);
+      this.restoreBoard();
+    } catch (e) {
+      if (e !== CANCELLED) throw e;
+    }
+  }
+
+  /** A tap on a card in the play area: in the recap, a played card replays. */
+  private onPlayCardTap(el: HTMLElement): void {
+    if (this.el.dataset.mode !== 'summary' || !this.recap || this.opts.replay) return;
+    const slot = Number(el.dataset.step);
+    const seat = Number(el.closest<HTMLElement>('.play-col')!.dataset.seat);
+    if (!this.recap.result.steps[slot] || el.classList.contains('held') || el.classList.contains('unplayed')) return;
+    play('click');
+    void this.replayCard(seat, slot);
   }
 
   /** Every play-area card back to face down, for a new round. */
@@ -1642,7 +1897,7 @@ export class BattleView {
 
   /** The bar under the cards: a title and (in the recap) the buttons. Same size in both, so nothing jumps. */
   private summaryBar(title: string, buttons: string): string {
-    return `<h3>${title}</h3><div class="row">${
+    return `<h3>${title}</h3><p class="caption"></p><div class="row">${
       buttons || `<button class="btn" disabled>${STRINGS.replay}</button><button class="btn primary" disabled>${STRINGS.nextRound}</button>`
     }</div>`;
   }
@@ -1653,6 +1908,7 @@ export class BattleView {
     plans: [Plan, Plan],
     result: RoundResult,
     start: RoundStart,
+    tips: string[] = [],
   ): Promise<void> {
     const summary = this.q('.summary');
     // Cards never played (the match ended first) are shown crossed out. In Two-tap the card held
@@ -1681,6 +1937,7 @@ export class BattleView {
         <button class="btn primary" data-act="next">${label}</button>`,
     );
     this.setMode('summary');
+    this.recap = { result, start };
     const replayBtn = summary.querySelector<HTMLElement>('[data-act="replay"]')!;
     const stopReplay = () => {
       this.replayRun++;
@@ -1690,7 +1947,7 @@ export class BattleView {
     const startReplay = () => {
       const run = ++this.replayRun;
       replayBtn.textContent = STRINGS.stopReplay;
-      void this.replayRound(result, start, run);
+      void this.replayRound(run);
     };
     replayBtn.addEventListener('click', () => {
       play('click');
@@ -1706,6 +1963,10 @@ export class BattleView {
         res();
       });
     });
+    for (const id of tips) {
+      await this.coach(STRINGS.firstTips[id]);
+      markTipSeen(id);
+    }
     await this.opts.hooks?.roundEnd?.(this, roundNo, result);
     return done;
   }

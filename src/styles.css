@@ -278,7 +278,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   grid-template-areas: 'hud hud hud' 'slots board preview' 'panel panel panel';
 }
 .battle[data-mode="reveal"], .battle[data-mode="summary"] {
-  --bar-h: 72px;
+  --bar-h: 104px;
   --play-cw: min(124px, calc((var(--W) - 34px) / 3 / 1.16), calc((var(--H) - var(--hud-h, 60px) - var(--W) / var(--aspect) - var(--bar-h) - 4 * var(--gap) - 34px) / 2 / 1.28 / 1.1));
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto auto var(--bar-h);
@@ -314,7 +314,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
     --side-r: clamp(80px, 12cqw, 160px);
   }
   .battle[data-mode="reveal"], .battle[data-mode="summary"] {
-    --bar-h: 64px;
+    --bar-h: 82px;
     --play-cw: min(130px, calc((var(--main-h) - var(--bar-h) - 14px - 4 * var(--gap)) / 2 / 1.28 / 1.1), calc((var(--W) * .5 - 30px) / 3.4));
     grid-template-columns: minmax(0, 1fr) calc(var(--play-cw) * 3.4 + 24px);
     grid-template-rows: auto minmax(0, 1fr) auto auto var(--bar-h) minmax(0, 1fr);
@@ -581,6 +581,16 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 
 /* the bar under the cards: round title, and in the recap the Replay / Next buttons */
 .summary { flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 0; }
+.summary h3 { margin: 0; }
+/* What the card playing now does (two lines at most, fixed height so nothing below jumps). */
+.summary .caption {
+  margin: 0; width: 100%; max-width: 560px; min-height: 2.6em; font-size: .78rem; line-height: 1.3; text-align: center; color: var(--text);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+@media (min-aspect-ratio: 1/1) and (max-height: 500px) {
+  .summary { gap: 3px; }
+  .summary .caption { min-height: 1.3em; font-size: .72rem; -webkit-line-clamp: 1; line-clamp: 1; }
+}
 .summary .row { flex-wrap: nowrap; }
 .slot-label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
 
@@ -605,6 +615,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .battle[data-mode="wait"] .status::after { content: ''; display: inline-block; width: 12px; height: 12px; margin-left: 8px; border: 2px solid var(--accent); border-right-color: transparent; animation: spin .8s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .status { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-size: .8rem; }
+.status.why { text-transform: none; letter-spacing: 0; font-weight: 700; color: var(--danger-soft); }
 .actions { display: flex; gap: 10px; }
 .planner .actions .btn, .summary .btn { height: 36px; padding: 0 20px; }
 /* Replay viewer: the playback controls stay usable while the round plays. */
@@ -1441,3 +1452,76 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   .setup-actions { grid-area: actions; }
   .pick .pick-emblem, .random-glyph { width: 34px; height: 34px; }
 }
+
+/* ---------- reading the match: stamps, status chips, round banner, low life, icon notes ---------- */
+/* The outcome stamped on a played card. */
+/* Over the card's pattern, so its name and numbers stay readable. */
+.play-stamp {
+  position: absolute; left: 50%; top: 42%; z-index: 2; pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-8deg);
+  padding: .15em .45em; font-size: max(9px, calc(var(--play-cw, 100px) * .13)); font-weight: 900; line-height: 1.1; letter-spacing: .02em;
+  text-transform: uppercase; white-space: nowrap; color: var(--muted);
+  border: 2px solid currentColor; background: color-mix(in srgb, var(--bg) 82%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, currentColor 35%, transparent);
+  animation: stamp-in .32s cubic-bezier(.3, 1.6, .5, 1);
+}
+.play-stamp.hit { color: var(--danger); }
+.play-stamp.guarded, .play-stamp.blocked { color: var(--fx-guard); }
+.play-stamp.gain { color: var(--energy); }
+.play-stamp.heal { color: var(--life); }
+.play-stamp.trap { color: var(--trap); }
+@keyframes stamp-in { from { opacity: 0; transform: translate(-50%, -50%) rotate(-8deg) scale(1.8); } }
+/* In the recap, a played card can be tapped to replay it. */
+.battle[data-mode="summary"]:not(.replay) .play-card.flipped { cursor: pointer; }
+
+/* Status chips under a fighter's name (tap one for its meaning). */
+.status-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+.status-chips:empty { display: none; }
+.panel.p1 .status-chips { justify-content: flex-end; }
+.chip-fx {
+  font-style: normal; font-size: .62rem; font-weight: 800; line-height: 1; padding: 2px 4px; white-space: nowrap; cursor: help;
+  border: 1px solid currentColor; border-radius: 2px; background: rgba(0, 0, 0, .35);
+}
+.chip-fx.hex { color: var(--fx-hex); }
+.chip-fx.stun { color: var(--fx-stun); }
+.chip-fx.trap { color: var(--trap); }
+.chip-fx.spent { color: var(--fx-reload); }
+
+/* Low on life: the bar turns red and pulses. */
+.panel.low .bar.life i { background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 80%, #000), var(--danger)); animation: low-life .8s ease-in-out infinite alternate; }
+@keyframes low-life { to { filter: brightness(1.55); } }
+
+/* The banner as a round starts, over the board. */
+.arena-wrap { position: relative; }
+.round-banner {
+  position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 6; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 22px; width: max-content; max-width: 92%;
+  background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--accent); border-left: 4px solid var(--accent);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .6); text-align: center; animation: banner-in .35s cubic-bezier(.2, .8, .3, 1);
+}
+.round-banner b { font-size: 1.35rem; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+.round-banner span { font-size: .84rem; line-height: 1.3; color: var(--text); }
+.round-banner.out { opacity: 0; transition: opacity .25s; }
+@keyframes banner-in { from { opacity: 0; scale: .85; } }
+
+/* A greyed-out card says why in its corner (⚡ energy, ⟳ reload, ⊥ planted). */
+.card .why {
+  position: absolute; left: 3px; bottom: 3px; z-index: 2; width: 1.6em; height: 1.6em; display: grid; place-items: center;
+  border-radius: 50%; background: rgba(0, 0, 0, .8); color: var(--accent); font-size: max(8px, .95em); font-weight: 900; font-style: normal;
+}
+.card.disabled:has(> .why) { opacity: .5; }
+
+/* Icons that explain themselves when tapped. */
+.card.readonly .badges i[data-tip], .tile[data-tip] { cursor: help; }
+.tip-pop {
+  position: fixed; z-index: 80; max-width: min(280px, calc(100vw - 16px)); padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  background: var(--panel); border: 1px solid var(--line-hi); border-left: 3px solid var(--accent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .55); font-size: .8rem; line-height: 1.35; color: var(--text);
+  animation: tip-in .15s ease-out;
+}
+.tip-pop b { font-size: .76rem; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); }
+.tip-pop b i { font-style: normal; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(4px); } }
+
+.reduced-fx .play-stamp, .reduced-fx .round-banner, .reduced-fx .tip-pop, .reduced-fx .panel.low .bar.life i { animation: none; }
