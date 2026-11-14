@@ -789,17 +789,20 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 
 .token.hop { animation: hop .5s cubic-bezier(.3, .7, .3, 1); }
 @keyframes hop { 40% { translate: 0 -26%; scale: 1.06; } 80% { translate: 0 0; scale: 1.14 .84; } 100% { scale: 1; } }
-/* Attacking: a ring in the player's colour around the piece while its squares are lit. */
+/* Playing a card: a ring in the player's colour around the piece, from the moment its card comes
+   into the spotlight. An attacker also grows while its target is tinted. */
 .token { --dir: 1; }
 .token.face-left { --dir: -1; }
-.token.attacking { z-index: 3; scale: 1.15; }
+.token.playing { z-index: 3; }
+.token.attacking { scale: 1.15; }
 .token.dimmed { filter: brightness(.7) saturate(.6); }
-.token.attacking::before {
-  content: ''; position: absolute; inset: 2%; border-radius: 50%; pointer-events: none;
+.token .token-ring {
+  display: none; position: absolute; inset: 2%; border-radius: 50%; pointer-events: none;
   border: 3px solid currentColor;
   box-shadow: 0 0 16px currentColor, inset 0 0 12px color-mix(in srgb, currentColor 50%, transparent);
   animation: atk-aura .5s ease-in-out infinite alternate;
 }
+.token.playing .token-ring { display: block; }
 @keyframes atk-aura { from { opacity: .55; scale: .88; } to { opacity: 1; scale: 1.04; } }
 .token.lunge { animation: lunge .45s cubic-bezier(.3, .7, .3, 1); }
 @keyframes lunge {
@@ -978,7 +981,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .reduced-fx .play-card { transition: none; }
 .reduced-fx .play-card, .reduced-fx .play-face, .reduced-fx .panel { animation: none !important; }
 .reduced-fx .play-card.now .play-face { filter: drop-shadow(0 0 9px var(--pc)) drop-shadow(0 0 2px var(--pc)); }
-.reduced-fx .token.attacking::before { animation: none; }
+.reduced-fx .token .token-ring { animation: none; }
 .reduced-fx .token.hurt .token-body::before { display: none; }
 
 /* ---------- progression: badges, loadout, daily, profile, toasts ---------- */
@@ -1470,6 +1473,12 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .play-stamp.gain { color: var(--energy); }
 .play-stamp.heal { color: var(--life); }
 .play-stamp.trap { color: var(--trap); }
+/* A move card lights up the square it takes its fighter to, blue as on the card. */
+.tile.move-target {
+  background: color-mix(in srgb, var(--move) 38%, transparent);
+  box-shadow: inset 0 0 0 3px var(--move), inset 0 0 18px color-mix(in srgb, var(--move) 60%, transparent);
+  animation: area-in .28s ease-out both;
+}
 @keyframes stamp-in { from { opacity: 0; transform: translate(-50%, -50%) rotate(-8deg) scale(1.8); } }
 /* In the recap, a played card can be tapped to replay it. */
 .battle[data-mode="summary"]:not(.replay) .play-card.flipped { cursor: pointer; }
@@ -1491,17 +1500,20 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .panel.low .bar.life i { background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 80%, #000), var(--danger)); animation: low-life .8s ease-in-out infinite alternate; }
 @keyframes low-life { to { filter: brightness(1.55); } }
 
-/* The banner as a round starts, over the board. */
-.arena-wrap { position: relative; }
+/* As a round starts: the screen stays in view, tinted and out of reach, under a short banner. */
+.round-cover {
+  position: fixed; inset: 0; z-index: 45; display: grid; place-items: center; padding: 16px; cursor: pointer;
+  background: color-mix(in srgb, var(--bg) 60%, transparent); animation: cover-in .2s ease-out;
+}
+.round-cover.out { opacity: 0; transition: opacity .25s; }
+@keyframes cover-in { from { opacity: 0; } }
 .round-banner {
-  position: absolute; left: 50%; top: 50%; translate: -50% -50%; z-index: 6; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 22px; width: max-content; max-width: 92%;
   background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--accent); border-left: 4px solid var(--accent);
   box-shadow: 0 10px 30px rgba(0, 0, 0, .6); text-align: center; animation: banner-in .35s cubic-bezier(.2, .8, .3, 1);
 }
 .round-banner b { font-size: 1.35rem; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
 .round-banner span { font-size: .84rem; line-height: 1.3; color: var(--text); }
-.round-banner.out { opacity: 0; transition: opacity .25s; }
 @keyframes banner-in { from { opacity: 0; scale: .85; } }
 
 /* A greyed-out card says why in its corner (⚡ energy, ⟳ reload, ⊥ planted). */
@@ -1524,4 +1536,4 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .tip-pop b i { font-style: normal; }
 @keyframes tip-in { from { opacity: 0; transform: translateY(4px); } }
 
-.reduced-fx .play-stamp, .reduced-fx .round-banner, .reduced-fx .tip-pop, .reduced-fx .panel.low .bar.life i { animation: none; }
+.reduced-fx .play-stamp, .reduced-fx .round-banner, .reduced-fx .round-cover, .reduced-fx .tip-pop, .reduced-fx .panel.low .bar.life i { animation: none; }
