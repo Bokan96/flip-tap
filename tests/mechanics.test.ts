@@ -138,8 +138,11 @@ describe('counter and drain', () => {
     const r = resolveRound(s, [['umbraClaw', 'guard', 'focus'], ['guard', 'focus', 'up']]);
     const [a, b] = r.steps[0].players;
     expect(b.damageTaken).toBe(25 - 15);
-    expect(a.drained).toBe(5);
-    expect(a.life).toBe(55);
+    // A share of the damage actually dealt, rounded down.
+    const healed = Math.floor(((25 - 15) * CARDS.umbraClaw.drain!) / 100);
+    expect(healed).toBeGreaterThan(0);
+    expect(a.drained).toBe(healed);
+    expect(a.life).toBe(50 + healed);
   });
 });
 

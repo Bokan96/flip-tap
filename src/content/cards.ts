@@ -42,7 +42,7 @@ const signature: CardDef[] = [
   // Cinder: big hits that burn himself too, and a heal once he is low
   { id: 'cinderJab', name: 'Ember Jab', kind: 'attack', cost: -15, damage: 25, pattern: ['000', '011', '000'], recoil: 5, fx: 'slash' },
   { id: 'cinderRing', name: 'Fire Ring', kind: 'attack', cost: -20, damage: 20, pattern: ['111', '101', '111'], push: 1, recoil: 5 },
-  { id: 'cinderPillar', name: 'Flame Pillar', kind: 'attack', cost: -20, damage: 30, pattern: ['010', '010', '010'], stun: true, recoil: 5 },
+  { id: 'cinderPillar', name: 'Flame Pillar', kind: 'attack', cost: -20, damage: 30, pattern: ['010', '010', '010'], stun: true },
   { id: 'cinderBlaze', name: 'Wildfire', kind: 'attack', cost: -45, damage: 45, pattern: ['011', '011', '011'], recoil: 10, fx: 'burst' },
   { id: 'cinderRekindle', name: 'Rekindle', kind: 'heal', cost: -10, heal: 30, healAtOrBelow: 50 },
 
@@ -56,7 +56,7 @@ const signature: CardDef[] = [
   { id: 'zephyrGust', name: 'Gust', kind: 'attack', cost: -20, damage: 20, pattern: ['010', '111', '010'], push: 1, fx: 'wave' },
   { id: 'zephyrSpiral', name: 'Spiral', kind: 'attack', cost: -20, damage: 15, pattern: ['111', '111', '111'] },
   { id: 'zephyrEdge', name: 'Sky Edge', kind: 'attack', cost: -50, damage: 45, pattern: ['001', '011', '001'], fx: 'slash' },
-  { id: 'zephyrDash', name: 'Gale Dash', kind: 'move', cost: -15, step: [0, 1], forward: true, counter: 25 },
+  { id: 'zephyrDash', name: 'Gale Dash', kind: 'move', cost: -15, step: [0, 1], forward: true, counter: 20 },
   { id: 'zephyrLunge', name: 'Sky Lunge', kind: 'move', cost: -20, step: [0, 2], forward: true, counter: 30 },
 
   // Basalt: cheap, crushing blows while he stands his ground
@@ -69,7 +69,7 @@ const signature: CardDef[] = [
   { id: 'voltaZap', name: 'Zap', kind: 'attack', cost: -10, damage: 25, pattern: ['000', '011', '000'], fx: 'beam' },
   { id: 'voltaField', name: 'Static Field', kind: 'attack', cost: -10, damage: 5, pattern: ['111', '111', '111'], sap: 20 },
   { id: 'voltaCircuit', name: 'Short Circuit', kind: 'attack', cost: -10, damage: 10, pattern: ['011', '011', '011'], sap: 25, fx: 'beam' },
-  { id: 'voltaClap', name: 'Thunderclap', kind: 'attack', cost: -55, damage: 40, pattern: ['010', '111', '010'], stun: true, fx: 'burst' },
+  { id: 'voltaClap', name: 'Thunderclap', kind: 'attack', cost: -50, damage: 40, pattern: ['010', '111', '010'], stun: true, fx: 'burst' },
 
   // Ferro: heavy, cheap shots; each fires once until Reload
   { id: 'ferroSnap', name: 'Snap Shot', kind: 'attack', cost: -10, damage: 25, pattern: ['000', '011', '000'], fx: 'beam' },
@@ -91,8 +91,8 @@ const signature: CardDef[] = [
   { id: 'vexFlare', name: 'Flare', kind: 'attack', cost: -45, damage: 40, pattern: ['001', '011', '001'], fx: 'wave' },
 
   // Umbra: flanking shapes that hit hardest when the rival moves
-  { id: 'umbraClaw', name: 'Night Claw', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '010', '001'], drain: 50 },
-  { id: 'umbraPounce', name: 'Pounce', kind: 'attack', cost: -15, damage: 10, pattern: ['011', '011', '011'], vsMoved: 10, fx: 'slash' },
+  { id: 'umbraClaw', name: 'Night Claw', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '010', '001'], drain: 25 },
+  { id: 'umbraPounce', name: 'Pounce', kind: 'attack', cost: -15, damage: 10, pattern: ['011', '011', '011'], vsMoved: 5, fx: 'slash' },
   { id: 'umbraNightfall', name: 'Nightfall', kind: 'attack', cost: -35, damage: 20, pattern: ['111', '101', '111'], vsMoved: 25, fx: 'burst' },
   { id: 'umbraGrasp', name: 'Void Grasp', kind: 'attack', cost: -40, damage: 35, pattern: ['011', '010', '011'], push: -1 },
 ];
