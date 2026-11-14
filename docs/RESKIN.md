@@ -61,6 +61,7 @@ Keep card `id`s stable once players have saves: bonus cards and stats are stored
 | `--fx-*` | guard, stun, counter, drain, push, reload, recoil, sap, hex, planted, dust effects |
 | `--trap`, `--card-trap-a/b` | trap squares on cards and previews, trap card background |
 | `--font-body`, `--font-display` | text and headings/logo |
+| `--font-numbers` | life and energy numbers on the HUD bars |
 | `--radius`, `--cut` | corner rounding and the clipped button corner |
 
 **Fonts:** add an `@import` (for example from Google Fonts) or an `@font-face` pointing at a file in

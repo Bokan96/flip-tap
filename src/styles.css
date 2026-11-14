@@ -363,7 +363,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   10% { translate: -5px 0; } 30% { translate: 5px 0; } 50% { translate: -3px 0; } 70% { translate: 2px 0; }
 }
 /* The recap rewinding to a round's start: bars jump instead of sliding. */
-.panel.snap .bar i, .panel.snap .bar .chip { transition: none !important; }
+.panel.snap .bar i, .panel.snap .bar .chip, .panel.snap .bar span { transition: none !important; }
 .panel.p0 { border-left: 4px solid var(--p0); clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); }
 .panel.p1 { border-right: 4px solid var(--p1); flex-direction: row-reverse; text-align: right; clip-path: polygon(0 12px, 12px 0, 100% 0, 100% 100%, 0 100%); }
 .hud-emblem { width: 38px; height: 38px; flex: none; }
@@ -377,10 +377,16 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .panel.p1 .bar i { inset: 0 0 0 auto; }
 .bar.life i { background: linear-gradient(90deg, var(--life-lo), var(--life)); }
 .bar.energy i { background: linear-gradient(90deg, var(--energy-lo), var(--energy)); }
-/* White numbers with a dark outline stay readable over the coloured fill and the empty bar alike. */
+/* The number rides the end of its bar's fill, just inside it, and follows the bar as it drains
+   (never past the bar's start). Player 2's bars fill from the right, so theirs mirrors. White with a
+   dark outline reads over the fill and the empty bar alike. */
 .bar span {
-  position: relative; z-index: 2; display: block; font-size: .66rem; font-weight: 800; padding: 0 8px; line-height: 15px; text-align: center;
+  position: absolute; top: 0; bottom: 0; z-index: 2; padding: 0 5px;
+  left: max(calc(var(--pct, 100) * 1%), 2.6em); translate: -100% 0;
+  font-family: var(--font-numbers); font-size: .74rem; font-weight: 700; letter-spacing: .02em; line-height: 15px;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
   color: #fff; text-shadow: 0 0 2px #000, 0 1px 2px #000, 0 0 4px rgba(0, 0, 0, .9); transform: skewX(18deg);
+  transition: left .25s ease, right .25s ease;
 }
 /* Energy bar split into 10-point segments (--seg is set per fighter from its max energy). */
 .bar.energy::after {
@@ -391,7 +397,7 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
     color-mix(in srgb, var(--board) 60%, transparent) calc(100% / var(--seg, 10) - 1px) calc(100% / var(--seg, 10))
   );
 }
-.panel.p1 .bar span { transform: skewX(-18deg); }
+.panel.p1 .bar span { left: auto; right: max(calc(var(--pct, 100) * 1%), 2.6em); translate: 100% 0; transform: skewX(-18deg); }
 
 /* the board: the largest box with the arena's shape that fits its area */
 .arena-wrap { min-width: 0; min-height: 0; container-type: size; display: grid; place-items: center; }
@@ -1280,7 +1286,7 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
   .who b { font-size: .72rem; white-space: nowrap; }
   .bars { flex-basis: 100%; min-width: 0; gap: 3px; }
   .bar { height: 13px; }
-  .bar span { line-height: 13px; font-size: .6rem; }
+  .bar span { line-height: 13px; font-size: .68rem; }
   .round-label { font-size: .68rem; }
   .step-label { font-size: .6rem; }
   .icon-btn { width: 28px; height: 28px; font-size: .95rem; }

@@ -478,12 +478,15 @@ export class BattleView {
       (lb.querySelector('i') as HTMLElement).style.width = lifePct;
       // The pale "chip" trails behind so the damage just taken stays visible for a moment.
       (lb.querySelector('.chip') as HTMLElement).style.width = lifePct;
-      lb.querySelector('span')!.textContent = `♥ ${life}`;
+      // The number rides the end of the fill (see .bar span), so the bar tells it where that is.
+      (lb as HTMLElement).style.setProperty('--pct', String((life / p.lifeMax) * 100));
+      lb.querySelector('span')!.textContent = String(life);
       // Low on life: the bar pulses red.
       panel.classList.toggle('low', life > 0 && life <= p.lifeMax * 0.3);
       const eb = panel.querySelector('.bar.energy')!;
       (eb.querySelector('i') as HTMLElement).style.width = `${(energy / p.energyMax) * 100}%`;
-      eb.querySelector('span')!.textContent = `⚡ ${energy}`;
+      (eb as HTMLElement).style.setProperty('--pct', String((energy / p.energyMax) * 100));
+      eb.querySelector('span')!.textContent = String(energy);
     });
     this.renderChips();
   }

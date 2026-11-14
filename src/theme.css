@@ -8,6 +8,9 @@
   /* To use a web font, add an @import or @font-face here, then name it below. */
   --font-body: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
   --font-display: var(--font-body); /* logo and headings */
+  /* life and energy numbers on the HUD bars: squared-off digits from fonts already on the device
+     (Windows, Apple, Android), no download needed */
+  --font-numbers: 'Bahnschrift', 'DIN Alternate', 'Roboto Condensed', sans-serif-condensed, 'Arial Narrow', var(--font-body);
   --radius: 2px;
   --cut: 10px; /* size of the clipped corner on buttons */
 
