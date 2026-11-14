@@ -126,7 +126,9 @@ its previous facing and the pattern is mirrored to match **(design choice)**.
    - The plan must be affordable. Walking the slots in order, the running energy total may never
      drop below 0. Focus cards placed earlier pay for attacks placed later.
 2. **Reveal and resolve:** slots resolve in order (slot 1, 2, 3). Both players' cards in the same slot
-   happen simultaneously, using the procedure below.
+   happen simultaneously, using the procedure below. On screen the two cards still play one after
+   the other, in the order the procedure resolves them (moves, then guard / focus / reload, then
+   attacks in strike order, then heals and traps), each for about the same time; the outcome is the same.
 3. **Fatigue (design choice):** from round 8 on, both fighters lose **5 Life** at the end of every
    round. This can knock out one or both fighters (both at once is a draw).
 4. **Recover:** at the end of the round both fighters gain **+15 Energy** plus any passive bonus (capped at max). Stuns wear off.

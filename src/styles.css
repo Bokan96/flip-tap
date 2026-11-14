@@ -396,9 +396,14 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 /* the board: the largest box with the arena's shape that fits its area */
 .arena-wrap { min-width: 0; min-height: 0; container-type: size; display: grid; place-items: center; }
 .arena {
-  position: relative; display: grid; width: min(100cqw, calc(100cqh * var(--aspect, 1.667)));
+  position: relative; isolation: isolate; display: grid; width: min(100cqw, calc(100cqh * var(--aspect, 1.667)));
   grid-template-columns: repeat(var(--cols), 1fr); grid-template-rows: repeat(var(--rows), 1fr);
-  gap: 3px; padding: 4px; border: 1px solid var(--line-hi);
+  gap: 3px; padding: 4px; border: 1px solid transparent;
+}
+/* The frame sits behind the squares (not clipping the board), so floating numbers can rise past its edge. */
+.arena::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; pointer-events: none;
+  border: 1px solid var(--line-hi);
   /* Optional board image from content/assets.ts (ASSETS.board). */
   background: var(--board-image, none) center / cover no-repeat, var(--board);
   clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
@@ -426,7 +431,8 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 }
 /* --pace shortens moves when a replay plays faster. */
 .token {
-  transition: left calc(.5s * var(--pace, 1)) cubic-bezier(.3, .7, .3, 1), top calc(.5s * var(--pace, 1)) cubic-bezier(.3, .7, .3, 1), transform .2s;
+  transition: left calc(.5s * var(--pace, 1)) cubic-bezier(.3, .7, .3, 1), top calc(.5s * var(--pace, 1)) cubic-bezier(.3, .7, .3, 1), transform .2s,
+    scale .25s ease-out, filter .3s;
   z-index: 2; pointer-events: auto; cursor: pointer;
 }
 /*
@@ -470,13 +476,23 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .ghost::after { content: ''; width: 46%; aspect-ratio: 1; transform: rotate(45deg); border: 2px dashed var(--accent); opacity: .8; }
 
 .floats { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
-.float { font-weight: 900; font-size: clamp(1rem, 4vw, 1.6rem); text-shadow: 0 2px 4px #000; animation: rise 1.4s ease-out forwards; }
+.float {
+  font-weight: 900; font-size: clamp(1rem, 4vw, 1.6rem); text-shadow: 0 2px 4px #000; animation: rise 2s linear forwards;
+  /* Above the piece (its tip is about 36% of a square above the middle), extra labels stacking upward. */
+  translate: 0 calc(-36% - .7em - var(--k, 0) * 1.25em);
+}
 .float.damage { color: var(--danger); }
 .float.guarded { color: var(--fx-guard); }
 .float.miss { color: var(--muted); font-size: 1rem; }
 .float.heal { color: var(--life); }
 .float.energy { color: var(--energy); font-size: .95rem; }
-@keyframes rise { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-44px); } }
+@keyframes rise {
+  0% { opacity: 0; transform: translateY(4px) scale(.6); }
+  7% { opacity: 1; transform: translateY(0) scale(1.12); }
+  14% { transform: translateY(-3px) scale(1); }
+  80% { opacity: 1; transform: translateY(-22px); }
+  100% { opacity: 0; transform: translateY(-30px); }
+}
 
 /* beside the board while planning: the 3 chosen cards (left) and the focused card (right) */
 .slots { flex-direction: column; gap: 4px; align-items: center; justify-content: center; min-height: 0; }
@@ -537,9 +553,6 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 }
 .play-card.now .play-step { color: var(--accent); }
 .play-card.now .play-step::before { content: '▶ '; }
-/* While its attack is live, the striking card lifts above the other card of the step. */
-.play-card.now.striking { z-index: 3; transform: scale(1.2); }
-.battle:has(.play-card.striking) .play-card.now:not(.striking) { opacity: .75; transform: scale(1.02); }
 /* The moment the card's effect happens on the board (a move, a guard, an attack firing). */
 .play-card.acting { animation: card-act .5s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes card-act { 35% { scale: 1.18; filter: brightness(1.45); } }
@@ -644,7 +657,6 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .passive { margin: 0; font-size: .74rem; line-height: 1.3; color: var(--text); }
 .passive b { color: var(--accent); }
 .modal .passive { text-align: left; max-width: 440px; }
-.float { margin-top: calc(var(--k, 0) * 1.5em); }
 .float.stun { color: var(--fx-stun); font-size: 1rem; }
 .token.dazed::after {
   content: '✷ ✷'; position: absolute; top: -4%; font-size: .8rem; color: var(--fx-stun); letter-spacing: 2px;
@@ -769,7 +781,8 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 /* Attacking: a ring in the player's colour around the piece while its squares are lit. */
 .token { --dir: 1; }
 .token.face-left { --dir: -1; }
-.token.attacking { z-index: 3; }
+.token.attacking { z-index: 3; scale: 1.15; }
+.token.dimmed { filter: brightness(.7) saturate(.6); }
 .token.attacking::before {
   content: ''; position: absolute; inset: 2%; border-radius: 50%; pointer-events: none;
   border: 3px solid currentColor;
