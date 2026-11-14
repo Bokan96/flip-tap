@@ -1,5 +1,5 @@
-import { BALANCE } from '../content/balance';
 import { getCard } from '../content/cards';
+import { fatigueAfterRound } from '../engine/rules';
 import type { MatchLog, MatchState, Seat } from '../engine/types';
 
 /** A single notable moment: who did it, with which card, how much and when. */
@@ -93,7 +93,7 @@ export function matchStats(start: MatchState, log: MatchLog): MatchStats {
     trades,
     biggestHit,
     bestDodge,
-    fatigueFrom: BALANCE.fatigueAfterRound + 1,
+    fatigueFrom: fatigueAfterRound(start) + 1,
   };
 }
 

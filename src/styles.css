@@ -113,6 +113,28 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .logo-emblem:nth-child(3n) { animation-delay: .8s; }
 @keyframes bob { 50% { transform: translateY(-6px); } }
 .menu { display: flex; flex-direction: column; gap: 10px; align-items: center; width: 100%; }
+.menu .btn.big { position: relative; }
+.play-btn { padding: 20px 14px; font-size: 1.3rem; letter-spacing: .12em; }
+.menu-chip {
+  position: absolute; top: 7px; right: 16px; font-style: normal; font-size: .58rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase;
+  padding: 2px 6px; background: var(--accent); color: var(--on-accent); line-height: 1.2;
+}
+.btn.primary .menu-chip { background: var(--on-accent); color: var(--accent); }
+.menu-head { margin: 6px 0 -2px; font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .14em; }
+.play-wrap { width: 100%; }
+.play-wrap h2 { margin: 0; }
+.play-wrap .note { text-align: center; margin: 0; }
+/* Two-tap at a glance: which cards play this round and which one waits */
+.tt-diagram { display: flex; flex-direction: column; gap: 6px; align-items: center; margin: 2px 0 4px; }
+.tt-row { display: flex; gap: 6px; align-items: center; }
+.tt-row small { width: 6em; text-align: right; color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; }
+.tt-card { position: relative; width: 30px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line-hi); font-weight: 900; }
+.tt-card.plays { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: var(--accent); }
+.tt-card.held { background: repeating-linear-gradient(45deg, var(--card-back-a) 0 5px, var(--card-back-b) 5px 10px); color: var(--text); }
+.tt-card.held b { background: var(--bg); padding: 0 3px; }
+.tt-card.locked::after { content: '🔒'; position: absolute; top: -8px; left: -8px; font-size: .62rem; }
+.tt-key { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: .72rem; color: var(--muted); }
+.tt-key .tt-card { width: 12px; height: 15px; margin-left: 6px; }
 
 .rules { text-align: left; max-width: 620px; line-height: 1.5; padding-left: 20px; }
 .rules li { margin-bottom: 6px; }
@@ -464,9 +486,20 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .preview-hint { margin: 0; font-size: .64rem; color: var(--muted); line-height: 1.3; }
 @media (min-aspect-ratio: 1/1) {
   .slot .slot-label { display: block; height: 14px; line-height: 14px; }
+  .slot .slot-energy { top: 16px; }
   .card-preview .desc { font-size: clamp(.64rem, 1.6cqh, .84rem); }
   .preview-hint { font-size: clamp(.62rem, 1.5cqh, .8rem); }
 }
+
+/* Two-tap: the first slot holds last round's locked-in card; the last one plays next round */
+.slot.locked { cursor: default; }
+.slot.locked .card { filter: saturate(.55) brightness(.8); }
+.slot.held-next .empty { border-style: dotted; }
+.slot-chip {
+  position: absolute; bottom: 0; right: 0; z-index: 1; padding: 1px 3px; font-size: .6rem; line-height: 1.1; color: var(--accent);
+  background: color-mix(in srgb, var(--bg) 90%, transparent); border: 1px solid var(--line);
+}
+.slot .play-tag { pointer-events: none; }
 
 /* the round's cards, by step: face down until played; the step playing now steps forward and glows */
 .play-col { --pc: var(--p0); min-width: 0; min-height: 0; align-items: center; justify-content: center; gap: 6px; }
@@ -494,6 +527,8 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .battle[data-mode="summary"]:has(.play-card.now) .play-card:not(.now) { opacity: .62; transform: scale(.95); }
 .play-card.inactive .card, .play-card.stunned .card { opacity: .35; }
 .play-card.unplayed .card { opacity: .3; }
+.play-card.held .play-face::after { content: '🔒'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.1rem; }
+.play-card.held .play-step { color: var(--accent); }
 .play-card.unplayed .play-face::after { content: '✕'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 1.8rem; color: var(--muted); }
 .play-tag {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-12deg); z-index: 1;

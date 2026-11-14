@@ -1,5 +1,6 @@
 import { it } from 'vitest';
 import { BONUS_CARD_IDS, FIGHTERS } from '../src/content/cards';
+import type { Variant } from '../src/content/variants';
 import { PROFILES, SIM_PROFILE, type AiProfile } from '../src/engine/ai';
 import { runMatch } from '../src/engine/match';
 import { Rng } from '../src/engine/rng';
@@ -9,7 +10,7 @@ import { Rng } from '../src/engine/rng';
  *   A=expert B=hard   difficulty names (or "sim"; "hard-flat" = Hard with the old scoring)
  *   MATCHES=n         matches per ordered pair (default 1)
  *   BONUS=n           random bonus cards per side (default 0)
- *   SEED=n, ARENA=id
+ *   SEED=n, ARENA=id, VARIANT=twoTap
  * Prints A's score (wins + half of draws) and the average time per decision.
  */
 const named = (spec: string): AiProfile => {
@@ -51,7 +52,12 @@ it('ai duel', () => {
         const bonus = () => (BONUS ? rng.shuffle([...BONUS_CARD_IDS]).slice(0, BONUS) : []);
         const seats = flip ? [{ fighterId: b, bonusCards: bonus() }, { fighterId: a, bonusCards: bonus() }] : [{ fighterId: a, bonusCards: bonus() }, { fighterId: b, bonusCards: bonus() }];
         const profiles: [AiProfile, AiProfile] = flip ? [named(B), named(A)] : [named(A), named(B)];
-        const rec = runMatch(seats[0], seats[1], { profiles, seed: rng.int(2 ** 31), arenaId: process.env.ARENA });
+        const rec = runMatch(seats[0], seats[1], {
+          profiles,
+          seed: rng.int(2 ** 31),
+          arenaId: process.env.ARENA,
+          variant: (process.env.VARIANT || undefined) as Variant | undefined,
+        });
         const aSeat = flip ? 1 : 0;
         const s = rec.outcome.winner === null ? 0.5 : rec.outcome.winner === aSeat ? 1 : 0;
         if (rec.outcome.winner === null) draws++;

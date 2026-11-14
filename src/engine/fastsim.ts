@@ -1,5 +1,7 @@
 import { BALANCE } from '../content/balance';
 import { getCard } from '../content/cards';
+import { TWO_TAP } from '../content/variants';
+import { energyRecovery, fatigueAfterRound, fatigueDamage } from './rules';
 import type { MatchState, Mods, Plan } from './types';
 
 /*
@@ -118,7 +120,8 @@ function damageOf(card: FastCard, attackerLife: number, am: Mods, dm: Mods, guar
 
 /**
  * Simulate one round. Same semantics as rules.resolveRound, including fatigue, but without the
- * end-of-round energy recovery.
+ * end-of-round energy recovery. In Two-tap the plan is the whole 3-card window: the round ends
+ * (fatigue, then the energy refill) before the held-over card plays.
  */
 export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastResult {
   const A = state.arena;
@@ -189,7 +192,24 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   /** Same as rules.healAmount. */
   const healOf = (fc: FastCard, l: number) => (fc.heal && l <= fc.healMax ? fc.heal : 0);
 
+  const roundEnd = state.variant === 'twoTap' ? TWO_TAP.stepsPerRound : -1;
+  const tired = state.round > fatigueAfterRound(state);
+  const tiredBy = fatigueDamage(state);
+
   for (let slot = 0; slot < plan0.length; slot++) {
+    if (slot === roundEnd) {
+      if (tired) {
+        life[0] = Math.max(0, life[0] - tiredBy);
+        life[1] = Math.max(0, life[1] - tiredBy);
+        if (life[0] <= 0 || life[1] <= 0) {
+          outcome = life[0] <= 0 && life[1] <= 0 ? 2 : life[0] <= 0 ? 1 : 0;
+          break;
+        }
+      }
+      en[0] = Math.min(energyMax[0], en[0] + energyRecovery(P[0]));
+      en[1] = Math.min(energyMax[1], en[1] + energyRecovery(P[1]));
+      if (!TWO_TAP.carryDaze) z[0] = z[1] = false;
+    }
     ids[0] = plan0[slot];
     ids[1] = plan1[slot];
     card[0] = fastCard(ids[0]);
@@ -353,10 +373,10 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       break;
     }
   }
-  // Fatigue at the end of late rounds (same as rules.resolveRound).
-  if (outcome === -1 && state.round > BALANCE.fatigueAfterRound) {
-    life[0] = Math.max(0, life[0] - BALANCE.fatigueDamage);
-    life[1] = Math.max(0, life[1] - BALANCE.fatigueDamage);
+  // Fatigue at the end of late rounds (same as rules.resolveRound; in Two-tap it came mid-window).
+  if (outcome === -1 && roundEnd < 0 && tired) {
+    life[0] = Math.max(0, life[0] - tiredBy);
+    life[1] = Math.max(0, life[1] - tiredBy);
     if (life[0] <= 0 || life[1] <= 0) outcome = life[0] <= 0 && life[1] <= 0 ? 2 : life[0] <= 0 ? 1 : 0;
   }
   const left: number[] = [];

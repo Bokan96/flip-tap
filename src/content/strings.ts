@@ -1,4 +1,5 @@
 import { BALANCE } from './balance';
+import { TWO_TAP } from './variants';
 
 /**
  * Every piece of UI text, in English. Other languages (content/lang/*.ts) provide the same object
@@ -16,6 +17,23 @@ export const STRINGS = {
   modeCpuHint: 'One match against the computer',
   modeHotseat: 'Hot-seat',
   modeHotseatHint: 'Two players, one device',
+  play: 'Play',
+  playHint: 'Tournament, daily challenge, versus and more',
+  dailyReady: 'Daily ready',
+  playModes: 'Game modes',
+  newChip: 'New',
+  twoTap: {
+    name: 'Two-tap',
+    hint: 'Two cards a round, with a third locked in',
+    blurb:
+      'Plan 3 cards in round 1, but only the first two play. The third stays face down, locked in, and plays first next round. From then on you add 2 new cards a round behind it.',
+    rule: `Two-tap: only two cards play each round. Round 1 is planned as usual; your third card stays face down, locked in, and plays first next round, so every later round you plan 2 new cards behind it. A stun on a round’s last card cancels the locked-in card. Fighters regain ${TWO_TAP.energyPerRound} energy a round, and fatigue starts after round ${TWO_TAP.fatigueAfterRound}.`,
+    locked: 'Locked in',
+    nextRound: 'Next round',
+    heldTitle: 'Locked in: plays first next round',
+    keyPlays: 'plays this round',
+    keyHeld: 'held for next round',
+  },
   howToPlay: 'How to play',
   back: 'Back',
   menu: 'Menu',
@@ -87,7 +105,7 @@ export const STRINGS = {
   start: 'Start',
 
   round: (n: number) => `Round ${n}`,
-  planning: (who: string) => `${who}: plan your 3 moves`,
+  planning: (who: string, n = 3) => `${who}: plan your ${n} moves`,
   tapAgainToAdd: (card: string) => `Tap ${card} again to add it`,
   lockIn: 'Lock in',
   clear: 'Clear',

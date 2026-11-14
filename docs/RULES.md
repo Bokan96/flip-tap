@@ -170,9 +170,23 @@ pattern in the same slot avoids the hit.
 - **Tutorial:** a guided first match against a scripted training dummy, with tips about moving,
   attacking, dodging, energy and guarding. Offered once on the title screen and always available
   from How to play.
+- **Play menu:** the title screen's **Play** button opens every way to play: Tournament, Daily
+  challenge, Versus CPU, Hot-seat and the rule variants (Two-tap).
 - **Versus CPU:** pick fighters, play one match against the AI.
 - **Hot-seat:** two people share a device. Player 1 plans, then hands over the device ("pass" screen
   hides the plan), then Player 2 plans, then both are revealed.
+- **Two-tap (rule variant, vs CPU or hot-seat):** only **2 cards play each round**.
+  - Round 1 is planned as usual (3 cards). Slots 1 and 2 play; the card in slot 3 stays **face down
+    and locked in**, and plays first next round. Every later round you plan just 2 new cards behind
+    it, so there is always one hidden card committed from the round before.
+  - The plan rules apply to the whole 3-card window: no card twice, Focus earlier pays for later
+    cards, planted attacks can't follow a move. The round's energy refill counts before the held
+    card in the plan's energy check.
+  - A locked-in card that can no longer be played when its turn comes (not enough energy, a spent
+    shot, or a stun) simply fizzles; it never makes the new plan illegal.
+  - A stun on a round's last card is not wasted: it **carries over and cancels the locked-in card**.
+  - Rounds are shorter, so fighters regain **+10 Energy** a round and **fatigue** starts after
+    round 10 (`TWO_TAP` in `content/variants.ts`). The CPU can't see your face-down card either.
 - **Tournament (single player):** pick a fighter and beat the other 5 fighters in a fixed order.
   - Each win earns **1 random bonus card** you don't own yet. Bonus cards form one collection
     shared by all fighters.
@@ -197,6 +211,8 @@ pattern in the same slot avoids the hit.
 ## Balance
 `npm run balance` plays every fighter pairing AI-vs-AI and writes [`BALANCE.md`](BALANCE.md): overall
 scores, matchup table and per-card usage. Re-run it after changing numbers in `cards.ts`.
+`VARIANT=twoTap npm run balance` does the same with the Two-tap rules (report in `sim/`), and
+`TWOTAP="energyPerRound=12"` tries other Two-tap numbers.
 
 ## CPU opponent (original design)
 The AI enumerates every affordable 3-card plan it could make. It scores each plan against a sample of

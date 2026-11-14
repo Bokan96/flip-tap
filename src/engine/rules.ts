@@ -1,5 +1,6 @@
 import { BALANCE } from '../content/balance';
 import { getCard } from '../content/cards';
+import { TWO_TAP } from '../content/variants';
 import type {
   ArenaState,
   CardDef,
@@ -23,9 +24,17 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 export function cloneState(s: MatchState): MatchState {
   return {
     round: s.round,
+    ...(s.variant ? { variant: s.variant } : {}),
     outcome: s.outcome,
     arena: { ...s.arena, blocked: [...s.arena.blocked], tiles: { ...s.arena.tiles }, traps: s.arena.traps.map((t) => ({ ...t })) },
-    players: s.players.map((p) => ({ ...p, pos: { ...p.pos }, deck: [...p.deck], mods: { ...p.mods }, spent: [...p.spent] })) as [
+    players: s.players.map((p) => ({
+      ...p,
+      pos: { ...p.pos },
+      deck: [...p.deck],
+      mods: { ...p.mods },
+      spent: [...p.spent],
+      ...(p.carry ? { carry: { ...p.carry } } : {}),
+    })) as [
       PlayerState,
       PlayerState,
     ],
@@ -101,18 +110,59 @@ export function planEnergyTrace(startEnergy: number, energyMax: number, plan: Pl
   return trace;
 }
 
+/** Two-tap: the card this player locked in last round, which must play first this round. */
+export function heldCard(player: PlayerState): string | null {
+  return player.carry?.held || null;
+}
+
+/**
+ * Two-tap: will the locked-in card actually play? It was legal when it was planned, but a stun,
+ * a drained energy bar or an unreloaded shot since then makes it fizzle (it plays as inactive).
+ */
+export function heldPlays(player: PlayerState): boolean {
+  const held = heldCard(player);
+  if (!held) return false;
+  return !player.dazed && player.energy + getCard(held).cost >= 0 && !isSpent(player, held);
+}
+
+/**
+ * Energy left after each filled slot of a player's (possibly partial) plan, or null if it runs out.
+ * Same as planEnergyTrace, except in Two-tap: a locked-in card that will fizzle costs nothing, and
+ * the round's energy refill lands before the card held over for next round.
+ */
+export function playerTrace(player: PlayerState, plan: Plan): number[] | null {
+  if (!player.carry) return planEnergyTrace(player.energy, player.energyMax, plan);
+  const held = heldCard(player);
+  const trace: number[] = [];
+  let e = player.energy;
+  for (let i = 0; i < plan.length; i++) {
+    if (i === TWO_TAP.stepsPerRound) e = Math.min(player.energyMax, e + energyRecovery(player));
+    const id = plan[i];
+    const fizzles = i === 0 && held !== null && id === held && !heldPlays(player);
+    if (id && !fizzles) {
+      e += getCard(id).cost;
+      if (e < 0) return null;
+      e = Math.min(e, player.energyMax);
+    }
+    trace.push(e);
+  }
+  return trace;
+}
+
 /**
  * Ammo fighters can't plan a spent attack unless a Reload comes earlier in the same plan.
- * Always true for everyone else.
+ * Always true for everyone else. (A Two-tap locked-in card is never checked: it fizzles instead.)
  */
 export function ammoOk(player: PlayerState, plan: Plan): boolean {
   if (!player.mods.ammo) return true;
+  const held = heldCard(player);
   let reloaded = false;
-  for (const id of plan) {
+  for (let i = 0; i < plan.length; i++) {
+    const id = plan[i];
     if (!id) continue;
     const c = getCard(id);
     if (c.kind === 'reload') reloaded = true;
-    else if (c.kind === 'attack' && !reloaded && player.spent.includes(id)) return false;
+    else if (c.kind === 'attack' && !reloaded && player.spent.includes(id) && !(i === 0 && id === held)) return false;
   }
   return true;
 }
@@ -141,8 +191,10 @@ export function planError(player: PlayerState, plan: Plan): string | null {
     if (!id) return 'Plan must fill every slot.';
     if (!player.deck.includes(id)) return `Card not in deck: ${id}`;
   }
+  const held = heldCard(player);
+  if (held && plan[0] !== held) return 'The locked-in card must play first.';
   if (BALANCE.uniqueCardsPerPlan && new Set(plan).size !== plan.length) return 'Each card can be used once per round.';
-  if (!planEnergyTrace(player.energy, player.energyMax, plan)) return 'Not enough energy for this plan.';
+  if (!playerTrace(player, plan)) return 'Not enough energy for this plan.';
   if (!ammoOk(player, plan)) return 'That attack must be reloaded first.';
   if (!plantedOk(plan)) return 'That attack can’t follow a move this round.';
   return null;
@@ -152,10 +204,12 @@ export function planError(player: PlayerState, plan: Plan): string | null {
 export function partialPlanOk(player: PlayerState, plan: Plan): boolean {
   const used = plan.filter(Boolean);
   if (used.some((id) => !player.deck.includes(id))) return false;
+  const held = heldCard(player);
+  if (held && plan[0] !== held) return false;
   if (BALANCE.uniqueCardsPerPlan && new Set(used).size !== used.length) return false;
   if (!ammoOk(player, plan)) return false;
   if (!plantedOk(plan)) return false;
-  return planEnergyTrace(player.energy, player.energyMax, plan) !== null;
+  return playerTrace(player, plan) !== null;
 }
 
 /** Can `cardId` be placed into `slot` of a partial plan without breaking energy or uniqueness? */
@@ -234,7 +288,22 @@ export function pushAmount(push: number, attackerMods: Mods): number {
 
 /** Energy a player regains at the end of a round. */
 export function energyRecovery(p: PlayerState): number {
-  return BALANCE.energyPerRound + p.mods.energyPerRound;
+  return (p.carry ? TWO_TAP.energyPerRound : BALANCE.energyPerRound) + p.mods.energyPerRound;
+}
+
+/** Cards that play each round: 2 in Two-tap (the third is held over), otherwise every slot. */
+export function stepsPerRound(state: MatchState): number {
+  return state.variant === 'twoTap' ? TWO_TAP.stepsPerRound : BALANCE.slotsPerRound;
+}
+
+/** Late in a match both fighters lose life every round after this one. */
+export function fatigueAfterRound(state: MatchState): number {
+  return state.variant === 'twoTap' ? TWO_TAP.fatigueAfterRound : BALANCE.fatigueAfterRound;
+}
+
+/** Life both fighters lose to fatigue at the end of each late round. */
+export function fatigueDamage(state: MatchState): number {
+  return state.variant === 'twoTap' ? TWO_TAP.fatigueDamage : BALANCE.fatigueDamage;
 }
 
 /**
@@ -498,18 +567,22 @@ export function resolveRound(state: MatchState, plans: [Plan, Plan]): RoundResul
   }
   const next = cloneState(state);
   const steps: StepResult[] = [];
-  for (let slot = 0; slot < BALANCE.slotsPerRound; slot++) {
+  const count = stepsPerRound(state);
+  for (let slot = 0; slot < count; slot++) {
     steps.push(resolveStep(next, [plans[0][slot], plans[1][slot]], slot));
     if (next.outcome) break;
   }
+  // Two-tap: the card after the ones that played stays locked in and plays first next round.
+  if (state.variant === 'twoTap') next.players.forEach((p, i) => (p.carry = { held: plans[i][count] ?? null }));
   // Fatigue: late in a match both fighters wear down every round.
   let fatigue = 0;
-  if (!next.outcome && state.round > BALANCE.fatigueAfterRound) {
-    fatigue = BALANCE.fatigueDamage;
+  if (!next.outcome && state.round > fatigueAfterRound(state)) {
+    fatigue = fatigueDamage(state);
     for (const p of next.players) p.life = Math.max(0, p.life - fatigue);
     next.outcome = outcomeFor(next.players);
   }
-  for (const p of next.players) p.dazed = false;
+  // A stun on the last card of a round is wasted, except in Two-tap, where it cancels the held card.
+  if (state.variant !== 'twoTap' || !TWO_TAP.carryDaze) for (const p of next.players) p.dazed = false;
   // Traps last until the end of the round after the one they were set in.
   next.arena.traps = next.arena.traps.filter((t) => t.until > state.round);
   if (!next.outcome) {

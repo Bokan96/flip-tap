@@ -1,3 +1,5 @@
+import type { Variant } from '../content/variants';
+
 export type Seat = 0 | 1;
 
 export interface Pos {
@@ -137,8 +139,10 @@ export interface PlayerState {
   spent: string[];
   /** Hexed: the next enemy hit that connects deals extra damage and breaks the hex. Lasts across rounds. */
   hexed: boolean;
-  /** Stunned: this player's next card this round is cancelled. Cleared at the end of every round. */
+  /** Stunned: this player's next card is cancelled. Cleared at the end of every round (except in Two-tap). */
   dazed: boolean;
+  /** Two-tap only: the card locked in last round, which plays first this round (null in round 1). */
+  carry?: { held: string | null };
 }
 
 export type MatchOutcome = { winner: Seat } | { winner: null; draw: true };
@@ -171,6 +175,8 @@ export interface ArenaState {
 
 export interface MatchState {
   round: number;
+  /** Rule variant (see content/variants.ts); absent for the classic rules. */
+  variant?: Variant;
   arena: ArenaState;
   players: [PlayerState, PlayerState];
   outcome: MatchOutcome | null;

@@ -1,9 +1,10 @@
 import { BALANCE } from '../content/balance';
 import { getCard, getFighter } from '../content/cards';
+import { TWO_TAP } from '../content/variants';
 import { fastSimulate, type FastResult } from './fastsim';
 import { readPlayer, type PlayerModel, type RoundRecord } from './playerModel';
 import { Rng } from './rng';
-import { planEnergyTrace } from './rules';
+import { energyRecovery, heldCard, heldPlays, playerTrace } from './rules';
 import type { MatchState, Plan, PlayerState, Seat } from './types';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';
@@ -98,17 +99,23 @@ export const SIM_PROFILE: AiProfile = {
   personality: false,
 };
 
-/** Every legal plan for a player (ordered, affordable, unique cards). */
+/**
+ * Every legal plan for a player (ordered, affordable, unique cards). In Two-tap the plan starts
+ * with the player's locked-in card, and the energy refill comes before the held-over slot
+ * (same as rules.playerTrace).
+ */
 export function enumeratePlans(player: PlayerState): Plan[] {
   const out: Plan[] = [];
   const deck = player.deck;
   const slots = BALANCE.slotsPerRound;
+  const refillAt = player.carry ? TWO_TAP.stepsPerRound : -1;
   const cur: string[] = [];
   const rec = (energy: number, reloaded: boolean, moved: boolean) => {
     if (cur.length === slots) {
       out.push([...cur]);
       return;
     }
+    if (cur.length === refillAt) energy = Math.min(player.energyMax, energy + energyRecovery(player));
     for (const id of deck) {
       if (BALANCE.uniqueCardsPerPlan && cur.includes(id)) continue;
       const card = getCard(id);
@@ -123,8 +130,62 @@ export function enumeratePlans(player: PlayerState): Plan[] {
       cur.pop();
     }
   };
-  rec(player.energy, false, false);
+  const held = heldCard(player);
+  if (held) {
+    const card = getCard(held);
+    const plays = heldPlays(player);
+    cur.push(held);
+    rec(
+      plays ? Math.min(player.energy + card.cost, player.energyMax) : player.energy,
+      plays && card.kind === 'reload',
+      card.kind === 'move',
+    );
+  } else rec(player.energy, false, false);
   return out;
+}
+
+/** Two-tap: the opponent as a fair CPU sees them, without the card they locked in face-down. */
+function withoutHeld(p: PlayerState): PlayerState {
+  return p.carry?.held ? { ...p, carry: { held: null } } : p;
+}
+
+/**
+ * Two-tap: the opponent's plans as far as a fair CPU can tell. Their first card is the one they
+ * hold face-down: it could be anything except the two cards they just played (a plan never repeats
+ * a card). The history is trimmed the same way, so the habit model can't see the hidden card either.
+ */
+function hiddenHeld(state: MatchState, other: Seat, history: RoundRecord[]): { theirs: Plan[]; history: RoundRecord[] } | null {
+  if (!heldCard(state.players[other])) return null;
+  const all = enumeratePlans(withoutHeld(state.players[other]));
+  const last = history[history.length - 1];
+  if (!last) return { theirs: all, history };
+  const shown = last.plans[other].slice(0, TWO_TAP.stepsPerRound);
+  const fair = all.filter((p) => !shown.includes(p[0]));
+  const plans = [...last.plans] as [Plan, Plan];
+  plans[other] = shown;
+  return { theirs: fair.length ? fair : all, history: [...history.slice(0, -1), { ...last, plans }] };
+}
+
+/**
+ * Two-tap: their held card was picked last round, before anyone knew where the fighters would be
+ * now, so it isn't their best card for this position. Score each of their plans by the average over
+ * every card they might be holding (the plans sharing its last two cards), so the CPU prepares for
+ * the cards they choose now rather than for a perfectly chosen hidden card. A tiny random nudge
+ * spreads the picks over different held cards.
+ */
+function blurHeld(theirs: Plan[], scores: number[], rng: Rng): number[] {
+  const key = (p: Plan) => `${p[1]}|${p[2]}`;
+  const sum = new Map<string, [number, number]>();
+  theirs.forEach((p, i) => {
+    const e = sum.get(key(p)) ?? [0, 0];
+    e[0] += scores[i];
+    e[1]++;
+    sum.set(key(p), e);
+  });
+  return theirs.map((p) => {
+    const [total, n] = sum.get(key(p))!;
+    return total / n + rng.next() * 1e-6;
+  });
 }
 
 // ---------- scoring ----------
@@ -144,7 +205,7 @@ interface Side {
 function side(p: PlayerState): Side {
   return {
     attacks: p.deck.filter((id) => getCard(id).kind === 'attack').length,
-    regen: BALANCE.energyPerRound + p.mods.energyPerRound,
+    regen: energyRecovery(p),
     energyMax: p.energyMax,
     ammo: p.mods.ammo,
     hexHit: BALANCE.hexDamage + p.mods.hexBonus,
@@ -318,7 +379,10 @@ export function choosePlan(state: MatchState, seat: Seat, difficulty: Difficulty
 export function choosePlanWith(state: MatchState, seat: Seat, profile: AiProfile, rng: Rng, history: RoundRecord[] = []): Plan {
   const other: Seat = seat === 0 ? 1 : 0;
   const mine = enumeratePlans(state.players[seat]);
-  const theirs = enumeratePlans(state.players[other]);
+  const hidden = hiddenHeld(state, other, history);
+  const theirs = hidden ? hidden.theirs : enumeratePlans(state.players[other]);
+  if (hidden) history = hidden.history;
+  const blur = (scores: number[]) => (hidden ? blurHeld(theirs, scores, rng) : scores);
   if (mine.length === 0) throw new Error('No legal plan available.');
   const persona = personality(state, seat, profile);
   const caution = Math.min(0.8, profile.caution + persona.caution);
@@ -327,12 +391,12 @@ export function choosePlanWith(state: MatchState, seat: Seat, profile: AiProfile
   const model = profile.readPlayer > 0 ? readPlayer(history, other, state) : null;
 
   if (profile.solve && mine.length > 1 && theirs.length > 1) {
-    return solveRound(state, seat, profile, rng, { mine, theirs, caution, evalMine, evalTheirs, model });
+    return solveRound(state, seat, profile, rng, { mine, theirs, caution, evalMine, evalTheirs, model, blur });
   }
 
   // Level 1: which opponent plans look strong against a random sample of ours?
   const probe = sample(mine, profile.probe, rng);
-  const theirScores = scorePlans(state, other, theirs, probe, 0, evalTheirs);
+  const theirScores = blur(scorePlans(state, other, theirs, probe, 0, evalTheirs));
   const likely = topIndices(theirScores, Math.ceil(profile.opponentSamples * 0.75)).map((i) => theirs[i]);
   const wildcards = sample(theirs, Math.floor(profile.opponentSamples * 0.25), rng);
   const replies = [...likely, ...wildcards];
@@ -349,6 +413,8 @@ interface SolveInput {
   evalMine: Evaluator;
   evalTheirs: Evaluator;
   model: PlayerModel | null;
+  /** Two-tap: averages their scores over the card they hold face-down (identity otherwise). */
+  blur: (scores: number[]) => number[];
 }
 
 /** Plans of theirs most typical of the player's habits. */
@@ -361,7 +427,7 @@ const REFINE = 2;
  * that small game, tilted toward exploiting the opponent's habits once they are known.
  */
 function solveRound(state: MatchState, seat: Seat, profile: AiProfile, rng: Rng, input: SolveInput): Plan {
-  const { mine, theirs, caution, evalMine, evalTheirs, model } = input;
+  const { mine, theirs, caution, evalMine, evalTheirs, model, blur } = input;
   const other: Seat = seat === 0 ? 1 : 0;
   const sim = simulator(state, seat);
   const R = profile.probe;
@@ -370,7 +436,7 @@ function solveRound(state: MatchState, seat: Seat, profile: AiProfile, rng: Rng,
   // 1. Our plans against a random sample of theirs; 2. theirs against our best of those.
   const first = scorePlans(state, seat, mine, sample(theirs, R, rng), caution, evalMine);
   const probe = topIndices(first, R).map((i) => mine[i]);
-  const theirScores = scorePlans(state, other, theirs, probe, profile.caution, evalTheirs);
+  const theirScores = blur(scorePlans(state, other, theirs, probe, profile.caution, evalTheirs));
   const cols = new Set(topIndices(theirScores, K));
   if (model) {
     const habits = theirs.map((p) => model.weight(p));
@@ -404,7 +470,7 @@ function solveRound(state: MatchState, seat: Seat, profile: AiProfile, rng: Rng,
     if (round === REFINE) break;
     // Their best replies to our mix, over all their plans (only our plans in the mix matter).
     const support = rowList.map((i, k) => [i, p[k]] as const).filter(([, w]) => w > 0.01);
-    const reply = theirs.map((plan) => -support.reduce((s, [i, w]) => s + w * evalMine(sim(mine[i], plan)), 0));
+    const reply = blur(theirs.map((plan) => -support.reduce((s, [i, w]) => s + w * evalMine(sim(mine[i], plan)), 0)));
     addColumns(topIndices(reply, 3));
     // Our best replies to their mix, over all our plans.
     const qFull = colList.map((_, k) => q[k] ?? 0);
@@ -436,5 +502,5 @@ function solveRound(state: MatchState, seat: Seat, profile: AiProfile, rng: Rng,
 
 /** Sanity helper for tests and UI. */
 export function isAffordable(player: PlayerState, plan: Plan): boolean {
-  return planEnergyTrace(player.energy, player.energyMax, plan) !== null;
+  return playerTrace(player, plan) !== null;
 }

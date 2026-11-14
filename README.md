@@ -5,7 +5,9 @@ secretly plan three cards (move, guard, focus, attack, …). The cards are then 
 step by step on a 3×5 grid. Dodge, predict, and land your attacks.
 
 Modes: **Tournament** (beat 5 rivals, earn bonus cards), **Versus CPU** (4 difficulties, up to an Expert that learns your habits),
-**Hot-seat** (two players on one device) and a **Daily challenge**. Full rules: [docs/RULES.md](docs/RULES.md).
+**Hot-seat** (two players on one device), a **Daily challenge**, and **Two-tap**, a rule variant where only two
+cards play each round and your third stays locked in, face down, for the next. All of them sit behind the
+**Play** button on the main menu. Full rules: [docs/RULES.md](docs/RULES.md).
 
 After every match there is a summary (life over the rounds, damage per card, biggest hit, best dodge)
 and a replay. The last 10 matches stay in Profile → Recent matches, and any of them can be shared as a

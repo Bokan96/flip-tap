@@ -1,4 +1,5 @@
 import { BALANCE } from '../balance';
+import { TWO_TAP } from '../variants';
 import type { Translation } from '../i18n';
 import { STRINGS, type Strings } from '../strings';
 
@@ -23,6 +24,23 @@ const strings: Strings = {
   modeCpuHint: 'Jedan meč protiv računara',
   modeHotseat: 'Igra udvoje',
   modeHotseatHint: 'Dva igrača, jedan uređaj',
+  play: 'Igraj',
+  playHint: 'Turnir, dnevni izazov, protiv CPU-a i još',
+  dailyReady: 'Izazov čeka',
+  playModes: 'Načini igre',
+  newChip: 'Novo',
+  twoTap: {
+    name: 'Dva dodira',
+    hint: 'Dve karte po rundi, a treća je zaključana',
+    blurb:
+      'U 1. rundi planiraš 3 karte, ali igraju samo prve dve. Treća ostaje licem nadole, zaključana, i igra prva u sledećoj rundi. Od tada svake runde dodaješ 2 nove karte iza nje.',
+    rule: `Dva dodira: svake runde igraju samo dve karte. Prva runda se planira kao i obično; treća karta ostaje licem nadole, zaključana, i igra prva u sledećoj rundi, pa svake sledeće runde planiraš 2 nove karte iza nje. Omamljivanje na poslednjoj karti runde poništava zaključanu kartu. Borci vraćaju ${TWO_TAP.energyPerRound} energije po rundi, a umor počinje posle runde ${TWO_TAP.fatigueAfterRound}.`,
+    locked: 'Zaključana',
+    nextRound: 'Sledeća runda',
+    heldTitle: 'Zaključana: igra prva u sledećoj rundi',
+    keyPlays: 'igra ove runde',
+    keyHeld: 'čeka sledeću rundu',
+  },
   howToPlay: 'Kako se igra',
   back: 'Nazad',
   menu: 'Meni',
@@ -89,7 +107,7 @@ const strings: Strings = {
   start: 'Počni',
 
   round: (n: number) => `Runda ${n}`,
-  planning: (who: string) => `${who}: isplaniraj 3 poteza`,
+  planning: (who: string, n = 3) => `${who}: isplaniraj ${n} poteza`,
   tapAgainToAdd: (card: string) => `Dodirni ponovo da dodaš: ${card}`,
   lockIn: 'Potvrdi',
   clear: 'Obriši',

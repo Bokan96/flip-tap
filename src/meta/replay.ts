@@ -2,6 +2,7 @@ import { ARENAS } from '../content/arenas';
 import { BALANCE } from '../content/balance';
 import { BASIC_CARD_IDS, CARDS, FIGHTERS, getCard, getFighter } from '../content/cards';
 import { MODIFIERS } from '../content/modifiers';
+import { TWO_TAP, type Variant } from '../content/variants';
 import { DIFFICULTIES, type Difficulty } from '../engine/ai';
 import { resolveRound } from '../engine/rules';
 import { buildDeck, createMatch } from '../engine/setup';
@@ -24,6 +25,8 @@ export interface Replay {
   modifier: string | null;
   /** Daily challenge date (YYYY-MM-DD), or null. */
   date: string | null;
+  /** Rule variant (absent: classic). */
+  variant?: Variant;
   rounds: [Plan, Plan][];
   /** Recorded with different card, fighter or arena numbers, so it may play out differently now. */
   stale?: boolean;
@@ -54,6 +57,7 @@ export function replayFromMatch(
     bonus: [bonusOf(state, 0), bonusOf(state, 1)],
     modifier: info.modifier ?? null,
     date: info.date ?? null,
+    ...(state.variant ? { variant: state.variant } : {}),
     rounds: log.rounds.map((r) => [[...r.plans[0]], [...r.plans[1]]]),
   };
 }
@@ -61,7 +65,13 @@ export function replayFromMatch(
 /** The match exactly as it started. */
 export function replayStart(r: Replay): MatchState {
   const mod = r.modifier ? MODIFIERS.find((m) => m.id === r.modifier)?.modifier : undefined;
-  return createMatch({ fighterId: r.fighters[0], bonusCards: r.bonus[0] }, { fighterId: r.fighters[1], bonusCards: r.bonus[1] }, mod, r.arena);
+  return createMatch(
+    { fighterId: r.fighters[0], bonusCards: r.bonus[0] },
+    { fighterId: r.fighters[1], bonusCards: r.bonus[1] },
+    mod,
+    r.arena,
+    r.variant,
+  );
 }
 
 export interface ReplayRun {
@@ -105,17 +115,23 @@ function hash(text: string): number {
   return h >>> 0;
 }
 
-/** 16-bit fingerprint of the rules and content that decide a match. */
-export function contentStamp(): number {
-  const json = JSON.stringify({ BALANCE, CARDS, FIGHTERS, ARENAS, MODIFIERS }, (k, v) => (COSMETIC.has(k) ? undefined : v));
+/**
+ * 16-bit fingerprint of the rules and content that decide a match. A variant's own numbers only
+ * count for matches played with it, so tuning Two-tap leaves classic replays fresh.
+ */
+export function contentStamp(variant?: Variant): number {
+  const content = { BALANCE, CARDS, FIGHTERS, ARENAS, MODIFIERS, ...(variant === 'twoTap' ? { TWO_TAP } : {}) };
+  const json = JSON.stringify(content, (k, v) => (COSMETIC.has(k) ? undefined : v));
   return hash(json) & 0xffff;
 }
 
 // ---------- binary format ----------
-// version · stamp (2 bytes) · mode + difficulty · arena · 2 fighters · bonus lists · modifier ·
+// version · stamp (2 bytes) · mode + difficulty + variant · arena · 2 fighters · bonus lists · modifier ·
 // date · round count · plans as deck indices, 5 bits each. Strings are length-prefixed ASCII.
 
 const INDEX_BITS = 5;
+/** Flag in the mode byte (bits 0-2 mode, 3-5 difficulty). */
+const TWO_TAP_BIT = 1 << 6;
 
 class Writer {
   bytes: number[] = [];
@@ -186,10 +202,11 @@ function fromBase64Url(code: string): Uint8Array {
 export function encodeReplay(r: Replay): string {
   const w = new Writer();
   w.byte(VERSION);
-  const stamp = contentStamp();
+  const stamp = contentStamp(r.variant);
   w.byte(stamp >> 8);
   w.byte(stamp);
-  w.byte(MODES.indexOf(r.mode) | ((r.difficulty ? DIFFICULTIES.indexOf(r.difficulty) + 1 : 0) << 3));
+  const diff = r.difficulty ? DIFFICULTIES.indexOf(r.difficulty) + 1 : 0;
+  w.byte(MODES.indexOf(r.mode) | (diff << 3) | (r.variant === 'twoTap' ? TWO_TAP_BIT : 0));
   w.str(r.arena);
   r.fighters.forEach((f) => w.str(f));
   r.bonus.forEach((list) => {
@@ -222,8 +239,9 @@ export function decodeReplay(code: string): Replay | null {
     const stamp = (rd.byte() << 8) | rd.byte();
     const md = rd.byte();
     const mode = MODES[md & 7];
-    const diff = md >> 3;
-    if (!mode || diff > DIFFICULTIES.length) return null;
+    const diff = (md >> 3) & 7;
+    const variant: Variant | undefined = md & TWO_TAP_BIT ? 'twoTap' : undefined;
+    if (!mode || diff > DIFFICULTIES.length || md & 0x80) return null;
     const arena = rd.str();
     if (!ARENAS.some((a) => a.id === arena)) return null;
     const fighters = [rd.str(), rd.str()] as [string, string];
@@ -254,8 +272,9 @@ export function decodeReplay(code: string): Replay | null {
       bonus,
       modifier,
       date,
+      ...(variant ? { variant } : {}),
       rounds,
-      stale: stamp !== contentStamp(),
+      stale: stamp !== contentStamp(variant),
     };
   } catch {
     return null;

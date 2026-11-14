@@ -9,14 +9,18 @@ import {
   autoFillPlan,
   canPlace,
   energyRecovery,
+  fatigueAfterRound,
+  fatigueDamage,
+  heldCard,
   isSpent,
   faceTowards,
   movePos,
   partialPlanOk,
-  planEnergyTrace,
   planError,
+  playerTrace,
   resolveRound,
   samePos,
+  stepsPerRound,
 } from '../engine/rules';
 import type { MatchLog, MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult, Trap } from '../engine/types';
 import type { PlanSource } from '../net/transport';
@@ -48,7 +52,7 @@ export interface BattleOptions {
   /** Ignore the plan timer setting (e.g. in the tutorial). */
   noTimer?: boolean;
   /** Always select a tapped card before adding it, whatever the Instant select setting (the tutorial's tips say "tap it again"). */
-  twoTap?: boolean;
+  confirmTap?: boolean;
   /** Short label under the round counter, e.g. the daily challenge's rule twist. */
   tag?: string;
   /** Continue a saved match: the previous round's plans and the log so far. */
@@ -370,8 +374,8 @@ export class BattleView {
     this.q('.round-label').textContent = STRINGS.round(round);
     // Warn one round ahead, then show the fatigue rule while it applies.
     const tag = this.q('.fatigue-tag');
-    const after = BALANCE.fatigueAfterRound;
-    tag.textContent = round > after ? STRINGS.fatigueTag(BALANCE.fatigueDamage) : round === after ? STRINGS.fatigueSoon : '';
+    const after = fatigueAfterRound(this.state);
+    tag.textContent = round > after ? STRINGS.fatigueTag(fatigueDamage(this.state)) : round === after ? STRINGS.fatigueSoon : '';
     tag.classList.toggle('hidden', round < after);
     tag.classList.toggle('active', round > after);
   }
@@ -563,6 +567,7 @@ export class BattleView {
        ${
          this.lastPlans
            ? `<h3>${STRINGS.lastRound}</h3><div class="hand last-round">${this.lastPlans[seat]
+               .slice(0, stepsPerRound(this.state)) // Two-tap: the held-over card stays secret
                .map((id) => cardHtml(id, { facing: p.facing, small: true, readonly: true }))
                .join('')}</div>`
            : ''
@@ -579,7 +584,9 @@ export class BattleView {
        <div class="menu-list">
          <button class="btn primary" data-modal="close">${STRINGS.resume}</button>
          ${settingsHtml()}
-         <details class="menu-rules"><summary>${STRINGS.howToPlay}</summary><ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol></details>
+         <details class="menu-rules"><summary>${STRINGS.howToPlay}</summary><ol class="rules">${this.rules()
+           .map((r) => `<li>${r}</li>`)
+           .join('')}</ol></details>
          <button class="btn danger" data-m="quit">${this.opts.replay ? STRINGS.replays.exit : STRINGS.quit}</button>
        </div>`,
       (box) => {
@@ -593,17 +600,25 @@ export class BattleView {
     );
   }
 
+  /** How-to-play lines for the pause menu, with the Two-tap rule first in a Two-tap match. */
+  private rules(): string[] {
+    return this.state.variant === 'twoTap' ? [STRINGS.twoTap.rule, ...STRINGS.rules] : STRINGS.rules;
+  }
+
   // ---------- human planning ----------
 
   askHuman(state: MatchState, seat: Seat): Promise<Plan> {
     this.state = state;
     this.planSeat = seat;
     this.plan = Array(BALANCE.slotsPerRound).fill('');
+    // Two-tap: the card locked in last round fills the first slot and can't be changed.
+    const held = heldCard(state.players[seat]);
+    if (held) this.plan[0] = held;
     this.hovered = null;
     this.previewCard = null;
     this.armed = null;
     this.el.dataset.seat = String(seat);
-    this.q('.status').textContent = STRINGS.planning(this.seats[seat].name);
+    this.q('.status').textContent = this.planningText();
     this.setMode('plan');
     return new Promise((res) => {
       this.resolvePlan = res;
@@ -720,16 +735,34 @@ export class BattleView {
     return this.plan.findIndex((id) => !id);
   }
 
+  /** "P1: plan your 3 moves" (2 when a Two-tap card is already locked in). */
+  private planningText(): string {
+    return STRINGS.planning(this.seats[this.planSeat].name, BALANCE.slotsPerRound - (this.isLocked(0) ? 1 : 0));
+  }
+
+  /** Two-tap: is this slot the card locked in last round (it can't be moved or removed)? */
+  private isLocked(slot: number): boolean {
+    return slot === 0 && !!heldCard(this.state.players[this.planSeat]);
+  }
+
   private renderPlanner(): void {
     const me = this.state.players[this.planSeat];
     const facings = this.projectedPath().facing;
-    const trace = planEnergyTrace(me.energy, me.energyMax, this.plan);
+    const trace = playerTrace(me, this.plan);
+    const twoTap = this.state.variant === 'twoTap';
+    const steps = stepsPerRound(this.state);
     this.q('.slots').innerHTML = this.plan
       .map((id, i) => {
         const inner = id ? cardHtml(id, { facing: facings[i], small: true }) : `<span class="empty"><b>${i + 1}</b>${STRINGS.emptySlot}</span>`;
         const next = i === this.nextEmptySlot() ? ' next' : '';
         const energy = id && trace ? `<span class="slot-energy" title="${STRINGS.energyAfter}">⚡ ${trace[i]}</span>` : '';
-        return `<div class="slot${next}" data-slot="${i}"><span class="slot-label">${STRINGS.slot(i + 1)}</span>${inner}${energy}</div>`;
+        // Two-tap: the first slot holds last round's locked-in card; the last one plays next round.
+        const locked = this.isLocked(i);
+        const cls = locked ? ' locked' : twoTap && i === steps ? ' held-next' : '';
+        const label = locked ? STRINGS.twoTap.locked : twoTap && i === steps ? STRINGS.twoTap.nextRound : STRINGS.slot(i + 1);
+        const stun = locked && me.dazed ? `<span class="play-tag">${STRINGS.stunned}</span>` : '';
+        const chip = cls ? `<span class="slot-chip" title="${locked ? STRINGS.twoTap.locked : STRINGS.twoTap.heldTitle}">${locked ? '🔒' : '⏭'}</span>` : '';
+        return `<div class="slot${next}${cls}" data-slot="${i}"><span class="slot-label">${label}</span>${inner}${energy}${chip}${stun}</div>`;
       })
       .join('');
     const filled = this.plan.some(Boolean);
@@ -744,7 +777,7 @@ export class BattleView {
     this.q<HTMLButtonElement>('[data-act="lock"]').disabled = planError(me, this.plan) !== null;
     const armedOk = !!this.armed && target >= 0 && canPlace(me, this.plan, target, this.armed);
     if (this.armed) this.q('.hand').querySelector(`.card[data-card="${this.armed}"]`)?.classList.add('armed');
-    this.q('.status').textContent = armedOk ? STRINGS.tapAgainToAdd(getCard(this.armed!).name) : STRINGS.planning(this.seats[this.planSeat].name);
+    this.q('.status').textContent = armedOk ? STRINGS.tapAgainToAdd(getCard(this.armed!).name) : this.planningText();
     this.renderPreview();
     this.renderPreviewPanel();
     this.applyHighlight();
@@ -828,7 +861,7 @@ export class BattleView {
   }
 
   private instantSelect(): boolean {
-    return !this.opts.twoTap && isInstantSelect();
+    return !this.opts.confirmTap && isInstantSelect();
   }
 
   /** Side panel with the focused card shown large and described in words. */
@@ -866,13 +899,14 @@ export class BattleView {
     const me = this.state.players[this.planSeat];
     if (act === 'clear') {
       play('place');
-      this.setPlan(this.plan.map(() => ''));
+      this.setPlan(this.plan.map((id, k) => (this.isLocked(k) ? id : '')));
       return;
     }
     if (act === 'lock') return this.lockIn();
     const slotEl = target.closest<HTMLElement>('[data-slot]');
     if (slotEl) {
       const i = Number(slotEl.dataset.slot);
+      if (this.isLocked(i)) return play('deny');
       if (this.plan[i]) {
         play('place');
         this.setPlan(this.plan.map((id, k) => (k === i ? '' : id)));
@@ -914,6 +948,7 @@ export class BattleView {
     const fromSlot = src.closest<HTMLElement>('[data-slot]');
     const toSlot = under?.closest<HTMLElement>('.slots [data-slot]') ?? null;
     const next = [...this.plan];
+    if ((fromSlot && this.isLocked(Number(fromSlot.dataset.slot))) || (toSlot && this.isLocked(Number(toSlot.dataset.slot)))) return null;
     if (fromSlot) {
       const i = Number(fromSlot.dataset.slot);
       if (!toSlot) {
@@ -971,6 +1006,7 @@ export class BattleView {
       hexed: this.state.players.map((p) => p.hexed) as [boolean, boolean],
     };
     this.resetPlayCards();
+    this.markHeld();
     this.shownRound = this.state.round;
     this.q('.summary').innerHTML = this.summaryBar(this.barTitle(this.state.round), this.opts.replay ? this.replayButtons() : '');
     this.q('.step-label').textContent = '';
@@ -987,7 +1023,7 @@ export class BattleView {
     this.state = result.state;
     this.lastPlans = [[...plans[0]], [...plans[1]]];
     this.log.rounds.push({ plans: this.lastPlans, result });
-    this.el.querySelectorAll('.token').forEach((t) => t.classList.remove('dazed'));
+    this.showDazed();
     this.renderTraps(this.state.arena.traps);
     this.showHexes([this.state.players[0].hexed, this.state.players[1].hexed]);
     if (result.fatigue > 0) {
@@ -1022,7 +1058,7 @@ export class BattleView {
   }
 
   private async animateStep(step: StepResult, plans: [Plan, Plan]): Promise<void> {
-    this.q('.step-label').textContent = STRINGS.stepOf(step.slot + 1, BALANCE.slotsPerRound);
+    this.q('.step-label').textContent = STRINGS.stepOf(step.slot + 1, stepsPerRound(this.state));
     const players = step.players;
     const tokens = [this.q('.token.p0'), this.q('.token.p1')];
     const color = (i: number) => getFighter(this.state.players[i].fighterId).color;
@@ -1323,6 +1359,23 @@ export class BattleView {
       t.classList.toggle('ko', !!o && (o.winner === null || o.winner !== i));
       t.classList.remove('ko-fall');
     });
+    this.showDazed();
+  }
+
+  /** Stun marks for whoever is still stunned between rounds (only in Two-tap: it cancels the held card). */
+  private showDazed(): void {
+    this.state.players.forEach((p, i) => this.q(`.token.p${i}`).classList.toggle('dazed', p.dazed));
+  }
+
+  /** Two-tap: the card each player holds over for next round stays face down, with a lock. */
+  private markHeld(): void {
+    if (this.state.variant !== 'twoTap') return;
+    for (const i of [0, 1]) {
+      const card = this.playCard(i, stepsPerRound(this.state));
+      card.classList.add('held');
+      card.title = STRINGS.twoTap.heldTitle;
+      card.querySelector('.play-step')!.textContent = STRINGS.twoTap.nextRound;
+    }
   }
 
   /**
@@ -1489,10 +1542,12 @@ export class BattleView {
     start: { pos: [Pos, Pos]; facing: [number, number]; traps: Trap[]; hexed: [boolean, boolean] },
   ): Promise<void> {
     const summary = this.q('.summary');
-    // Cards never played (the match ended first) are shown crossed out.
+    // Cards never played (the match ended first) are shown crossed out. In Two-tap the card held
+    // over for next round stays face down while the match goes on.
+    const heldOver = this.state.variant === 'twoTap' && !result.state.outcome ? stepsPerRound(this.state) : -1;
     for (const i of [0, 1] as Seat[]) {
       plans[i].forEach((id, s) => {
-        if (result.steps[s]) return;
+        if (result.steps[s] || s === heldOver) return;
         const card = this.playCard(i, s);
         card.className = 'play-card unplayed';
         card.title = STRINGS.notPlayed;

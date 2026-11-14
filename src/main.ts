@@ -11,6 +11,7 @@ import { BALANCE } from './content/balance';
 import { BONUS_CARD_IDS, FIGHTERS, getCard, getFighter } from './content/cards';
 import { MODIFIERS } from './content/modifiers';
 import { STRINGS } from './content/strings';
+import type { Variant } from './content/variants';
 import { DIFFICULTIES, type Difficulty } from './engine/ai';
 import { randomSeed } from './engine/rng';
 import { createMatch, type MatchModifier, type SeatConfig } from './engine/setup';
@@ -148,11 +149,7 @@ function title(): void {
         saved.state.round,
       )}</small></button>`
     : '';
-  const today = dailyChallenge();
-  const dailyDone = profile().daily.results[today.date] === 'win';
-  const dailyHint = dailyDone
-    ? STRINGS.daily.beatenToday(dailyStreak())
-    : STRINGS.daily.hint(getFighter(today.fighter).name, getFighter(today.rival).name, today.modifier.name);
+  const dailyReady = profile().daily.results[dailyChallenge().date] !== 'win';
   const root = screen(
     `<div class="title-wrap">
       ${banner}
@@ -165,10 +162,9 @@ function title(): void {
       <p class="tagline">${STRINGS.tagline}</p>
       <nav class="menu">
         ${resume}
-        <button class="btn${saved ? '' : ' primary'} big" data-mode="tournament">${STRINGS.modeTournament}<small>${STRINGS.modeTournamentHint}</small></button>
-        <button class="btn big daily-btn${dailyDone ? ' done' : ''}" data-act="daily">${STRINGS.daily.title}<small>${dailyHint}</small></button>
-        <button class="btn big" data-mode="cpu">${STRINGS.modeCpu}<small>${STRINGS.modeCpuHint}</small></button>
-        <button class="btn big" data-mode="hotseat">${STRINGS.modeHotseat}<small>${STRINGS.modeHotseatHint}</small></button>
+        <button class="btn${saved ? '' : ' primary'} big play-btn" data-act="play">${STRINGS.play}<small>${STRINGS.playHint}</small>${
+          dailyReady ? `<em class="menu-chip">${STRINGS.dailyReady}</em>` : ''
+        }</button>
       </nav>
       <button class="btn install-btn hidden" data-act="install">⤓ ${STRINGS.install.button}<small>${STRINGS.install.hint}</small></button>
       <div class="title-links">
@@ -182,8 +178,7 @@ function title(): void {
     <span class="app-version" title="${STRINGS.versionTitle}">v${__APP_VERSION__}</span>`,
     'title',
   );
-  on(root, '[data-mode]', (el) => matchSetup(el.dataset.mode as SetupMode));
-  on(root, '[data-act="daily"]', dailyScreen);
+  on(root, '[data-act="play"]', playMenu);
   if (saved) on(root, '[data-act="resume"]', () => resumeMatch(saved));
   on(root, '[data-act="howto"]', howTo);
   on(root, '[data-act="profile"]', profileScreen);
@@ -196,6 +191,61 @@ function title(): void {
     setTutorialDone();
     root.querySelector('.banner')?.remove();
   });
+}
+
+// ---------- play menus ----------
+
+/** Every way to play: tournament, daily challenge, versus CPU, hot-seat and the rule variants. */
+function playMenu(): void {
+  const today = dailyChallenge();
+  const dailyDone = profile().daily.results[today.date] === 'win';
+  const dailyHint = dailyDone
+    ? STRINGS.daily.beatenToday(dailyStreak())
+    : STRINGS.daily.hint(getFighter(today.fighter).name, getFighter(today.rival).name, today.modifier.name);
+  const root = screen(
+    `<div class="title-wrap play-wrap">
+      <h2>${STRINGS.play}</h2>
+      <nav class="menu">
+        <button class="btn primary big" data-mode="tournament">${STRINGS.modeTournament}<small>${STRINGS.modeTournamentHint}</small></button>
+        <button class="btn big daily-btn${dailyDone ? ' done' : ''}" data-act="daily">${STRINGS.daily.title}<small>${dailyHint}</small></button>
+        <button class="btn big" data-mode="cpu">${STRINGS.modeCpu}<small>${STRINGS.modeCpuHint}</small></button>
+        <button class="btn big" data-mode="hotseat">${STRINGS.modeHotseat}<small>${STRINGS.modeHotseatHint}</small></button>
+        <h3 class="menu-head">${STRINGS.playModes}</h3>
+        <button class="btn big" data-act="two-tap">${STRINGS.twoTap.name}<small>${STRINGS.twoTap.hint}</small><em class="menu-chip">${STRINGS.newChip}</em></button>
+      </nav>
+      <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>
+    </div>`,
+    'play-menu',
+  );
+  on(root, '[data-mode]', (el) => matchSetup(el.dataset.mode as SetupMode));
+  on(root, '[data-act="daily"]', dailyScreen);
+  on(root, '[data-act="two-tap"]', twoTapMenu);
+  on(root, '[data-act="back"]', title);
+}
+
+/** Two-tap: how it works at a glance, then against the CPU or a friend. */
+function twoTapMenu(): void {
+  const T = STRINGS.twoTap;
+  const lane = (cls: string, label: string) => `<span class="tt-card ${cls}"><b>${label}</b></span>`;
+  const root = screen(
+    `<div class="title-wrap play-wrap">
+      <h2>${T.name}</h2>
+      <p class="note">${T.blurb}</p>
+      <div class="tt-diagram" aria-hidden="true">
+        <div class="tt-row"><small>${STRINGS.round(1)}</small>${lane('plays', '1')}${lane('plays', '2')}${lane('held', '3')}</div>
+        <div class="tt-row"><small>${STRINGS.round(2)}</small>${lane('plays locked', '3')}${lane('plays', '4')}${lane('held', '5')}</div>
+        <div class="tt-key"><span class="tt-card plays"></span>${T.keyPlays}<span class="tt-card held"></span>${T.keyHeld}</div>
+      </div>
+      <nav class="menu">
+        <button class="btn primary big" data-mode="cpu">${STRINGS.modeCpu}<small>${STRINGS.modeCpuHint}</small></button>
+        <button class="btn big" data-mode="hotseat">${STRINGS.modeHotseat}<small>${STRINGS.modeHotseatHint}</small></button>
+      </nav>
+      <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>
+    </div>`,
+    'play-menu',
+  );
+  on(root, '[data-mode]', (el) => matchSetup(el.dataset.mode as 'cpu' | 'hotseat', 'twoTap'));
+  on(root, '[data-act="back"]', playMenu);
 }
 
 /**
@@ -238,6 +288,8 @@ function howTo(): void {
      <ol class="rules">${STRINGS.rules.map((r) => `<li>${r}</li>`).join('')}</ol>
      <div class="hand demo">${example}</div>
      <p class="note">${STRINGS.howToNote}</p>
+     <h3>${STRINGS.twoTap.name}</h3>
+     <p class="note">${STRINGS.twoTap.rule}</p>
      <div class="row">
        <button class="btn primary" data-act="tutorial">${STRINGS.tutorial.playTutorial}</button>
        <button class="btn" data-act="back">${STRINGS.back}</button>
@@ -351,7 +403,7 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * Match setup: the fighter slots (tap one to change it), the roster with a Random tile, details of
  * the highlighted fighter, the mode's options and a Fight button. Nothing starts until Fight.
  */
-function matchSetup(mode: SetupMode): void {
+function matchSetup(mode: SetupMode, variant?: Variant): void {
   const seats = mode === 'tournament' ? 1 : 2;
   const names = mode === 'hotseat' ? [STRINGS.player(1), STRINGS.player(2)] : mode === 'cpu' ? [STRINGS.setup.you, STRINGS.cpu] : [STRINGS.setup.you];
   const picks: (string | null)[] = [...(lastPicks[mode] ?? Array(seats).fill(null))];
@@ -360,7 +412,8 @@ function matchSetup(mode: SetupMode): void {
   let focus: string | null = picks[active] ?? picks[0];
   let busy = false;
 
-  const heading = mode === 'cpu' ? STRINGS.modeCpu : mode === 'hotseat' ? STRINGS.modeHotseat : STRINGS.modeTournament;
+  const modeName = mode === 'cpu' ? STRINGS.modeCpu : mode === 'hotseat' ? STRINGS.modeHotseat : STRINGS.modeTournament;
+  const heading = variant ? `${STRINGS.twoTap.name} · ${modeName}` : modeName;
   const tiles = FIGHTERS.map((f) => {
     const champ = ladder(f.id).champion ? `<em class="champ" title="${STRINGS.championBadge}">★</em>` : '';
     return `<button class="pick" data-pick="${f.id}" style="--clr:${f.color}">
@@ -465,12 +518,12 @@ function matchSetup(mode: SetupMode): void {
   bindDifficulty(root);
   bindArena(root);
   bindLoadout(root);
-  on(root, '[data-act="back"]', title);
+  on(root, '[data-act="back"]', variant ? twoTapMenu : playMenu);
   on(root, '[data-act="fight"]', () => {
     if (picks.some((p) => !p)) return;
     lastPicks[mode] = [...picks];
     if (mode === 'tournament') return tournamentHub(picks[0]!);
-    startMatch(mode, picks[0]!, picks[1]!);
+    startMatch(mode, picks[0]!, picks[1]!, undefined, variant);
   });
   render();
 }
@@ -512,6 +565,8 @@ interface BattleSetup {
   difficulty: Difficulty | null;
   modifier?: MatchModifier;
   arenaId?: string;
+  /** Rule variant (Two-tap); absent for the classic rules. */
+  variant?: Variant;
   /** Custom start state and seat 1 source (tutorial). */
   state?: MatchState;
   opponent?: PlanSource;
@@ -554,7 +609,7 @@ function runBattle(setup: BattleSetup): void {
     const container = screen('', 'battle-screen');
     view = new BattleView(
       container,
-      setup.resume?.state ?? setup.state ?? createMatch(setup.p0, setup.p1, setup.modifier, setup.arenaId),
+      setup.resume?.state ?? setup.state ?? createMatch(setup.p0, setup.p1, setup.modifier, setup.arenaId, setup.variant),
       [
         { name: setup.names[0], source: human },
         { name: setup.names[1], source: opponent },
@@ -638,7 +693,7 @@ function startTutorial(): void {
     difficulty: null,
     state: createTutorialMatch(),
     opponent: new ScriptedPlanSource(),
-    options: { hooks: tutorialHooks(), noTimer: true, twoTap: true },
+    options: { hooks: tutorialHooks(), noTimer: true, confirmTap: true },
     onEnd: (outcome) => {
       setTutorialDone();
       if (outcome.winner === 0) play('win');
@@ -652,11 +707,15 @@ function startTutorial(): void {
   });
 }
 
-function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string, resume?: SavedMatch): void {
+function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string, resume?: SavedMatch, variant?: Variant): void {
   const names: [string, string] = [STRINGS.player(1), mode === 'hotseat' ? STRINGS.player(2) : STRINGS.cpu];
+  // A resumed match keeps the rules it was started with.
+  const rules = resume ? resume.state.variant : variant;
   runBattle({
     mode,
     resume,
+    variant: rules,
+    options: rules ? { tag: STRINGS.twoTap.name } : undefined,
     p0: { fighterId: a, bonusCards: mode === 'cpu' ? loadout() : [] },
     p1: { fighterId: b },
     names,
@@ -666,7 +725,7 @@ function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string, resume?: Save
       const celebrate = outcome.winner === 0 || (mode === 'hotseat' && outcome.winner !== null);
       if (celebrate) play('win');
       resultScreen(outcomeText(outcome, names), outcome.winner, [a, b], [
-        { label: STRINGS.rematch, primary: true, fn: () => startMatch(mode, a, b) },
+        { label: STRINGS.rematch, primary: true, fn: () => startMatch(mode, a, b, undefined, rules) },
         { label: STRINGS.menu, fn: title },
       ], '', celebrate, recap);
     },
@@ -752,6 +811,12 @@ function resultScreen(
 
 // ---------- replays ----------
 
+/** "Versus CPU", or "Two-tap · Versus CPU" for a Two-tap match. */
+function replayModeName(r: Replay): string {
+  const mode = STRINGS.replays.modeNames[r.mode];
+  return r.variant ? `${STRINGS.twoTap.name} · ${mode}` : mode;
+}
+
 /** Seat names as the match showed them. */
 function replayNames(r: Replay): [string, string] {
   const p1 = STRINGS.player(1);
@@ -762,7 +827,7 @@ function replayNames(r: Replay): [string, string] {
 
 function replayTag(r: Replay): string {
   const mod = r.modifier ? MODIFIERS.find((m) => m.id === r.modifier)?.name : null;
-  return mod ? `${STRINGS.replays.tag} · ${mod}` : STRINGS.replays.tag;
+  return [STRINGS.replays.tag, r.variant ? STRINGS.twoTap.name : null, mod].filter(Boolean).join(' · ');
 }
 
 function replayInvalid(back: () => void): void {
@@ -852,7 +917,7 @@ function replayScreen(code: string, back: () => void): void {
   const names = replayNames(r);
   const recap: Recap = { replay: r, code, stats: matchStats(run.states[0], run.log), names };
   const self = () => replayScreen(code, back);
-  const meta = [STRINGS.replays.modeNames[r.mode], getArena(r.arena).name, r.date].filter(Boolean).join(' · ');
+  const meta = [replayModeName(r), getArena(r.arena).name, r.date].filter(Boolean).join(' · ');
   resultScreen(
     outcomeText(run.outcome, names),
     run.outcome.winner,
@@ -1009,7 +1074,7 @@ function dailyScreen(): void {
      </div>`,
     'daily',
   );
-  on(root, '[data-act="back"]', title);
+  on(root, '[data-act="back"]', playMenu);
   on(root, '[data-act="play"]', () => dailyMatch(c.date));
 }
 
@@ -1083,7 +1148,7 @@ function recentHtml(): string {
       return `<li class="recent-row ${cls}" data-recent="${i}">
           <span class="recent-vs">${emblemHtml(fa, 'hud-emblem')}${emblemHtml(fb, 'hud-emblem')}</span>
           <span class="recent-text"><b>${result} · ${fa.name} vs ${fb.name}</b>
-            <span>${R.modeNames[r.mode]} · ${R.roundsN(r.rounds.length)} · ${whenText(m.at)}</span></span>
+            <span>${replayModeName(r)} · ${R.roundsN(r.rounds.length)} · ${whenText(m.at)}</span></span>
           <button class="btn icon-ctl" data-watch="${i}" aria-label="${R.watchShort}" title="${R.watchShort}">▶\uFE0E</button>
           <button class="btn icon-ctl" data-share="${i}" aria-label="${R.shareShort}" title="${R.shareShort}">↗</button>
         </li>`;

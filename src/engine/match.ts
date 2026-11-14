@@ -1,3 +1,4 @@
+import type { Variant } from '../content/variants';
 import { choosePlanWith, type AiProfile } from './ai';
 import type { RoundRecord } from './playerModel';
 import { Rng } from './rng';
@@ -20,13 +21,14 @@ export interface RunOptions {
   maxRounds?: number;
   modifier?: MatchModifier;
   arenaId?: string;
+  variant?: Variant;
 }
 
 /** Play a whole match between two AIs without any UI. Deterministic for a given seed. */
 export function runMatch(p0: SeatConfig, p1: SeatConfig, opts: RunOptions): MatchRecord {
   const rng = new Rng(opts.seed);
   const maxRounds = opts.maxRounds ?? 40;
-  let state = createMatch(p0, p1, opts.modifier, opts.arenaId);
+  let state = createMatch(p0, p1, opts.modifier, opts.arenaId, opts.variant);
   const history: MatchRecord['history'] = [];
   const seen: RoundRecord[] = [];
   while (!state.outcome && state.round <= maxRounds) {
