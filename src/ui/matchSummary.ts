@@ -8,6 +8,8 @@ export interface SummaryInput {
   /** Seat names, e.g. "Player 1" and "CPU". */
   names: [string, string];
   fighters: [string, string];
+  /** When given, the highlights (biggest hit, best dodge) can be tapped to watch their round in `slot`. */
+  onHighlight?: (round: number, slot: HTMLElement) => void;
 }
 
 /** Chart colour per seat: the player colours, a step darker so lines read well on the panel. */
@@ -32,9 +34,12 @@ function tile(label: string, value: string, sub: string): string {
   return `<div class="stat-tile"><b>${value}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
 }
 
-function highlightTile(label: string, h: Highlight | null, names: [string, string], line: (card: string) => string, none: string): string {
+/** A highlight with the round it happened in; with `watch`, a button that replays that round. */
+function highlightTile(label: string, h: Highlight | null, names: [string, string], line: (card: string) => string, none: string, watch: boolean): string {
   if (!h) return tile(label, STRINGS.profile.none, none);
-  return tile(label, String(h.damage), `<span>${esc(line(cardName(h.card)))}</span>${who(h.seat, names)}`);
+  const sub = `<span>${esc(line(cardName(h.card)))}</span>${who(h.seat, names)}<span class="tile-round">${watch ? '▶ ' : ''}${STRINGS.summary.inRound(h.round)}</span>`;
+  if (!watch) return tile(label, String(h.damage), sub);
+  return `<button class="stat-tile watch" data-round="${h.round}" title="${STRINGS.summary.watchRound}"><b>${h.damage}</b><span>${label}</span><small>${sub}</small></button>`;
 }
 
 function damageHtml(input: SummaryInput): string {
@@ -70,14 +75,16 @@ function damageHtml(input: SummaryInput): string {
 
 /** The match summary: highlight tiles, life chart and damage per card. */
 export function renderSummary(host: HTMLElement, input: SummaryInput): void {
-  const { stats, names, fighters } = input;
+  const { stats, names, fighters, onHighlight } = input;
   const S = STRINGS.summary;
+  const watch = !!onHighlight;
   host.innerHTML = `
     <div class="stat-grid summary-tiles">
-      ${tile(S.rounds, String(stats.rounds), stats.rounds >= stats.fatigueFrom ? S.fatigueFrom(stats.fatigueFrom) : '')}
-      ${highlightTile(S.biggestHit, stats.biggestHit, names, (c) => c, S.noHits)}
-      ${highlightTile(S.bestDodge, stats.bestDodge, names, S.dodged, S.noDodges)}
+      ${tile(S.rounds, String(stats.rounds), '')}
+      ${highlightTile(S.biggestHit, stats.biggestHit, names, (c) => c, S.noHits, watch)}
+      ${highlightTile(S.bestDodge, stats.bestDodge, names, S.dodged, S.noDodges, watch)}
     </div>
+    <div class="highlight-replay"></div>
     <h4>${S.lifeTitle}</h4>
     <div class="life-chart-host"></div>
     ${damageHtml(input)}`;
@@ -90,4 +97,11 @@ export function renderSummary(host: HTMLElement, input: SummaryInput): void {
     max: Math.max(...stats.lifeMax),
     fatigueFrom: stats.fatigueFrom,
   });
+  const slot = host.querySelector<HTMLElement>('.highlight-replay')!;
+  host.querySelectorAll<HTMLElement>('.stat-tile.watch').forEach((b) =>
+    b.addEventListener('click', () => {
+      host.querySelectorAll('.stat-tile.watch').forEach((x) => x.classList.toggle('on', x === b));
+      onHighlight?.(Number(b.dataset.round), slot);
+    }),
+  );
 }

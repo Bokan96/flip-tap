@@ -280,6 +280,39 @@ function outcomeFor(players: [PlayerState, PlayerState]): MatchOutcome | null {
   return null;
 }
 
+/**
+ * Where a hit's damage comes from: `card` (the card's own damage) and each bonus on top of it
+ * (`bonus`: a flat damage modifier, `lowLife`: a low-life passive like Cinder's, `moved`: against a
+ * target that moved, `hex`: a hex it breaks). Guard and the defender's reductions come off the
+ * card's part first, then off the bonuses in that order, so the parts add up to the damage dealt.
+ */
+export type DamagePart = { kind: 'card' | 'bonus' | 'lowLife' | 'moved' | 'hex'; amount: number };
+
+/** The parts of a hit's damage (see DamagePart); the first is always the card's own part. */
+export function hitParts(card: CardDef, attacker: PlayerState, defender: PlayerState, defenderGuard: number, defenderMoved: boolean): DamagePart[] {
+  const am = attacker.mods;
+  const dm = defender.mods;
+  const parts: DamagePart[] = [{ kind: 'card', amount: card.damage ?? 0 }];
+  let cut = defenderGuard + dm.damageReduction;
+  const add = (kind: DamagePart['kind'], n: number) => {
+    if (n > 0) parts.push({ kind, amount: n });
+    else cut -= n; // a negative bonus is a reduction
+  };
+  add('bonus', am.damageBonus);
+  if (am.lowLifeThreshold > 0 && attacker.life <= am.lowLifeThreshold) add('lowLife', am.lowLifeBonus);
+  if (defenderMoved) {
+    add('moved', am.vsMovedBonus + (card.vsMoved ?? 0));
+    cut += dm.movedReduction;
+  }
+  add('hex', defender.hex);
+  for (const p of parts) {
+    const c = Math.max(0, Math.min(cut, p.amount));
+    p.amount -= c;
+    cut -= c;
+  }
+  return parts.filter((p, i) => i === 0 || p.amount > 0);
+}
+
 /** Life a hit removes, after the attacker's and defender's modifiers (and a hex it breaks). Never below 0. */
 export function hitDamage(
   card: CardDef,
@@ -288,14 +321,7 @@ export function hitDamage(
   defenderGuard: number,
   defenderMoved: boolean,
 ): number {
-  const am = attacker.mods;
-  const dm = defender.mods;
-  let dmg = (card.damage ?? 0) + am.damageBonus;
-  if (am.lowLifeThreshold > 0 && attacker.life <= am.lowLifeThreshold) dmg += am.lowLifeBonus;
-  if (defenderMoved) dmg += am.vsMovedBonus + (card.vsMoved ?? 0) - dm.movedReduction;
-  dmg += defender.hex;
-  dmg -= defenderGuard + dm.damageReduction;
-  return Math.max(0, dmg);
+  return hitParts(card, attacker, defender, defenderGuard, defenderMoved).reduce((n, p) => n + p.amount, 0);
 }
 
 /**
@@ -391,6 +417,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const healed = [0, 0];
   const hexApplied = [false, false];
   const hexBroken = [false, false];
+  const parts: DamagePart[][] = [[], []];
   const interrupted = [false, false];
   let areas: [Pos[], Pos[]] = [[], []];
   let midLives: [number, number] | null = null;
@@ -443,7 +470,8 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       } else {
         // The defender is attacking too, so it has no guard or counter this step.
         hit[i] = 'hit';
-        damage[i] = hitDamage(atk, ps[o], ps[i], 0, moved[i]);
+        parts[i] = hitParts(atk, ps[o], ps[i], 0, moved[i]);
+        damage[i] = parts[i].reduce((n, p) => n + p.amount, 0);
         ps[i].life = clamp(ps[i].life - damage[i], 0, ps[i].lifeMax);
         if (atk.drain && damage[i] > 0) {
           drained[o] = Math.floor((damage[i] * atk.drain) / 100);
@@ -476,7 +504,8 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       }
       const guard = active[i] ? (cards[i].guard ?? 0) : 0;
       hit[i] = guard > 0 ? 'guard' : 'hit';
-      damage[i] = hitDamage(atk, ps[o], ps[i], guard, moved[i]);
+      parts[i] = hitParts(atk, ps[o], ps[i], guard, moved[i]);
+      damage[i] = parts[i].reduce((n, p) => n + p.amount, 0);
       if (active[i] && cards[i].counter) counter[o] += cards[i].counter!;
       if (atk.drain && damage[i] > 0) drained[o] = Math.floor((damage[i] * atk.drain) / 100);
       if (atk.stun && damage[i] > 0) dazed[i] = true;
@@ -566,6 +595,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     area: areas[i],
     hit: hit[i],
     damageTaken: damage[i],
+    damageParts: parts[i],
     counterTaken: counter[i],
     drained: drained[i],
     dazed: dazed[i],

@@ -484,21 +484,40 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .floats { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .float {
   font-weight: 900; font-size: clamp(1rem, 4vw, 1.6rem); text-shadow: 0 2px 4px #000; animation: rise 2s linear forwards;
+  /* One line, always (spacing texts apart relies on their measured size), even wider than the square. */
+  white-space: nowrap; line-height: 1.15;
   /* Above the piece (its tip is about 36% of a square above the middle), extra labels stacking upward. */
-  translate: 0 calc(-36% - .7em - var(--k, 0) * 1.25em);
+  /* Its bottom just above the piece (whose tip is about 36% of a square above the middle, so 86% up
+     from the square's bottom, where the label sits), lifted clear of the other texts there. */
+  translate: 0 calc(-86% - 4px - var(--lift, 0px));
+  /* The pop-in grows the text from its bottom edge, so it never pushes down into the text below. */
+  transform-origin: 50% 100%;
 }
 .float.damage { color: var(--danger); }
 .float.guarded { color: var(--fx-guard); }
 .float.miss { color: var(--muted); font-size: 1rem; }
 .float.heal { color: var(--life); }
 .float.energy { color: var(--energy); font-size: .95rem; }
+/* A steady climb of 36px (FLOAT_RISE in battle.ts relies on it being steady), a pop in, a quick fade out. */
 @keyframes rise {
-  0% { opacity: 0; transform: translateY(4px) scale(.6); }
-  7% { opacity: 1; transform: translateY(0) scale(1.12); }
-  14% { transform: translateY(-3px) scale(1); }
-  80% { opacity: 1; transform: translateY(-22px); }
-  100% { opacity: 0; transform: translateY(-30px); }
+  0% { opacity: 0; transform: translateY(0) scale(.6); }
+  6% { opacity: 1; transform: translateY(-2.16px) scale(1.12); }
+  12% { transform: translateY(-4.32px) scale(1); }
+  82% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-36px) scale(1); }
 }
+/* The label sits on the bottom edge of the float's box whatever its height (two lines can be taller
+   than a square), centred across it. */
+.float > span { display: block; position: absolute; left: 50%; bottom: 0; translate: -50% 0; }
+/* A hit's bonuses, each its own number on a line under the hit (a hex, a low-life passive, against a
+   target that moved), coming in a beat after it. */
+.float .line { display: block; }
+.float .line + .line { font-size: .8em; animation: line-in .25s ease-out .3s both; }
+@keyframes line-in { from { opacity: 0; transform: translateY(-4px); } }
+.float .part-hex { color: var(--fx-hex); }
+.float .part-lowLife { color: var(--fx-recoil); }
+.float .part-moved, .float .part-bonus { color: var(--danger-soft); }
+.reduced-fx .float .line { animation: none; }
 
 /* beside the board while planning: the 3 chosen cards (left) and the focused card (right) */
 .slots { flex-direction: column; gap: 4px; align-items: center; justify-content: center; min-height: 0; }
@@ -1332,6 +1351,16 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .summary-tiles .stat-tile { background: var(--bg2); text-align: center; align-items: center; min-width: 0; }
 .stat-tile small { color: var(--muted); font-size: .72rem; line-height: 1.35; display: flex; flex-direction: column; align-items: center; }
 .stat-tile small span { color: inherit; font-size: inherit; text-transform: none; letter-spacing: 0; }
+/* Highlights that replay their round when tapped. */
+.stat-tile.watch { appearance: none; font: inherit; color: inherit; cursor: pointer; transition: border-color .15s, background-color .15s; }
+.stat-tile.watch:hover, .stat-tile.watch.on { border-color: var(--accent); }
+.stat-tile.watch.on { background: color-mix(in srgb, var(--accent) 8%, var(--bg2)); }
+.stat-tile small .tile-round { color: var(--muted); }
+.stat-tile.watch small .tile-round { color: var(--accent); font-weight: 700; }
+/* The highlight's round, replayed in a small board under the tiles. */
+.highlight-replay:empty { display: none; }
+.mini-replay { width: 100%; height: min(78vh, 640px); margin-top: 10px; border: 1px solid var(--line-hi); background: var(--bg); overflow: hidden; }
+.mini-replay .mini-battle { width: 100%; height: 100%; padding: 6px; container: screen / size; }
 .note.warn { color: var(--danger-soft); }
 
 .who-key { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }

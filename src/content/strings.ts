@@ -334,6 +334,8 @@ export const STRINGS = {
     fatigue: 'Fatigue has begun: from now on both fighters lose life at the end of every round.',
     twoTap: 'Two-tap: the card you held back last round is locked into your first slot and plays first.',
   } as Record<string, string>,
+  /** Labels for the bonuses on a hit, each shown as its own number (see rules.hitParts). */
+  dmgParts: { lowLife: 'Low life', bonus: 'Bonus' },
   /** Tapping a spent-shot chip. */
   spentText: 'This shot was fired. It can’t be used again until a Reload card plays.',
   swappedFloat: '⇄',
@@ -367,12 +369,13 @@ export const STRINGS = {
   summary: {
     title: 'Match summary',
     rounds: 'Rounds',
-    fatigueFrom: (n: number) => `Fatigue from round ${n}`,
     biggestHit: 'Biggest hit',
     bestDodge: 'Best dodge',
     dodged: (card: string) => `Dodged ${card}`,
     noHits: 'No hits landed',
     noDodges: 'Nobody stepped out of an attack',
+    inRound: (n: number) => `Round ${n}`,
+    watchRound: 'Tap to watch that round',
     lifeTitle: 'Life after each round',
     start: 'Start',
     roundCol: 'Round',

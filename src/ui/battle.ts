@@ -34,7 +34,7 @@ import { Fx, fxKind, haptic, retrigger, type FxKind } from './fx';
 import { bindSettings, settingsHtml } from './settingsPanel';
 import { themeColor } from './skin';
 import { emblemHtml, tokenArtHtml } from './emblems';
-import { beatCaption, beatStamp, endCaption, roundTips, whyNotText } from './narrate';
+import { beatCaption, beatStamp, endCaption, partLabel, roundTips, whyNotText } from './narrate';
 import { closeTip, showTip } from './tips';
 
 export interface BattleSeat {
@@ -80,6 +80,8 @@ export interface ReplayControls {
   onChange(speed: number, paused: boolean): void;
   /** Restart playback at the start of this round (1-based); past the last round = the result. */
   seek(round: number): void;
+  /** Play just the first round, over and over, with no previous/next buttons (the match summary's highlights). */
+  single?: boolean;
   exit(): void;
 }
 
@@ -101,8 +103,13 @@ const TIMING = { intro: 500, hit: 1000, energy: 900 };
 const CARD_MS = 1700;
 /** Pause between a card turning face up (or coming into the spotlight) and its effect. */
 const READ_MS = 550;
-/** How long a floating number or word stays up (matches the `rise` animation in styles.css). */
+/** How long a floating number or word stays up, and how far it rises meanwhile (the `rise` animation in styles.css). */
 const FLOAT_MS = 2000;
+const FLOAT_RISE = 36;
+/** Texts over the same square start at least this far apart, one after another (ms at normal speed). */
+const FLOAT_GAP = 320;
+/** Space kept around each floating text (px). */
+const FLOAT_PAD = 6;
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 /** Thrown by a recap's waits once it has been stopped or restarted. */
@@ -177,6 +184,10 @@ export class BattleView {
   private replayRun = 0;
   /** Traps currently drawn on the board (to spot newly placed ones, and for tapping one). */
   private shownTraps: Trap[] = [];
+  /** Floating texts still rising: their board row and width (px), when each started, how high it sits, how tall it is. */
+  private floatsLive: { row: number; x0: number; x1: number; start: number; lift: number; h: number }[] = [];
+  /** When the next floating text may start over each square (they come one after another). */
+  private floatNext = new Map<string, number>();
   /** Hex on each fighter as drawn (it changes mid-reveal, before `state` catches up). */
   private shownHex: [number, number] = [0, 0];
   /** The round being revealed or recapped. */
@@ -279,6 +290,8 @@ export class BattleView {
   // ---------- main loop ----------
 
   private async loop(): Promise<void> {
+    // A one-round replay starts that round over each time it ends.
+    const again = this.opts.replay?.single ? structuredClone(this.state) : null;
     while (!this.state.outcome) {
       this.opts.onRoundStart?.(this.state, this.lastPlans, this.log);
       this.setRoundLabel();
@@ -308,6 +321,12 @@ export class BattleView {
       if (bothHuman) await this.passScreen(null);
       await this.animateRound(plans as [Plan, Plan]);
       if (this.destroyed) return;
+      if (again) {
+        this.state = structuredClone(again);
+        this.log = { rounds: [] };
+        this.lastPlans = null;
+        this.restoreBoard();
+      }
     }
     this.onEnd(this.state.outcome!, this.state, this.log);
   }
@@ -744,17 +763,74 @@ export class BattleView {
   }
 
   /** Rising text over a square. `stack` offsets extra labels so they don't overlap. */
-  private floatText(pos: Pos, text: string, cls: string, stack = 0, amount = 0): void {
-    const f = document.createElement('div');
-    f.className = `float ${cls}`;
-    f.textContent = text;
-    // Bigger hits get bigger numbers.
-    f.style.setProperty('--size', String(1 + Math.min(amount, 60) / 80));
-    f.style.setProperty('--r', String(pos.r));
-    f.style.setProperty('--c', String(pos.c));
-    f.style.setProperty('--k', String(stack));
-    this.q('.floats').appendChild(f);
-    setTimeout(() => f.remove(), FLOAT_MS);
+  /**
+   * Rising text over a square (a fighter's damage, energy, status...). Texts never overlap: over the
+   * same square each starts a moment after the one before it, and every text starts at the lowest
+   * height clear of the texts still rising in its row that it would touch (wide ones reach over the
+   * next square). They all rise at the same speed, so they stay apart. `more` adds lines under the
+   * text that belong with it (a hit's bonus damage), each in its own style.
+   */
+  private floatText(pos: Pos, text: string, cls: string, amount = 0, more: { text: string; cls: string }[] = []): void {
+    const key = `${pos.r},${pos.c}`;
+    const now = performance.now();
+    const at = Math.max(now, this.floatNext.get(key) ?? 0);
+    this.floatNext.set(key, at + FLOAT_GAP * Math.min(1, this.pace()));
+    const show = (tries = 0) => {
+      if (this.destroyed) return;
+      const f = document.createElement('div');
+      f.className = `float ${cls}`;
+      const label = document.createElement('span');
+      if (more.length) {
+        for (const l of [{ text, cls: '' }, ...more]) {
+          const line = document.createElement('span');
+          line.className = `line ${l.cls}`.trim();
+          line.textContent = l.text;
+          label.appendChild(line);
+        }
+      } else label.textContent = text;
+      f.appendChild(label);
+      // Bigger hits get bigger numbers.
+      f.style.setProperty('--size', String(1 + Math.min(amount, 60) / 80));
+      f.style.setProperty('--r', String(pos.r));
+      f.style.setProperty('--c', String(pos.c));
+      this.q('.floats').appendChild(f);
+      // Its size (offset sizes ignore the pop-in scale) and where it spans across the board.
+      const h = label.offsetHeight;
+      const arena = this.q('.arena');
+      const cellW = (arena.clientWidth - 8) / this.state.arena.cols;
+      const cellH = (arena.clientHeight - 8) / this.state.arena.rows;
+      const cx = 4 + (pos.c + 0.5) * cellW;
+      const x0 = cx - label.offsetWidth / 2 - FLOAT_PAD;
+      const x1 = cx + label.offsetWidth / 2 + FLOAT_PAD;
+      const t = performance.now();
+      this.floatsLive = this.floatsLive.filter((x) => t - x.start < FLOAT_MS);
+      // Where the texts it would touch are now (bottom, top, in px above this text's start line); a
+      // text from a lower row has risen toward this one, one from a higher row starts a square up.
+      const spans = this.floatsLive
+        .filter((x) => x.x1 > x0 && x.x0 < x1)
+        .map((x) => {
+          const y = (pos.r - x.row) * cellH + x.lift + (FLOAT_RISE * (t - x.start)) / FLOAT_MS;
+          return { lo: y, hi: y + x.h };
+        })
+        .sort((p, q) => p.lo - q.lo);
+      // The lowest height that clears them all, so the texts stay close to the piece.
+      let lift = 0;
+      for (const { lo, hi } of spans) {
+        if (lift + h + FLOAT_PAD <= lo) break;
+        lift = Math.max(lift, hi + FLOAT_PAD);
+      }
+      // No room within a square above the piece: wait a moment for the others to rise.
+      if (lift > cellH && tries < 10) {
+        f.remove();
+        setTimeout(() => show(tries + 1), 160);
+        return;
+      }
+      this.floatsLive.push({ row: pos.r, x0, x1, start: t, lift, h });
+      f.style.setProperty('--lift', `${lift}px`);
+      setTimeout(() => f.remove(), FLOAT_MS);
+    };
+    if (at > now) setTimeout(() => show(), at - now);
+    else show();
   }
 
   // ---------- overlays ----------
@@ -1333,7 +1409,7 @@ export class BattleView {
     if (result.fatigue > 0) {
       const tokens = [this.q('.token.p0'), this.q('.token.p1')];
       this.state.players.forEach((p, i) => {
-        this.floatText(p.pos, STRINGS.fatigueFloat(result.fatigue), 'damage fatigue', 0, result.fatigue);
+        this.floatText(p.pos, STRINGS.fatigueFloat(result.fatigue), 'damage fatigue', result.fatigue);
         this.hurtFx(i, p.pos, null);
       });
       play('hit');
@@ -1389,8 +1465,8 @@ export class BattleView {
     };
     const sfx = (id: SoundId) => show(() => pb.live && play(id));
     const pause = (n: number) => (ghost ? Promise.resolve() : pb.wait(n));
-    const stacks = [0, 0];
-    const float = (i: number, text: string, cls: string, amount = 0) => show(() => this.floatText(view.pos[i], text, cls, stacks[i]++, amount));
+    const float = (i: number, text: string, cls: string, amount = 0, more: { text: string; cls: string }[] = []) =>
+      show(() => this.floatText(view.pos[i], text, cls, amount, more));
     const life = (i: number, n: number) => (view.lives[i] = clamp(view.lives[i] + n, 0, ps[i].lifeMax));
     const energy = (i: number, n: number) => (view.energies[i] = clamp(view.energies[i] + n, 0, ps[i].energyMax));
     const hud = () => this.renderHud(view.lives, view.energies);
@@ -1432,7 +1508,12 @@ export class BattleView {
           this.fx.particles(view.pos[d], color(a), 10);
           if (pd.hit === 'guard') this.fx.ring(view.pos[d], 'shield');
         });
-        float(d, `-${pd.damageTaken}`, pd.hit === 'guard' ? 'guarded' : 'damage', pd.damageTaken);
+        // The card's own damage, with each bonus on top of it (a hex, a passive...) as its own number
+        // on the line below, kept together.
+        const [own, ...bonus] = pd.damageParts?.length ? pd.damageParts : [{ kind: 'card' as const, amount: pd.damageTaken }];
+        const more = bonus.map((x) => ({ text: `-${x.amount} ${partLabel(x.kind, ps[a].fighterId)}`, cls: `part-${x.kind}` }));
+        if (own.amount > 0) float(d, `-${own.amount}`, pd.hit === 'guard' ? 'guarded' : 'damage', own.amount, more);
+        else float(d, STRINGS.guarded, 'guarded', 0, more); // the guard took all of the card's own damage
         life(d, -pd.damageTaken);
         biggest = pd.damageTaken;
         sounds.push(pd.hit === 'hit' ? 'hit' : 'guard');
@@ -1448,12 +1529,11 @@ export class BattleView {
         // Sparks fly back from the defender into the attacker.
         if (!ghost) {
           this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-counter'), 4, 'spark');
-          const k = stacks[a]++;
           const at = { ...view.pos[a] };
           const from = { ...view.pos[d] };
           setTimeout(() => {
             this.hurtFx(a, at, from);
-            this.floatText(at, `${STRINGS.effectIcons.counter} -${pa.counterTaken}`, 'damage', k, pa.counterTaken);
+            this.floatText(at, `${STRINGS.effectIcons.counter} -${pa.counterTaken}`, 'damage', pa.counterTaken);
           }, ms(fullEffects() ? 420 : 0));
         }
         life(a, -pa.counterTaken);
@@ -1475,7 +1555,8 @@ export class BattleView {
       }
       if (pd.hexBroken) {
         show(() => this.fx.particles(view.pos[d], themeColor('--fx-hex'), 14));
-        float(d, STRINGS.hexBrokenFloat, 'hex');
+        // The hex's damage already shows as its own number (older logs don't split the damage).
+        if (!pd.damageParts?.some((x) => x.kind === 'hex')) float(d, STRINGS.hexBrokenFloat, 'hex');
         sounds.push('shimmer');
       } else if (pd.hexApplied) {
         show(() => this.fx.gather(view.pos[d], themeColor('--fx-hex'), 8));
@@ -1554,7 +1635,7 @@ export class BattleView {
         // The card comes into the spotlight, its fighter lights up and its caption shows, together.
         this.markCard(i, step.slot);
         this.actingFx(i, c.kind === 'attack' && p.active && !p.stunned);
-        this.setCaption(beatCaption(step, i as Seat, names));
+        this.setCaption(beatCaption(step, i as Seat, names, [ps[0].fighterId, ps[1].fighterId]));
         card.querySelector('.play-stamp')?.remove();
       }
       if (pb.live && plans) {
@@ -1796,7 +1877,7 @@ export class BattleView {
         if (result.fatigue > 0) {
           end.forEach((p, i) => {
             this.hurtFx(i, p.pos, null);
-            this.floatText(p.pos, STRINGS.fatigueFloat(result.fatigue), 'damage fatigue', 0, result.fatigue);
+            this.floatText(p.pos, STRINGS.fatigueFloat(result.fatigue), 'damage fatigue', result.fatigue);
           });
           const o = result.state.outcome;
           if (o && !result.steps.some((s) => s.outcome)) {
@@ -1806,7 +1887,7 @@ export class BattleView {
           }
         }
         if (!result.state.outcome) {
-          end.forEach((p) => this.floatText(p.pos, STRINGS.energyBack(energyRecovery(p)), 'energy', result.fatigue > 0 ? 1 : 0));
+          end.forEach((p) => this.floatText(p.pos, STRINGS.energyBack(energyRecovery(p)), 'energy'));
         }
         this.renderHud();
         // Hold the final position a while before starting over.
@@ -1874,9 +1955,9 @@ export class BattleView {
     const ctl = (act: string, label: string, glyph: string, cls = '') =>
       `<button class="btn icon-ctl${cls}" data-rp="${act}" aria-label="${label}" title="${label}">${glyph}</button>`;
     return (
-      ctl('prev', R.prev, '⏮\uFE0E') +
+      (r.single ? '' : ctl('prev', R.prev, '⏮\uFE0E')) +
       ctl('pause', r.paused ? R.play : R.pause, r.paused ? '▶\uFE0E' : '❚❚', ' primary') +
-      ctl('next', R.next, '⏭\uFE0E') +
+      (r.single ? '' : ctl('next', R.next, '⏭\uFE0E')) +
       ctl('speed', R.speed, `${r.speed}×`) +
       ctl('exit', R.exit, '✕')
     );

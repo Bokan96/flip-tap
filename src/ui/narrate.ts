@@ -1,7 +1,7 @@
 import { BALANCE } from '../content/balance';
-import { getCard } from '../content/cards';
+import { getCard, getFighter } from '../content/cards';
 import { STRINGS } from '../content/strings';
-import { samePos, type PlaceIssue } from '../engine/rules';
+import { samePos, type DamagePart, type PlaceIssue } from '../engine/rules';
 import type { RoundResult, Seat, StepResult } from '../engine/types';
 
 /*
@@ -10,8 +10,19 @@ import type { RoundResult, Seat, StepResult } from '../engine/types';
  * a round calls for. Pure functions of the step results, so they can be tested without a page.
  */
 
-/** One line on what `seat`'s card did this step, e.g. "Vex · Hex Bolt: hits Briar for 20, hexes (+20)". */
-export function beatCaption(step: StepResult, seat: Seat, names: [string, string]): string {
+/** What a bonus on a hit is called: "Hex", "Ambush", the attacker's low-life passive ("Kindle")... */
+export function partLabel(kind: DamagePart['kind'], fighterId?: string): string {
+  if (kind === 'hex') return STRINGS.effectNames.hex;
+  if (kind === 'moved') return STRINGS.effectNames.ambush;
+  if (kind === 'lowLife') return (fighterId && getFighter(fighterId).passive?.name) || STRINGS.dmgParts.lowLife;
+  return STRINGS.dmgParts.bonus;
+}
+
+/**
+ * One line on what `seat`'s card did this step, e.g. "Vex · Hex Bolt: hits Briar for 20, hexes (+20)".
+ * `fighters` (by seat) names a low-life passive in a damage breakdown.
+ */
+export function beatCaption(step: StepResult, seat: Seat, names: [string, string], fighters?: [string, string]): string {
   const N = STRINGS.narrate;
   const o = seat === 0 ? 1 : 0;
   const p = step.players[seat];
@@ -42,7 +53,12 @@ export function beatCaption(step: StepResult, seat: Seat, names: [string, string
       const parts: string[] = [];
       if (rival.hit === 'miss') parts.push(N.misses);
       else if (rival.hit === 'guard' && rival.damageTaken === 0) parts.push(N.guarded(names[o]));
-      else parts.push(rival.hit === 'guard' ? N.hitsGuard(names[o], rival.damageTaken) : N.hits(names[o], rival.damageTaken));
+      else {
+        // A hit with bonuses spells them out: "hits Briar for 35 (15 + 20 Hex)".
+        const dp = rival.damageParts ?? [];
+        const sum = dp.length > 1 ? ` (${dp.map((x, j) => (j === 0 ? `${x.amount}` : `${x.amount} ${partLabel(x.kind, fighters?.[seat])}`)).join(' + ')})` : '';
+        parts.push((rival.hit === 'guard' ? N.hitsGuard(names[o], rival.damageTaken) : N.hits(names[o], rival.damageTaken)) + sum);
+      }
       if (rival.hit === 'hit' || rival.hit === 'guard') {
         if (rival.dazed) parts.push(N.stuns);
         if (c.push && !samePos(rival.to, rival.final)) parts.push(c.push > 0 ? N.pushes : N.pulls);

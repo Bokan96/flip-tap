@@ -71,6 +71,8 @@ let difficulty: Difficulty = 'normal';
 let arenaId = DEFAULT_ARENA;
 
 function screen(html: string, cls = ''): HTMLElement {
+  roundReplay?.destroy();
+  roundReplay = null;
   app.innerHTML = `<div class="screen ${cls}">${html}</div>`;
   setMusic(cls === 'battle-screen' || cls === 'versus' ? 'battle' : 'menu');
   pinBack();
@@ -96,6 +98,8 @@ function pinBack(): void {
 // Only when the width changes (rotation included): phones also resize as the address bar slides
 // in and out while scrolling, and re-measuring then could nudge the scroll position.
 let pinWidth = window.innerWidth;
+/** The round replay open in a match summary (see showRoundReplay); stopped when the screen changes. */
+let roundReplay: BattleView | null = null;
 window.addEventListener('resize', () => {
   if (window.innerWidth === pinWidth) return;
   pinWidth = window.innerWidth;
@@ -803,13 +807,62 @@ function resultScreen(
      }`,
     'result',
   );
-  if (recap) renderSummary(root.querySelector('.summary-body')!, { stats: recap.stats, names: recap.names, fighters });
+  if (recap) {
+    renderSummary(root.querySelector('.summary-body')!, {
+      stats: recap.stats,
+      names: recap.names,
+      fighters,
+      onHighlight: (round, slot) => showRoundReplay(recap, round, slot),
+    });
+  }
   if (celebrate) confetti(root, winner === null ? themeColor('--accent') : getFighter(fighters[winner]).color);
   on(root, '[data-i]', (el) => buttons[Number(el.dataset.i)].fn());
   on(root, '[data-a]', (el) => actions[Number(el.dataset.a)].fn());
 }
 
 // ---------- replays ----------
+
+/**
+ * A match summary highlight (biggest hit, best dodge): its round plays, over and over, in a small
+ * board right under the highlights. ✕ (or the board's menu) closes it.
+ */
+function showRoundReplay(recap: Recap, round: number, slot: HTMLElement): void {
+  roundReplay?.destroy();
+  roundReplay = null;
+  const run = runReplay(recap.replay);
+  const start = run?.states[round - 1];
+  if (!start) return;
+  slot.innerHTML = '<div class="mini-replay"><div class="mini-battle"></div></div>';
+  const close = () => {
+    roundReplay?.destroy();
+    roundReplay = null;
+    slot.innerHTML = '';
+    slot.parentElement?.querySelectorAll('.stat-tile.watch.on').forEach((t) => t.classList.remove('on'));
+  };
+  const source = new ReplayPlanSource(recap.replay.rounds);
+  roundReplay = new BattleView(
+    slot.querySelector<HTMLElement>('.mini-battle')!,
+    structuredClone(start),
+    [
+      { name: recap.names[0], source },
+      { name: recap.names[1], source },
+    ],
+    close,
+    close,
+    {
+      replay: {
+        rounds: recap.replay.rounds.length,
+        speed: 1,
+        paused: false,
+        single: true,
+        onChange: () => undefined,
+        seek: () => undefined,
+        exit: close,
+      },
+    },
+  );
+  slot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 
 /** "Versus CPU", or "Two-tap · Versus CPU" for a Two-tap match. */
 function replayModeName(r: Replay): string {

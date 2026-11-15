@@ -204,6 +204,8 @@ export interface StepPlayerResult {
   /** How the opponent's card affected this player. */
   hit: HitKind;
   damageTaken: number;
+  /** Where damageTaken came from: the card's own part first, then any bonuses (see rules.hitParts). Absent in older logs. */
+  damageParts?: { kind: 'card' | 'bonus' | 'lowLife' | 'moved' | 'hex'; amount: number }[];
   /** Damage taken from the opponent's counter. */
   counterTaken: number;
   /** Life gained from this player's drain attack. */

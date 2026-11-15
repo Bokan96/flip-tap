@@ -6,7 +6,7 @@ import { createMatch } from '../src/engine/setup';
 import type { MatchState, Plan, Pos } from '../src/engine/types';
 import { markTipSeen, resetProfile, tipSeen } from '../src/meta/profile';
 import { memoryStorage, setStorageBackend } from '../src/meta/storage';
-import { beatCaption, beatStamp, endCaption, roundTips, whyNotText } from '../src/ui/narrate';
+import { beatCaption, beatStamp, endCaption, partLabel, roundTips, whyNotText } from '../src/ui/narrate';
 
 const NAMES: [string, string] = ['P1', 'P2'];
 const IDLE: Plan = ['guard', 'focus', 'up'];
@@ -97,6 +97,34 @@ describe('captions and stamps', () => {
     // Step Up from the top row goes nowhere.
     const top = duel('cinder', 'marin', { r: 0, c: 0 }, { r: 1, c: 3 });
     expect(beatCaption(resolveRound(top, [['up', 'guard', 'focus'], IDLE]).steps[0], 0, NAMES)).toContain('can’t move there');
+  });
+});
+
+describe('a hit’s bonus damage, shown on its own', () => {
+  it('splits a hex and a low-life passive off the card’s own damage', () => {
+    // Flare (40) on a target hexed for 20.
+    const s = duel('vex', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
+    s.players[1].hex = 20;
+    const step = resolveRound(s, [['vexFlare', 'guard', 'focus'], ['focus', 'guard', 'up']]).steps[0];
+    expect(step.players[1].damageParts).toEqual([{ kind: 'card', amount: 40 }, { kind: 'hex', amount: 20 }]);
+    expect(step.players[1].damageTaken).toBe(60);
+    expect(beatCaption(step, 0, NAMES, ['vex', 'marin'])).toContain('hits P2 for 60 (40 + 20 Hex)');
+
+    // Cinder at 50 life: Kindle adds 10 to Ember Jab.
+    const c = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
+    c.players[0].life = 50;
+    const jab = resolveRound(c, [['cinderJab', 'guard', 'focus'], ['focus', 'guard', 'up']]).steps[0];
+    expect(jab.players[1].damageParts).toEqual([{ kind: 'card', amount: CARDS.cinderJab.damage }, { kind: 'lowLife', amount: 10 }]);
+    expect(partLabel('lowLife', 'cinder')).toBe('Kindle');
+  });
+
+  it('takes guard off the card’s own part first', () => {
+    const s = duel('vex', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 });
+    s.players[1].hex = 20;
+    const step = resolveRound(s, [['vexHex', 'guard', 'focus'], ['guard', 'focus', 'up']]).steps[0];
+    // Hex Bolt 20 − Guard 15 = 5 from the card, then the hex's 20.
+    expect(step.players[1].damageParts).toEqual([{ kind: 'card', amount: 5 }, { kind: 'hex', amount: 20 }]);
+    expect(step.players[1].damageTaken).toBe(25);
   });
 });
 
