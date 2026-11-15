@@ -34,11 +34,20 @@ interface FastCard {
   /** Trap card: damage of each trap it sets (0 otherwise). */
   trap: number;
   swap: boolean;
+  /** A move card (swap included): its player turns to face the other after moving. */
+  isMove: boolean;
+  /** Guard: energy an attacker it blocks loses. */
+  blockSap: number;
   /** Flattened [dr, dc] pairs, facing right. */
   cells: number[];
 }
 
 const cache = new Map<string, FastCard>();
+
+/** Forget every cached card (a custom card was created, edited or deleted). */
+export function clearFastCards(): void {
+  cache.clear();
+}
 
 export function fastCard(id: string): FastCard {
   let fc = cache.get(id);
@@ -73,6 +82,8 @@ export function fastCard(id: string): FastCard {
       hex: isAttack ? (c.hex ?? 0) : 0,
       trap: c.kind === 'trap' ? (c.trap ?? 0) : 0,
       swap: !!c.swap,
+      isMove: c.kind === 'move',
+      blockSap: c.blockSap ?? 0,
       cells,
     };
     cache.set(id, fc);
@@ -175,6 +186,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   const af = [0, 0];
   let outcome = -1;
 
+  /** Both turn to face each other (same as rules.faceEachOther; before every round). */
   const face = () => {
     if (c[1] > c[0]) {
       f[0] = 1;
@@ -183,6 +195,12 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       f[0] = -1;
       f[1] = 1;
     }
+  };
+  /** One fighter turns to face the other (after playing a move card). */
+  const faceOne = (i: number) => {
+    const o = i === 0 ? 1 : 0;
+    if (c[o] > c[i]) f[i] = 1;
+    else if (c[o] < c[i]) f[i] = -1;
   };
   const strike = (o: number) => {
     struck[o] = true;
@@ -210,6 +228,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       en[0] = Math.min(energyMax[0], en[0] + energyRecovery(P[0]));
       en[1] = Math.min(energyMax[1], en[1] + energyRecovery(P[1]));
       if (!TWO_TAP.carryDaze) z[0] = z[1] = false;
+      face(); // the round ends before the held-over card: both turn to face each other
     }
     ids[0] = plan0[slot];
     ids[1] = plan1[slot];
@@ -244,7 +263,9 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       c[1] = tc;
     }
     for (let i = 0; i < 2; i++) mv[i] = r[i] !== sr[i] || c[i] !== sc[i];
-    face();
+    // Only a fighter who played a move card turns (same as rules.resolveStep).
+    if (act[0] && card[0].isMove) faceOne(0);
+    if (act[1] && card[1].isMove) faceOne(1);
 
     // Both attack: the stronger card (then the healthier fighter) strikes first.
     let first = -1;
@@ -270,7 +291,6 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         else if (a.hex && d > 0) hx[i] = a.hex;
         if (a.push && !m[i].immovable) {
           c[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
-          face();
         }
       }
       for (let i = 0; i < 2; i++) {
@@ -295,6 +315,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (!act[o] || !a.isAttack || !covers(a, r[o], c[o], f[o], r[i], c[i])) continue;
         dmg[i] = damageOf(a, life[o], m[o], m[i], act[i] ? card[i].guard : 0, mv[i], hx[i]);
         if (act[i] && card[i].counter) ctr[o] += card[i].counter;
+        if (act[i] && card[i].blockSap) sap[o] += card[i].blockSap;
         if (a.drain && dmg[i] > 0) drn[o] = Math.floor((dmg[i] * a.drain) / 100);
         if (a.stun && dmg[i] > 0) nz[i] = true;
         if (a.sap) sap[i] = a.sap;
@@ -314,7 +335,6 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       }
       c[0] = nc[0];
       c[1] = nc[1];
-      face();
     }
     // Attacks break the enemy traps they cover (same as rules.resolveStep).
     if (traps.length) {
@@ -380,6 +400,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
     life[1] = Math.max(0, life[1] - tiredBy);
     if (life[0] <= 0 || life[1] <= 0) outcome = life[0] <= 0 && life[1] <= 0 ? 2 : life[0] <= 0 ? 1 : 0;
   }
+  // Before the next round both turn to face each other (same as rules.resolveRound).
+  if (outcome === -1 && roundEnd < 0) face();
   const left: number[] = [];
   for (const t of traps) if (t.keep) left.push(t.at, t.owner, t.damage);
   return {

@@ -16,6 +16,9 @@ const SHAPES: Record<string, string> = {
   moon: '<path d="M62 10 A40 40 0 1 0 90 62 A30 30 0 1 1 62 10Z"/><circle cx="70" cy="34" r="5" fill="rgba(255,255,255,.55)"/>',
 };
 
+/** Every built-in emblem shape, for the hero creator's icon picker. */
+export const EMBLEM_KEYS: string[] = Object.keys(SHAPES);
+
 function picture(f: FighterDef, path: string | undefined, cls: string): string {
   if (path) return `<img class="${cls}" src="${assetUrl(path)}" alt="${f.name}">`;
   const shape = SHAPES[f.emblem] ?? SHAPES.hex;

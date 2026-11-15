@@ -5,10 +5,12 @@ import './lang';
 import { setMusic } from './audio/music';
 import { play } from './audio/sfx';
 import { ACHIEVEMENTS } from './content/achievements';
+import { applyCustom, customHeroes } from './meta/custom';
+import { myHeroes } from './ui/heroEditor';
 import { ARENAS, DEFAULT_ARENA, getArena } from './content/arenas';
 import { ASSETS, assetUrl } from './content/assets';
 import { BALANCE } from './content/balance';
-import { BONUS_CARD_IDS, FIGHTERS, getCard, getFighter } from './content/cards';
+import { BONUS_CARD_IDS, FIGHTERS, getCard, getFighter, isCustomFighter } from './content/cards';
 import { MODIFIERS } from './content/modifiers';
 import { STRINGS } from './content/strings';
 import type { Variant } from './content/variants';
@@ -169,6 +171,7 @@ function title(): void {
         <button class="btn${saved ? '' : ' primary'} big play-btn" data-act="play">${STRINGS.play}<small>${STRINGS.playHint}</small>${
           dailyReady ? `<em class="menu-chip">${STRINGS.dailyReady}</em>` : ''
         }</button>
+        <button class="btn big hero-btn" data-act="heroes">${STRINGS.hero.menu}<small>${STRINGS.hero.menuHint}</small><em class="menu-chip">${STRINGS.newChip}</em></button>
       </nav>
       <button class="btn install-btn hidden" data-act="install">⤓ ${STRINGS.install.button}<small>${STRINGS.install.hint}</small></button>
       <div class="title-links">
@@ -183,6 +186,7 @@ function title(): void {
     'title',
   );
   on(root, '[data-act="play"]', playMenu);
+  on(root, '[data-act="heroes"]', () => myHeroes({ screen, on, modal, menu: title }));
   if (saved) on(root, '[data-act="resume"]', () => resumeMatch(saved));
   on(root, '[data-act="howto"]', howTo);
   on(root, '[data-act="profile"]', profileScreen);
@@ -410,7 +414,8 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 function matchSetup(mode: SetupMode, variant?: Variant): void {
   const seats = mode === 'tournament' ? 1 : 2;
   const names = mode === 'hotseat' ? [STRINGS.player(1), STRINGS.player(2)] : mode === 'cpu' ? [STRINGS.setup.you, STRINGS.cpu] : [STRINGS.setup.you];
-  const picks: (string | null)[] = [...(lastPicks[mode] ?? Array(seats).fill(null))];
+  const known = (id: string | null) => !!id && (FIGHTERS.some((f) => f.id === id) || isCustomFighter(id));
+  const picks: (string | null)[] = (lastPicks[mode] ?? Array(seats).fill(null)).map((id) => (known(id) ? id : null));
   let active = picks.findIndex((p) => !p);
   if (active < 0) active = 0;
   let focus: string | null = picks[active] ?? picks[0];
@@ -418,7 +423,9 @@ function matchSetup(mode: SetupMode, variant?: Variant): void {
 
   const modeName = mode === 'cpu' ? STRINGS.modeCpu : mode === 'hotseat' ? STRINGS.modeHotseat : STRINGS.modeTournament;
   const heading = variant ? `${STRINGS.twoTap.name} · ${modeName}` : modeName;
-  const tiles = FIGHTERS.map((f) => {
+  // Custom heroes play in Versus CPU and Hot-seat, not the Tournament.
+  const roster = mode === 'tournament' ? FIGHTERS : [...FIGHTERS, ...customHeroes().map((h) => getFighter(h.id))];
+  const tiles = roster.map((f) => {
     const champ = ladder(f.id).champion ? `<em class="champ" title="${STRINGS.championBadge}">★</em>` : '';
     return `<button class="pick" data-pick="${f.id}" style="--clr:${f.color}">
       ${champ}<span class="pick-marks"></span>${portraitHtml(f, 'pick-emblem')}<b>${f.name}</b><small>${f.role}</small>
@@ -468,11 +475,15 @@ function matchSetup(mode: SetupMode, variant?: Variant): void {
       detail.innerHTML = `<p class="detail-blurb">${STRINGS.setup.pickFor(names[active])}</p>`;
     } else {
       detail.style.setProperty('--clr', f.color);
+      const custom = isCustomFighter(f.id);
       detail.innerHTML = `<div class="detail-head">${portraitHtml(f, 'detail-emblem')}
-          <div><b>${f.name}</b><i>${f.title}</i><div class="detail-tags"><span class="role-tag">${f.role}</span>${starsHtml(f.complexity)}</div></div>
+          <div><b>${f.name}</b><i>${f.title}</i><div class="detail-tags"><span class="role-tag">${f.role}</span>${custom ? '' : starsHtml(f.complexity)}</div></div>
         </div>
-        <p class="detail-blurb">${f.blurb}</p>
-        ${passiveHtml(f)}`;
+        ${
+          custom
+            ? `<div class="detail-cards">${f.signature.map((id) => cardHtml(id, { small: true, readonly: true })).join('')}</div>`
+            : `<p class="detail-blurb">${f.blurb}</p>${passiveHtml(f)}`
+        }`;
     }
     root.querySelector<HTMLButtonElement>('[data-act="fight"]')!.disabled = picks.some((p) => !p);
   };
@@ -624,7 +635,9 @@ function runBattle(setup: BattleSetup): void {
         // The mode's own handler runs first (it may record a ladder win or daily result).
         setup.onEnd(outcome, log, recap);
         recordMatch({ mode: setup.mode, fighterId: setup.p0.fighterId, outcome, log });
-        const fresh = unlockAchievements({ mode: setup.mode, difficulty: setup.difficulty, outcome, log });
+        // Custom heroes' cards can be anything, so their matches don't unlock achievements.
+        const custom = [setup.p0.fighterId, setup.p1.fighterId].some(isCustomFighter);
+        const fresh = custom ? [] : unlockAchievements({ mode: setup.mode, difficulty: setup.difficulty, outcome, log });
         fresh.forEach((a, i) =>
           setTimeout(() => {
             play('reveal');
@@ -651,6 +664,8 @@ interface Recap {
   code: string;
   stats: MatchStats;
   names: [string, string];
+  /** False for matches with a custom hero: other devices don't have the hero. */
+  shareable?: boolean;
 }
 
 /**
@@ -668,8 +683,10 @@ function recordReplay(setup: BattleSetup, state: MatchState, log: MatchLog, outc
     const check = runReplay(replay);
     if (!check || JSON.stringify(check.outcome) !== JSON.stringify(outcome)) return null;
     const code = encodeReplay(replay);
-    recordRecent(code);
-    return { replay, code, stats: matchStats(replayStart(replay), log), names: setup.names };
+    // A custom hero's match stays out of Recent matches (editing the hero would break its replay).
+    const shareable = !replay.fighters.some(isCustomFighter);
+    if (shareable) recordRecent(code);
+    return { replay, code, stats: matchStats(replayStart(replay), log), names: setup.names, shareable };
   } catch {
     return null;
   }
@@ -728,10 +745,11 @@ function startMatch(mode: 'cpu' | 'hotseat', a: string, b: string, resume?: Save
     onEnd: (outcome, _log, recap) => {
       const celebrate = outcome.winner === 0 || (mode === 'hotseat' && outcome.winner !== null);
       if (celebrate) play('win');
+      const custom = [a, b].some(isCustomFighter);
       resultScreen(outcomeText(outcome, names), outcome.winner, [a, b], [
         { label: STRINGS.rematch, primary: true, fn: () => startMatch(mode, a, b, undefined, rules) },
         { label: STRINGS.menu, fn: title },
-      ], '', celebrate, recap);
+      ], custom ? `<p class="note">${STRINGS.hero.noShare}</p>` : '', celebrate, recap);
     },
   });
 }
@@ -788,7 +806,7 @@ function resultScreen(
       ? [
           ...more,
           { label: STRINGS.replays.watch, fn: () => watchReplay(recap.code, again) },
-          { label: STRINGS.replays.share, fn: () => void shareReplay(recap.code) },
+          ...(recap.shareable === false ? [] : [{ label: STRINGS.replays.share, fn: () => void shareReplay(recap.code) }]),
         ]
       : more;
   const btn = (b: ResultButton, key: string) => `<button class="btn${b.primary ? ' primary' : ''}" data-${key}>${b.label}</button>`;
@@ -1288,6 +1306,8 @@ function showUpdate(apply: () => void): void {
   document.body.appendChild(el);
 }
 
+// Custom heroes and cards first: the saved match and the title screen may name them.
+applyCustom();
 applySkin();
 applyEffectsClass();
 registerServiceWorker(showUpdate);

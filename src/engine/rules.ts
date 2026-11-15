@@ -92,6 +92,13 @@ export function faceTowards(me: Pos, them: Pos, current: Facing): Facing {
   return current;
 }
 
+/** Both fighters turn to face each other (done before every round). */
+export function faceEachOther(players: [PlayerState, PlayerState]): void {
+  const [a, b] = players;
+  a.facing = faceTowards(a.pos, b.pos, a.facing);
+  b.facing = faceTowards(b.pos, a.pos, b.facing);
+}
+
 /**
  * Energy left after each filled slot of a (possibly partial) plan. Empty slots ('' or undefined) cost nothing.
  * Returns null if the running total ever drops below zero.
@@ -393,7 +400,9 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const active = [0, 1].map((i) => !stunned[i] && ps[i].energy + cards[i].cost >= 0 && !isSpent(ps[i], cardIds[i]));
   const from = [{ ...ps[0].pos }, { ...ps[1].pos }];
 
-  // 1. Movement (simultaneous), then a swap if anyone played one, then face each other.
+  // 1. Movement (simultaneous), then a swap if anyone played one. Only a fighter who played a move
+  //    card turns to face the other; one who was leapt past or swapped keeps facing the old way, so
+  //    their attack can whiff (both turn to face each other again before the next round).
   for (const i of [0, 1] as const) {
     if (active[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i], ps[i].facing);
   }
@@ -404,7 +413,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const moved = [0, 1].map((i) => !samePos(from[i], ps[i].pos));
   const to = [{ ...ps[0].pos }, { ...ps[1].pos }];
   for (const i of [0, 1] as const) {
-    ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
+    if (active[i] && cards[i].kind === 'move') ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
   }
 
   const hit: StepPlayerResult['hit'][] = ['none', 'none'];
@@ -421,9 +430,6 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const interrupted = [false, false];
   let areas: [Pos[], Pos[]] = [[], []];
   let midLives: [number, number] | null = null;
-  const reface = () => {
-    for (const i of [0, 1] as const) ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
-  };
   /** A hit on `i` connected: it breaks a hex, or a damaging hexing attack hexes them with the card's value. */
   const hexHit = (i: 0 | 1, atk: CardDef, dealt: number) => {
     if (ps[i].hex) {
@@ -482,7 +488,6 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
         hexHit(i, atk, damage[i]);
         if (atk.push && !ps[i].mods.immovable) {
           ps[i].pos = displace(state.arena, ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
-          reface();
         }
       }
       if (k === 0) midLives = [ps[0].life, ps[1].life];
@@ -507,6 +512,8 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       parts[i] = hitParts(atk, ps[o], ps[i], guard, moved[i]);
       damage[i] = parts[i].reduce((n, p) => n + p.amount, 0);
       if (active[i] && cards[i].counter) counter[o] += cards[i].counter!;
+      // A guard that drains energy takes it from whoever it blocked.
+      if (active[i] && cards[i].blockSap) sapped[o] += cards[i].blockSap!;
       if (atk.drain && damage[i] > 0) drained[o] = Math.floor((damage[i] * atk.drain) / 100);
       if (atk.stun && damage[i] > 0) dazed[i] = true;
       if (atk.sap) sapped[i] = atk.sap;
@@ -518,11 +525,10 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     // 3. Self effects, then clamp.
     for (const i of [0, 1] as const) selfEffects(i, ps[i].life - damage[i] - counter[i] + drained[i]);
 
-    // 4. Push and pull (simultaneous), then face each other again.
+    // 4. Push and pull (simultaneous). Being pushed doesn't turn anyone.
     for (const i of [0, 1] as const) {
       if (pushTo[i]) ps[i].pos = pushTo[i]!;
     }
-    reface();
   }
 
   // Attacks break the enemy traps they cover, before any trap can spring this step.
@@ -654,6 +660,8 @@ export function resolveRound(state: MatchState, plans: [Plan, Plan]): RoundResul
   next.arena.traps = next.arena.traps.filter((t) => t.until > state.round);
   if (!next.outcome) {
     for (const p of next.players) p.energy = Math.min(p.energyMax, p.energy + energyRecovery(p));
+    // Before the next round both fighters turn to face each other.
+    faceEachOther(next.players);
     next.round += 1;
   }
   return { steps, state: next, fatigue };

@@ -38,6 +38,7 @@ Every card has:
 | `push` | Attack effect: on a connecting hit, move the target *n* squares away (positive) or toward you (negative, a **pull**) |
 | `stun` | Attack effect: if the hit deals damage, the target's **next card this round** is cancelled |
 | `counter` | Guard effect: if an attack hits you this step, the attacker takes this much damage |
+| `blockSap` | Guard effect: if an attack hits you this step (even one the guard doesn't fully stop), the attacker loses this much energy (basic Guard: 10) |
 | `drain` | Attack effect: heal this percentage of the damage the attack dealt |
 | `sap` | Attack effect: on a connecting hit (even a guarded one), the target loses this much energy |
 | `hex` | Attack effect: if the hit deals damage, the target is **hexed** with this value (see below) |
@@ -117,8 +118,13 @@ Each fighter has a deck made of:
 
 ### Patterns and facing
 Patterns are written facing **right**: the left column is behind the user and the right column is in
-front. A fighter always faces the opponent's column. When both fighters share a column, each keeps
-its previous facing and the pattern is mirrored to match **(design choice)**.
+front, mirrored when the fighter faces left.
+
+**Facing (design choice):** both fighters turn to face each other's column at the start of every round.
+During a round a fighter turns only when they play a move card (swaps included): after moving they face
+the opponent's column. A fighter who doesn't move keeps facing the same way, even if the opponent
+leaps past them or swaps places with them, so their attacks can go the wrong way and miss. Pushes and
+pulls never turn anyone. When both fighters share a column, a turning fighter keeps their previous facing.
 
 ## Round flow
 1. **Plan:** each player fills **3 slots** with cards from their deck.
@@ -131,7 +137,7 @@ its previous facing and the pattern is mirrored to match **(design choice)**.
    attacks in strike order, then heals and traps), each for about the same time; the outcome is the same.
 3. **Fatigue (design choice):** from round 8 on, both fighters lose **5 Life** at the end of every
    round. This can knock out one or both fighters (both at once is a draw).
-4. **Recover:** at the end of the round both fighters gain **+15 Energy** plus any passive bonus (capped at max). Stuns wear off.
+4. **Recover:** at the end of the round both fighters gain **+15 Energy** plus any passive bonus (capped at max). Stuns wear off, and both fighters turn to face each other.
 5. If the match isn't over, start a new round.
 
 ### Resolving one slot (both players at once)
@@ -139,8 +145,8 @@ Let *A* and *B* be the two players. A card is **active** if its owner was not st
 previous step and can afford it at the start of this slot (`energy + cost >= 0`). An inactive card
 does nothing.
 
-1. **Movement:** every active card's `step` is applied. Positions are clamped to the board. Both
-   fighters then face each other.
+1. **Movement:** every active card's `step` is applied. Positions are clamped to the board. A fighter
+   whose active card is a move (a swap included) then turns to face the opponent; the other keeps their facing.
 2. **Hits:** for each player *X*, if the opponent's active card is an attack whose pattern (from the
    opponent's **new** position and facing) covers *X*'s **new** square, *X* is hit.
    - **Attack priority (design choice):** if *both* players attack in the same step, they don't
@@ -155,7 +161,7 @@ does nothing.
      next card, and a push or pull is queued.
 3. **Self effects:** every active card applies its own `cost`, `heal` (if its condition holds) and
    `recoil`, any `sap` comes off the target's energy, and Life and Energy are clamped to `0..max`.
-4. **Push and pull:** queued displacements happen at the same time. Both fighters face each other again.
+4. **Push and pull:** queued displacements happen at the same time. Nobody turns.
    Then, in order: attacks **break** the enemy traps they covered, **square effects** (thorns,
    springs), **traps** springing, and finally new **traps** being set.
 5. **KO check:** if exactly one fighter has 0 Life, the other wins. If both reach 0 on the same step,

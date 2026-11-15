@@ -1,7 +1,7 @@
 import { ASSETS, assetUrl } from '../content/assets';
 import { BASIC_CARD_IDS, getCard } from '../content/cards';
 import { STRINGS } from '../content/strings';
-import type { FighterDef } from '../engine/types';
+import type { CardDef, FighterDef } from '../engine/types';
 
 export type CardGroup = 'move' | 'attack' | 'special';
 const GROUP_ORDER: CardGroup[] = ['move', 'attack', 'special'];
@@ -9,6 +9,9 @@ const GROUP_ORDER: CardGroup[] = ['move', 'attack', 'special'];
 const GROUP_SIZE = 4;
 
 /** Which hand row a card goes in. Only the four basic steps are "Move"; special moves join "Special". */
+/** A card by id, or a card definition as is (the hero creator previews unsaved cards). */
+const cardDef = (id: string | CardDef): CardDef => (typeof id === 'string' ? getCard(id) : id);
+
 export function cardGroup(id: string): CardGroup {
   const kind = getCard(id).kind;
   if (kind === 'move') return BASIC_CARD_IDS.includes(id) ? 'move' : 'special';
@@ -47,15 +50,15 @@ function moveGrid([dr, dc]: [number, number]): string {
 type Effect = keyof typeof STRINGS.effectIcons;
 
 /** The special effects on a card, in display order. */
-export function cardEffects(id: string): Effect[] {
-  const c = getCard(id);
+export function cardEffects(id: string | CardDef): Effect[] {
+  const c = cardDef(id);
   const out: Effect[] = [];
   if (c.push && c.push > 0) out.push('push');
   if (c.push && c.push < 0) out.push('pull');
   if (c.stun) out.push('stun');
   if (c.counter) out.push('counter');
   if (c.drain) out.push('drain');
-  if (c.sap) out.push('sap');
+  if (c.sap || c.blockSap) out.push('sap');
   if (c.hex) out.push('hex');
   if (c.vsMoved) out.push('ambush');
   if (c.planted) out.push('planted');
@@ -79,8 +82,8 @@ export interface CardOpts {
 }
 
 /** HTML for one card. `facing` flips the pattern preview so it matches the board. */
-export function cardHtml(id: string, opts: CardOpts = {}): string {
-  const c = getCard(id);
+export function cardHtml(id: string | CardDef, opts: CardOpts = {}): string {
+  const c = cardDef(id);
   let art = '';
   let stat = '';
   if (c.kind === 'attack' && c.pattern) {
@@ -99,7 +102,8 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     if (c.counter) stat = `<span class="stat grd" title="${STRINGS.effectNames.counter}">${STRINGS.effectIcons.counter} ${c.counter}</span>`;
   } else if (c.kind === 'guard') {
     art = '<span class="big-glyph">⛨</span>';
-    stat = `<span class="stat grd" title="${STRINGS.cardTips.guard}">⛨ ${c.guard}${c.counter ? ` ${STRINGS.effectIcons.counter} ${c.counter}` : ''}</span>`;
+    const extra = (c.counter ? ` ${STRINGS.effectIcons.counter} ${c.counter}` : '') + (c.blockSap ? ` ${STRINGS.effectIcons.sap} ${c.blockSap}` : '');
+    stat = `<span class="stat grd" title="${STRINGS.cardTips.guard}">⛨ ${c.guard}${extra}</span>`;
   } else if (c.kind === 'focus') {
     art = '<span class="big-glyph">✦</span>';
   } else if (c.kind === 'heal') {
@@ -109,7 +113,7 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
     art = '<span class="big-glyph">⟳</span>';
   }
   const costCls = c.cost > 0 ? 'gain' : c.cost < 0 ? 'spend' : 'free';
-  const effects = cardEffects(id);
+  const effects = cardEffects(c);
   const badges = effects.length
     ? `<span class="badges">${effects.map((e) => `<i class="fx-${e}" title="${STRINGS.effectNames[e]}" data-tip="${e}">${STRINGS.effectIcons[e]}</i>`).join('')}</span>`
     : '';
@@ -139,8 +143,8 @@ export function cardHtml(id: string, opts: CardOpts = {}): string {
  * Words for a card's special effects only (push, pull, stun, counter, drain, ... and any extra note).
  * Damage, cost and movement are already shown on the card itself. Empty if the card has none.
  */
-export function describeCard(id: string): string {
-  const c = getCard(id);
+export function describeCard(id: string | CardDef): string {
+  const c = cardDef(id);
   const parts: string[] = [];
   if (c.push && c.push > 0) parts.push(STRINGS.descPush(c.push));
   if (c.push && c.push < 0) parts.push(STRINGS.descPull(-c.push));
@@ -148,6 +152,7 @@ export function describeCard(id: string): string {
   if (c.counter) parts.push(STRINGS.descCounter(c.counter));
   if (c.drain) parts.push(STRINGS.descDrain(c.drain));
   if (c.sap) parts.push(STRINGS.descSap(c.sap));
+  if (c.blockSap) parts.push(STRINGS.descBlockSap(c.blockSap));
   if (c.hex) parts.push(STRINGS.descHex(c.hex));
   if (c.vsMoved) parts.push(STRINGS.descVsMoved(c.vsMoved));
   if (c.planted) parts.push(STRINGS.descPlanted);

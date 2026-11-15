@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BALANCE } from '../src/content/balance';
 import { BONUS_CARD_IDS, FIGHTERS } from '../src/content/cards';
-import { resolveRound } from '../src/engine/rules';
+import { faceEachOther, resolveRound } from '../src/engine/rules';
 import { createMatch } from '../src/engine/setup';
 import type { MatchLog, MatchState, Plan } from '../src/engine/types';
 import { matchAchievements, profileAchievements, unlockAchievements } from '../src/meta/achievements';
@@ -31,6 +31,8 @@ beforeEach(() => {
 function oneRound(setup: (s: MatchState) => void, plans: [Plan, Plan], a = 'cinder', b = 'marin'): { log: MatchLog; state: MatchState } {
   const s = createMatch({ fighterId: a }, { fighterId: b });
   setup(s);
+  // As at the start of any round, the fighters face each other.
+  faceEachOther(s.players);
   const result = resolveRound(s, plans);
   return { log: { rounds: [{ plans, result }] }, state: result.state };
 }

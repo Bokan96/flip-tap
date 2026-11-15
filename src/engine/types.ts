@@ -34,6 +34,8 @@ export interface CardDef {
   stun?: boolean;
   /** Guard: if an attack hits you this step, the attacker takes this much damage. */
   counter?: number;
+  /** Guard: if an attack hits you this step (even one the guard doesn't fully stop), the attacker loses this much energy. */
+  blockSap?: number;
   /** Attack: percent of the damage dealt that heals the attacker. */
   drain?: number;
   /** Attack: the user loses this much life when the card resolves, hit or miss (can knock them out). */

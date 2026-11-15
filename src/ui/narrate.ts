@@ -39,7 +39,9 @@ export function beatCaption(step: StepResult, seat: Seat, names: [string, string
       return line(samePos(dest, p.from) ? N.stuck : N.moves);
     }
     case 'guard':
-      return line(c.counter ? N.guardsCounter(c.guard ?? 0, c.counter) : N.guards(c.guard ?? 0));
+      return line(
+        [N.guards(c.guard ?? 0), c.counter ? N.guardCounter(c.counter) : '', c.blockSap ? N.guardDrain(c.blockSap) : ''].filter(Boolean).join(', '),
+      );
     case 'focus':
       return line(N.focus(c.cost));
     case 'reload':
@@ -67,6 +69,8 @@ export function beatCaption(step: StepResult, seat: Seat, names: [string, string
         if (p.drained > 0) parts.push(N.drains(p.drained));
         if (rival.energyLost > 0) parts.push(N.saps(rival.energyLost));
         if (p.counterTaken > 0) parts.push(N.counter(p.counterTaken));
+        // A guard that drains energy took some from this attacker.
+        if (rival.hit === 'guard' && p.energyLost > 0 && getCard(rival.cardId).blockSap) parts.push(N.losesEnergy(p.energyLost));
       }
       if (p.recoilTaken > 0) parts.push(N.recoil(p.recoilTaken));
       return line(parts.join(', '));
@@ -108,7 +112,8 @@ export function beatStamp(step: StepResult, seat: Seat): { kind: StampKind; text
     case 'guard': {
       if (p.hit !== 'guard') return null;
       const counter = rival.counterTaken > 0 ? ` ${STRINGS.effectIcons.counter}${rival.counterTaken}` : '';
-      return { kind: 'blocked', text: (p.damageTaken === 0 ? S.blocked : `⛨${c.guard}`) + counter };
+      const drain = c.blockSap && rival.energyLost > 0 ? ` ${STRINGS.effectIcons.sap}${rival.energyLost}` : '';
+      return { kind: 'blocked', text: (p.damageTaken === 0 ? S.blocked : `⛨${c.guard}`) + counter + drain };
     }
     case 'focus':
       return { kind: 'gain', text: `+${c.cost}⚡` };

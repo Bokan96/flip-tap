@@ -1572,3 +1572,100 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 @keyframes tip-in { from { opacity: 0; transform: translateY(4px); } }
 
 .reduced-fx .play-stamp, .reduced-fx .round-banner, .reduced-fx .round-cover, .reduced-fx .tip-pop, .reduced-fx .panel.low .bar.life i { animation: none; }
+
+/* ---------- hero creator: My heroes, the hero editor, the card picker, the card editor ---------- */
+.heroes-screen, .hero-screen, .card-editor-screen { gap: 12px; }
+.hero-list { width: min(640px, 100%); display: flex; flex-direction: column; gap: 8px; }
+.hero-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--bg2);
+  border: 1px solid var(--line); border-left: 4px solid var(--clr);
+}
+.hero-row .hero-emblem { width: 44px; height: 44px; flex: none; }
+.hero-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.hero-row-main b { text-transform: uppercase; letter-spacing: .04em; color: var(--clr); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hero-row-cards { display: flex; gap: 4px; flex-wrap: wrap; }
+.hero-row-cards .card { --cw: 46px; }
+.hero-row-acts { display: flex; flex-direction: column; gap: 6px; }
+.hero-row-acts .btn { padding: 6px 12px; font-size: .78rem; }
+
+.hero-editor, .card-editor { width: min(640px, 100%); display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > span { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+.field .note { margin: 0; font-size: .8rem; }
+.field .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.text-input {
+  width: 100%; padding: 10px 12px; font: inherit; font-size: 1rem; color: var(--text);
+  background: var(--bg); border: 1px solid var(--line-hi); border-radius: var(--radius);
+}
+.text-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.hero-head { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 2px solid var(--clr); }
+.hero-head .hero-big { width: 64px; height: 64px; }
+.hero-head-name { font-size: 1.3rem; text-transform: uppercase; letter-spacing: .05em; color: var(--clr); overflow-wrap: anywhere; }
+.emblem-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px; }
+.emblem-pick, .colour-pick, .pick-card, .hero-slot, .sq {
+  appearance: none; font: inherit; color: inherit; cursor: pointer; background: var(--bg2); border: 1px solid var(--line); padding: 0;
+}
+.emblem-pick { aspect-ratio: 1; display: grid; place-items: center; }
+.emblem-pick .pick-icon { width: 70%; height: 70%; }
+.emblem-pick.on, .colour-pick.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.colour-picks { display: flex; flex-wrap: wrap; gap: 8px; }
+.colour-pick { width: 32px; height: 32px; border-radius: 50%; background: var(--c); }
+.hero-slots { display: flex; gap: 8px; flex-wrap: wrap; }
+.hero-slot { display: grid; place-items: center; background: transparent; border: none; }
+.hero-slot .card { --cw: 84px; }
+.hero-slot .empty {
+  width: 84px; height: calc(84px * 1.28); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 1px dashed var(--line-hi); color: var(--muted); font-size: .7rem; text-transform: uppercase;
+}
+.hero-slot .empty b { font-size: 1.6rem; }
+.hero-slot:hover .empty { border-color: var(--accent); color: var(--accent); }
+.hero-screen .setup-actions, .card-editor-screen .setup-actions { justify-content: flex-end; }
+
+/* The card picker (a modal). */
+.picker-tabs { justify-content: center; }
+.picker-body { width: 100%; display: flex; flex-direction: column; gap: 10px; text-align: left; }
+.picker-group h4 { margin: 0 0 4px; font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; }
+.picker-cards { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick-card { background: transparent; border: none; }
+.pick-card .card { --cw: 72px; }
+.pick-card.taken { opacity: .3; cursor: not-allowed; }
+.pick-card.on .card { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.mine-card { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.btn.mini { padding: 3px 10px; font-size: .7rem; }
+
+/* The card editor: a live preview beside (or above) the form. */
+.card-editor { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.ce-preview {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 10px; background: var(--bg2); border: 1px solid var(--line);
+}
+.ce-preview .card { --cw: 120px; }
+.ce-preview .desc { margin: 0; font-size: .8rem; line-height: 1.35; text-align: center; }
+.ce-preview .fair { margin: 0; font-size: .78rem; color: var(--muted); text-align: center; }
+.ce-preview .fair b { display: block; }
+.ce-preview .fair.cheap b { color: var(--danger-soft); }
+.ce-preview .fair.fair b { color: var(--life); }
+.ce-preview .fair.pricey b { color: var(--energy); }
+.ce-form { display: flex; flex-direction: column; gap: 12px; }
+.ce-fields { display: flex; flex-direction: column; gap: 12px; }
+.stepper-row { flex-direction: row; align-items: center; justify-content: space-between; }
+.stepper { display: flex; align-items: center; gap: 8px; }
+.stepper button {
+  width: 34px; height: 34px; font: inherit; font-size: 1.1rem; font-weight: 800; color: var(--text); cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line-hi); border-radius: var(--radius);
+}
+.stepper button:disabled { opacity: .35; cursor: not-allowed; }
+.stepper b { min-width: 3.2em; text-align: center; font-family: var(--font-numbers); font-size: 1.05rem; }
+.sq-grid { display: grid; grid-template-columns: repeat(var(--gc, 3), 38px); gap: 4px; }
+.sq { width: 38px; height: 38px; position: relative; }
+.sq.me { outline: 2px solid #fff; outline-offset: -2px; }
+.sq.on.attack { background: var(--attack); }
+.sq.on.trap { background: var(--trap); }
+.sq.on.move { background: var(--move); }
+.sq:disabled { cursor: default; }
+.detail-cards { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.detail-cards .card { --cw: 62px; }
+@media (min-width: 700px) {
+  .card-editor { grid-template-columns: 200px minmax(0, 1fr); align-items: start; }
+  .card-editor .setup-actions { grid-column: 1 / -1; }
+  .ce-preview { position: sticky; top: 12px; }
+}

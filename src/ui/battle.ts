@@ -1158,8 +1158,10 @@ export class BattleView {
     let facing = me.facing;
     const out = { pos: [] as Pos[], facing: [] as (1 | -1)[] };
     for (const id of this.plan) {
-      if (id) pos = movePos(this.state.arena, pos, getCard(id), facing);
-      facing = faceTowards(pos, them.pos, facing);
+      const c = id ? getCard(id) : null;
+      if (c) pos = movePos(this.state.arena, pos, c, facing);
+      // Only your own move cards turn you (assuming the opponent stays put).
+      if (c?.kind === 'move') facing = faceTowards(pos, them.pos, facing);
       out.pos.push({ ...pos });
       out.facing.push(facing);
     }
@@ -1220,7 +1222,8 @@ export class BattleView {
     const facingBefore = slot === 0 ? me.facing : path.facing[slot - 1];
     const c = getCard(card);
     const pos = movePos(this.state.arena, before, c, facingBefore);
-    const facing = faceTowards(pos, them.pos, facingBefore);
+    // Only a move card turns you; any other card aims the way you already face.
+    const facing = c.kind === 'move' ? faceTowards(pos, them.pos, facingBefore) : facingBefore;
     // Same colour language as the cards: red = where an attack hits, blue = where a move lands.
     const cls = c.kind === 'attack' ? 'preview-atk' : c.kind === 'trap' ? 'preview-trap' : c.kind === 'move' ? 'preview-move' : 'preview';
     const squares = c.kind === 'attack' || c.kind === 'trap' ? attackArea(this.state.arena, c, pos, facing) : [pos];
@@ -1381,6 +1384,8 @@ export class BattleView {
     };
     this.resetPlayCards();
     this.markHeld();
+    // The fighters turn to face each other as the round begins.
+    this.placeTokens(start.pos, start.facing);
     this.shownRound = this.state.round;
     this.q('.summary').innerHTML = this.summaryBar(this.barTitle(this.state.round), this.opts.replay ? this.replayButtons() : '');
     this.q('.step-label').textContent = '';
@@ -1475,8 +1480,9 @@ export class BattleView {
       if (s) this.stamp(i, step.slot, s.kind, s.text);
     };
     /** Put the pieces where the view has them, facing each other (as the rules do after every move). */
-    const place = () => {
-      for (const i of [0, 1] as const) view.facing[i] = faceTowards(view.pos[i], view.pos[i === 0 ? 1 : 0], view.facing[i]);
+    /** Put the pieces where the view has them; the `turn` seats (who just played a move card) face the other. */
+    const place = (turn: number[] = []) => {
+      for (const i of turn) view.facing[i] = faceTowards(view.pos[i], view.pos[i === 0 ? 1 : 0], view.facing[i]);
       if (ghost) this.snapTokens(view.pos, view.facing);
       else this.placeTokens(view.pos, view.facing);
     };
@@ -1551,6 +1557,13 @@ export class BattleView {
         show(() => this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-sap'), 5, 'spark'));
         float(d, STRINGS.sapped(pd.energyLost), 'sap');
         energy(d, -pd.energyLost);
+        sounds.push('zap');
+      }
+      // A guard that drains energy takes it from the attacker it blocked.
+      if (pd.hit === 'guard' && pa.energyLost > 0 && getCard(pd.cardId).blockSap) {
+        show(() => this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-sap'), 5, 'spark'));
+        float(a, STRINGS.sapped(pa.energyLost), 'sap');
+        energy(a, -pa.energyLost);
         sounds.push('zap');
       }
       if (pd.hexBroken) {
@@ -1665,7 +1678,8 @@ export class BattleView {
             show(() => this.showArea([P[0].to, P[1].to], 'move-target'));
             await pause(300);
             view.pos = [{ ...P[0].to }, { ...P[1].to }];
-            place();
+            // Only the one who swapped turns: the other is left facing the old way.
+            place([i]);
             [0, 1].forEach((j) => {
               show(() => this.tokenAnim(j, 'hop'));
               float(j, STRINGS.swappedFloat, 'swap');
@@ -1679,13 +1693,13 @@ export class BattleView {
             show(() => this.showArea([dest], 'move-target'));
             await pause(300);
             view.pos[i] = { ...dest };
-            place();
+            place([i]);
             show(() => {
               this.tokenAnim(i, 'hop');
               setTimeout(() => this.fx.particles(dest, themeColor('--fx-dust'), 6, 'dust'), ms(420));
             });
             sfx('step');
-          }
+          } else place([i]); // a move that goes nowhere still turns its fighter to face the other
         } else if (c.kind === 'guard') {
           // The shield stays up for the rest of the step.
           tokens[i].classList.add('guarding');

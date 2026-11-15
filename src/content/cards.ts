@@ -14,7 +14,7 @@ const basics: CardDef[] = [
   { id: 'down', name: 'Step Down', kind: 'move', cost: 0, step: [1, 0] },
   { id: 'left', name: 'Step Left', kind: 'move', cost: 0, step: [0, -1] },
   { id: 'right', name: 'Step Right', kind: 'move', cost: 0, step: [0, 1] },
-  { id: 'guard', name: 'Guard', kind: 'guard', cost: 0, guard: 15 },
+  { id: 'guard', name: 'Guard', kind: 'guard', cost: 0, guard: 15, blockSap: 10 },
   { id: 'focus', name: 'Focus', kind: 'focus', cost: 15 },
 ];
 
@@ -222,14 +222,34 @@ export const FIGHTERS: FighterDef[] = [
   },
 ];
 
+/*
+ * Player-made heroes and cards (the hero creator, see meta/custom.ts). They live apart from the
+ * built-in content above, so everything that goes through FIGHTERS or CARDS (tournament rivals, the
+ * daily challenge, achievements, the glossary, translations, replay checks) sees only the built-ins;
+ * getFighter and getCard find them too.
+ */
+export const CUSTOM_FIGHTERS: Record<string, FighterDef> = {};
+export const CUSTOM_CARDS: Record<string, CardDef> = {};
+
+/** Replace the registered custom heroes and cards. */
+export function registerCustom(cards: CardDef[], fighters: FighterDef[]): void {
+  for (const id of Object.keys(CUSTOM_CARDS)) delete CUSTOM_CARDS[id];
+  for (const id of Object.keys(CUSTOM_FIGHTERS)) delete CUSTOM_FIGHTERS[id];
+  for (const c of cards) CUSTOM_CARDS[c.id] = c;
+  for (const f of fighters) CUSTOM_FIGHTERS[f.id] = f;
+}
+
+/** A hero made in the hero creator (not a built-in fighter)? */
+export const isCustomFighter = (id: string): boolean => id in CUSTOM_FIGHTERS;
+
 export function getFighter(id: string): FighterDef {
-  const f = FIGHTERS.find((x) => x.id === id);
+  const f = FIGHTERS.find((x) => x.id === id) ?? CUSTOM_FIGHTERS[id];
   if (!f) throw new Error(`Unknown fighter: ${id}`);
   return f;
 }
 
 export function getCard(id: string): CardDef {
-  const c = CARDS[id];
+  const c = CARDS[id] ?? CUSTOM_CARDS[id];
   if (!c) throw new Error(`Unknown card: ${id}`);
   return c;
 }

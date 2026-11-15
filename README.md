@@ -15,6 +15,10 @@ and a replay. The last 10 matches stay in Profile → Recent matches, and any of
 **Glossary** (fighters, every card, effects, arenas) and the game is available in **English and
 Serbian** (Settings → Language).
 
+The **Hero creator** on the main menu makes your own fighter: a name, an icon, a colour and 4 cards,
+borrowed from other fighters or designed from scratch (squares, damage, effects, cost, with a fairness
+hint). Custom heroes are saved on the device and play in Versus CPU and Hot-seat, classic and Two-tap.
+
 The version shown in the corner of the main menu comes from `package.json`: bump it with every update.
 
 ## Develop

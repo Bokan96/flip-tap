@@ -1,3 +1,4 @@
+import { CUSTOM_CARDS, CUSTOM_FIGHTERS } from '../content/cards';
 import { choosePlan, type Difficulty } from '../engine/ai';
 import type { AiRequest } from '../engine/aiWorker';
 import { historyFromLog } from '../engine/playerModel';
@@ -51,6 +52,17 @@ function aiWorker(): Worker | null {
   return worker;
 }
 
+/**
+ * The custom heroes and cards a match uses: the worker has its own copy of the content, without the
+ * player's creations, so they travel with every request.
+ */
+export function customFor(state: MatchState): AiRequest['custom'] {
+  const fighters = [...new Set(state.players.map((p) => p.fighterId))].map((id) => CUSTOM_FIGHTERS[id]).filter(Boolean);
+  const ids = new Set(state.players.flatMap((p) => p.deck));
+  const cards = [...ids].map((id) => CUSTOM_CARDS[id]).filter(Boolean);
+  return cards.length || fighters.length ? { cards, fighters } : undefined;
+}
+
 function inWorker(w: Worker, req: Omit<AiRequest, 'id'>): Promise<Plan> {
   const id = nextId++;
   return new Promise<Plan>((resolve, reject) => {
@@ -71,7 +83,14 @@ export class CpuPlanSource implements PlanSource {
   }
 
   async requestPlan(state: MatchState, seat: Seat, log?: MatchLog): Promise<Plan> {
-    const req = { state, seat, difficulty: this.difficulty, history: historyFromLog(log, state), seed: this.rng.int(2 ** 31) };
+    const req = {
+      state,
+      seat,
+      difficulty: this.difficulty,
+      history: historyFromLog(log, state),
+      seed: this.rng.int(2 ** 31),
+      custom: customFor(state),
+    };
     const w = aiWorker();
     if (w) {
       try {

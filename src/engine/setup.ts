@@ -49,7 +49,8 @@ export function mergeMods(...parts: (Partial<Mods> | undefined)[]): Mods {
 
 export function buildDeck(fighterId: string, bonusCards: string[] = []): string[] {
   const f = getFighter(fighterId);
-  return [...BASIC_CARD_IDS, ...f.signature, ...bonusCards.filter((id) => !BASIC_CARD_IDS.includes(id))];
+  // A bonus card a (custom) hero already has as a signature card isn't added twice.
+  return [...BASIC_CARD_IDS, ...f.signature, ...bonusCards.filter((id) => !BASIC_CARD_IDS.includes(id) && !f.signature.includes(id))];
 }
 
 function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier, arenaId: string, variant?: Variant): PlayerState {
