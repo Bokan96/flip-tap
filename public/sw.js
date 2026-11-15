@@ -3,8 +3,10 @@
  * - On install: stores every file listed in precache.json in a cache named after the build.
  * - Pages (navigations): network first, falling back to the cached page when offline.
  * - Everything else: cache first, then network.
- * - A new build installs alongside the old one and waits; the page shows an "update" notice and
- *   sends 'skipWaiting' when the player accepts. Old caches are removed on activate.
+ * - A new build installs alongside the old one and waits. If the page on screen is already that
+ *   build (pages load network-first), the page sends 'skipWaiting' straight away and nothing shows;
+ *   only an older page gets an "update" notice and sends it when the player accepts. Old caches
+ *   are removed on activate.
  */
 const VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
 const CACHE = `fliptap-${VERSION}`;

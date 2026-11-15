@@ -7,7 +7,20 @@ export function registerServiceWorker(onUpdate: (apply: () => void) => void): vo
   window.addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js?v=${__BUILD_ID__}`);
-      const offer = (worker: ServiceWorker) => onUpdate(() => worker.postMessage('skipWaiting'));
+      /** Set while a worker takes over quietly, so that takeover doesn't reload the page. */
+      let quiet = false;
+      const offer = (worker: ServiceWorker) => {
+        // Pages load network-first, so the page on screen is usually already the build the new
+        // worker brings (only its offline copy is behind): let the worker take over quietly, with no
+        // notice and no reload. Only a page older than the new worker (a deploy while the app stayed
+        // open) gets the update notice.
+        if (new URL(worker.scriptURL).searchParams.get('v') === __BUILD_ID__) {
+          quiet = true;
+          worker.postMessage('skipWaiting');
+          return;
+        }
+        onUpdate(() => worker.postMessage('skipWaiting'));
+      };
       // A new version is ready once it has installed while an older one still controls the page.
       const track = (worker: ServiceWorker | null) => {
         if (!worker) return;
@@ -23,6 +36,10 @@ export function registerServiceWorker(onUpdate: (apply: () => void) => void): vo
       reg.addEventListener('updatefound', () => track(reg.installing));
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (quiet) {
+          quiet = false;
+          return;
+        }
         if (reloading) return;
         reloading = true;
         location.reload();
