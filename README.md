@@ -4,7 +4,7 @@ A small two-player **simultaneous-planning card battle** for the browser. Each r
 secretly plan three cards (move, guard, focus, attack, …). The cards are then revealed and resolved
 step by step on a 3×5 grid. Dodge, predict, and land your attacks.
 
-Modes: **Tournament** (beat 5 rivals, earn bonus cards), **Versus CPU** (4 difficulties, up to an Expert that learns your habits),
+Modes: **Tournament** (beat 8 rivals, choosing a bonus card after each win), **Versus CPU** (4 difficulties, up to an Expert that learns your habits),
 **Hot-seat** (two players on one device), a **Daily challenge**, and **Two-tap**, a rule variant where only two
 cards play each round and your third stays locked in, face down, for the next. All of them sit behind the
 **Play** button on the main menu. Full rules: [docs/RULES.md](docs/RULES.md).

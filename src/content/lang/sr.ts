@@ -58,6 +58,7 @@ const strings: Strings = {
     effects: 'Efekti',
     fullscreen: 'Ceo ekran',
     instantSelect: 'Izbor jednim dodirom',
+    threat: 'Domet protivnika',
     language: 'Jezik',
     on: 'Da',
     off: 'Ne',
@@ -138,6 +139,16 @@ const strings: Strings = {
   restartLadder: 'Lestvica iz početka',
   newChampion: (fighter: string) => `${fighter} je šampion!`,
   championBadge: 'Turnirski šampion',
+  championAt: (difficulty: string) => `Šampion · ${difficulty}`,
+  collectionComplete: 'Kolekcija bonus karata je kompletna.',
+  reward: {
+    title: 'Izaberi nagradu',
+    hint: 'Izaberi jednu bonus kartu. Ulazi u kolekciju, i u opremu ako ima slobodnog mesta.',
+    take: 'Uzmi',
+    added: 'Dodato u kolekciju',
+    ready: 'Osvojio si bonus kartu: izaberi je na sledećem ekranu.',
+    chip: 'Nagrada',
+  },
   achievementUnlocked: 'Novo dostignuće',
   howToNote:
     'Broj u uglu je cena karte u energiji. Na svakoj mreži uokvireno središnje polje si ti. Karte kretanja plavim označavaju gde ćeš stati; karte napada crvenim označavaju polja koja pogađaju, a strelica pokazuje na koju stranu gledaš. Ikone u gornjem uglu su posebni efekti, na primer ⇥ guranje, ⇤ povlačenje, ✷ omamljivanje, ↺ kontra i ♥ isisavanje; Pojmovnik ih navodi sve.',
@@ -236,6 +247,8 @@ const strings: Strings = {
     won: (rounds: number) => `Pobeda za ${rounds} ${pl(rounds, 'rundu', 'runde', 'rundi')}`,
     lost: (rounds: number) => `Poraz posle ${rounds} ${pl(rounds, 'runde', 'runde', 'rundi')}`,
     drew: (rounds: number) => `Nerešeno posle ${rounds} ${pl(rounds, 'runde', 'runde', 'rundi')}`,
+    firstTry: 'iz prvog pokušaja',
+    tries: (n: number) => `${n}. pokušaj`,
   },
 
   profile: {
@@ -396,6 +409,10 @@ const strings: Strings = {
   passive: 'Pasivno',
   stunned: 'Omamljen',
   stunnedSlot: 'Omamljen: karta ovde se neće odigrati (i ne košta ništa)',
+  threat: {
+    show: 'Prikaži gde protivnik može da pogodi u ovoj rundi',
+    hide: 'Sakrij domet protivnika',
+  },
   reloaded: 'Napunjeno!',
   fatigueFloat: (n: number) => `Umor −${n}`,
   fatigueTag: (n: number) => `Umor −${n}/runda`,
@@ -551,6 +568,7 @@ const strings: Strings = {
   rules: [
     'Oba igrača tajno planiraju 3 karte, a zatim se karte izvršavaju korak po korak, istovremeno.',
     'Dodirni kartu da vidiš šta radi, pa je dodirni ponovo da je staviš u sledeće slobodno mesto (mišem jedan klik radi oboje, a isto i jedan dodir kad je u Podešavanjima uključen Izbor jednim dodirom), ili je prevuci u bilo koje mesto. Prevlačenjem između mesta menjaš redosled; dodirni isplaniranu kartu ili je izvuci da je ukloniš.',
+    'Dugme ⚔ tokom planiranja označava gde protivnik može da pogodi u ovoj rundi: šrafirano odakle stoji, bledo posle jednog koraka.',
     'Prvo se izvršava kretanje, pa napadi. Izađi iz polja napada da ga izbegneš.',
     'Karte napada pogađaju označena polja oko tebe, u pravcu u kom gledaš. Borci se okreću jedan ka drugom na početku svake runde, a inače samo kad odigraju kartu kretanja ili zamene mesta, pa prolazak pored napadača može da ga natera da promaši.',
     'Karte koštaju energiju. Plan mora da bude izvodljiv korak po korak. Fokus vraća energiju.',

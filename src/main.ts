@@ -33,12 +33,15 @@ import {
 } from './meta/replay';
 import { clearSavedMatch, loadSavedMatch, saveMatch, type SavedMatch } from './meta/savedMatch';
 import {
+  claimReward,
   collection,
   dailyStreak,
+  dailyWonIn,
   favouriteCard,
   isTutorialDone,
   ladder,
   loadout,
+  pendingReward,
   profile,
   recentMatches,
   recordDaily,
@@ -48,7 +51,9 @@ import {
   resetLadder,
   resetProfile,
   setTutorialDone,
+  startDaily,
   toggleLoadout,
+  type LadderRecord,
   type MatchMode,
 } from './meta/profile';
 import { CpuPlanSource, type PlanSource } from './net/transport';
@@ -210,6 +215,16 @@ function title(): void {
   });
 }
 
+/**
+ * The ★ of a tournament champion, coloured by the hardest difficulty a whole ladder was beaten on
+ * (a plain star for champions from before that was recorded). Empty for non-champions.
+ */
+function champBadge(l: LadderRecord, inline = false): string {
+  if (!l.champion) return '';
+  const label = l.best ? STRINGS.championAt(STRINGS.difficultyNames[l.best]) : STRINGS.championBadge;
+  return `<em class="champ${inline ? ' inline' : ''}${l.best ? ` d-${l.best}` : ''}" title="${label}" aria-label="${label}">★</em>`;
+}
+
 // ---------- play menus ----------
 
 /** Every way to play: tournament, daily challenge, versus CPU, hot-seat and the rule variants. */
@@ -223,7 +238,9 @@ function playMenu(): void {
     `<div class="title-wrap play-wrap">
       <h2>${STRINGS.play}</h2>
       <nav class="menu">
-        <button class="btn primary big" data-mode="tournament">${STRINGS.modeTournament}<small>${STRINGS.modeTournamentHint}</small></button>
+        <button class="btn primary big" data-mode="tournament">${STRINGS.modeTournament}<small>${STRINGS.modeTournamentHint}</small>${
+          pendingReward() ? `<em class="menu-chip">${STRINGS.reward.chip}</em>` : ''
+        }</button>
         <button class="btn big daily-btn${dailyDone ? ' done' : ''}" data-act="daily">${STRINGS.daily.title}<small>${dailyHint}</small></button>
         <button class="btn big" data-mode="cpu">${STRINGS.modeCpu}<small>${STRINGS.modeCpuHint}</small></button>
         <button class="btn big" data-mode="hotseat">${STRINGS.modeHotseat}<small>${STRINGS.modeHotseatHint}</small></button>
@@ -492,7 +509,7 @@ function matchSetup(mode: SetupMode, variant?: Variant, back: () => void = playM
   // Custom heroes play in Versus CPU and Hot-seat, not the Tournament.
   const roster = mode === 'tournament' ? FIGHTERS : [...FIGHTERS, ...customHeroes().map((h) => getFighter(h.id))];
   const tiles = roster.map((f) => {
-    const champ = ladder(f.id).champion ? `<em class="champ" title="${STRINGS.championBadge}">★</em>` : '';
+    const champ = champBadge(ladder(f.id));
     return `<button class="pick" data-pick="${f.id}" style="--clr:${f.color}">
       ${champ}<span class="pick-marks"></span>${portraitHtml(f, 'pick-emblem')}<b>${f.name}</b><small>${f.role}</small>
     </button>`;
@@ -1150,8 +1167,11 @@ function openReplayLink(): boolean {
 // ---------- tournament ----------
 
 function tournamentHub(fighterId: string): void {
+  // A reward still to be chosen comes first (it is kept until then, so it is never lost).
+  if (pendingReward()) return rewardScreen(() => tournamentHub(fighterId));
   const rivals = rivalsFor(fighterId);
-  const { wins, champion } = ladder(fighterId);
+  const record = ladder(fighterId);
+  const { wins } = record;
   const complete = wins >= rivals.length;
   const steps = rivals
     .map((id, i) => {
@@ -1161,8 +1181,10 @@ function tournamentHub(fighterId: string): void {
     })
     .join('');
   const root = screen(
-    `<h2>${STRINGS.tournamentTitle}: ${getFighter(fighterId).name}${champion ? ' <span class="champ inline">★</span>' : ''}</h2>
-     <p>${complete ? STRINGS.champion : STRINGS.tournamentProgress(wins, rivals.length)}</p>
+    `<h2>${STRINGS.tournamentTitle}: ${getFighter(fighterId).name} ${champBadge(record, true)}</h2>
+     <p>${complete ? STRINGS.champion : STRINGS.tournamentProgress(wins, rivals.length)}${
+       record.best ? `<br><small class="champ-at d-${record.best}">★ ${STRINGS.championAt(STRINGS.difficultyNames[record.best])}</small>` : ''
+     }</p>
      <ol class="ladder">${steps}</ol>
      ${complete ? '' : difficultyPicker()}
      ${loadoutHtml(true)}
@@ -1188,14 +1210,16 @@ function tournamentMatch(fighterId: string, resume?: SavedMatch): void {
   if (!rival) return tournamentHub(fighterId);
   const rivals = rivalsFor(fighterId);
   const names: [string, string] = [STRINGS.player(1), getFighter(rival).name];
+  // The difficulty this match is played on (changing it on the hub meanwhile doesn't count).
+  const level = difficulty;
   runBattle({
     mode: 'tournament',
     context: fighterId,
     resume,
     p0: { fighterId, bonusCards: loadout() },
-    p1: { fighterId: rival, bonusCards: rivalBonus(ladder(fighterId).wins) },
+    p1: { fighterId: rival, bonusCards: rivalBonus(fighterId, ladder(fighterId).wins) },
     names,
-    difficulty,
+    difficulty: level,
     onQuit: () => tournamentHub(fighterId),
     onEnd: (outcome, _log, recap) => {
       if (outcome.winner !== 0) {
@@ -1206,17 +1230,59 @@ function tournamentMatch(fighterId: string, resume?: SavedMatch): void {
         return;
       }
       play('win');
-      const { card, champion } = recordLadderWin(fighterId, rivals.length);
+      const { card, offer, champion } = recordLadderWin(fighterId, rivals.length, level);
       const extra =
         (champion ? `<p class="champion-line">★ ${STRINGS.newChampion(getFighter(fighterId).name)}</p>` : '') +
         (card
           ? `<p>${STRINGS.newBonus}</p><div class="hand">${cardHtml(card)}</div>` +
             (describeCard(card) ? `<p class="note">${describeCard(card)}</p>` : '')
-          : '');
+          : offer.length
+            ? `<p>${STRINGS.reward.ready}</p>`
+            : `<p class="note">${STRINGS.collectionComplete}</p>`);
+      // Continue: choose the reward first, if there is a choice (the hub opens it anyway).
       resultScreen(outcomeText(outcome, names), 0, [fighterId, rival], [
         { label: STRINGS.continue, primary: true, fn: () => tournamentHub(fighterId) },
       ], extra, true, recap);
     },
+  });
+}
+
+/**
+ * A tournament win's reward: tap one of the offered bonus cards (each shown with what it does),
+ * then Take it. `next` follows once a card is taken.
+ */
+function rewardScreen(next: () => void): void {
+  const pending = pendingReward();
+  if (!pending) return next();
+  const R = STRINGS.reward;
+  let pick: string | null = null;
+  const options = pending.offer
+    .map((id) => {
+      const desc = describeCard(id);
+      return `<button class="reward-opt" data-reward="${id}" aria-pressed="false">${cardHtml(id, { readonly: true })}${desc ? `<span class="desc">${desc}</span>` : ''}</button>`;
+    })
+    .join('');
+  const root = screen(
+    `<h2>${R.title}</h2>
+     <p class="note">${R.hint}</p>
+     <div class="reward-cards">${options}</div>
+     <div class="row"><button class="btn primary" data-act="take" disabled>${R.take}</button></div>`,
+    'reward-screen',
+  );
+  const take = root.querySelector<HTMLButtonElement>('[data-act="take"]')!;
+  on(root, '[data-reward]', (el) => {
+    pick = el.dataset.reward!;
+    root.querySelectorAll('[data-reward]').forEach((b) => {
+      b.classList.toggle('on', b === el);
+      b.setAttribute('aria-pressed', String(b === el));
+    });
+    take.disabled = false;
+  });
+  on(root, '[data-act="take"]', () => {
+    if (!pick || !claimReward(pick)) return;
+    play('reveal');
+    toast('★', R.added, getCard(pick).name);
+    next();
   });
 }
 
@@ -1253,13 +1319,16 @@ function dailyScreen(): void {
 /** `date` is fixed when the match starts, so a match that crosses midnight counts for its own day. */
 function dailyMatch(date: string, resume?: SavedMatch): void {
   const c = dailyChallenge(date);
-  const names: [string, string] = [STRINGS.player(1), getFighter(c.rival).name];
+  // A resumed match keeps the fighters it was saved with (the day's draw may have changed since).
+  const [fighter, rival] = resume ? resume.fighters : [c.fighter, c.rival];
+  const names: [string, string] = [STRINGS.player(1), getFighter(rival).name];
+  if (!resume) startDaily(date);
   runBattle({
     mode: 'daily',
     context: date,
     resume,
-    p0: { fighterId: c.fighter },
-    p1: { fighterId: c.rival },
+    p0: { fighterId: fighter },
+    p1: { fighterId: rival },
     names,
     difficulty: 'hard',
     modifier: c.modifier.modifier,
@@ -1273,7 +1342,7 @@ function dailyMatch(date: string, resume?: SavedMatch): void {
       if (won) play('win');
       const extra = `<p>${STRINGS.daily.streak(dailyStreak(), profile().daily.best)}</p>`;
       const share = recap ? [{ label: STRINGS.daily.share, fn: () => void shareDaily(date, outcome, recap.stats) }] : [];
-      resultScreen(outcomeText(outcome, names), outcome.winner, [c.fighter, c.rival], [
+      resultScreen(outcomeText(outcome, names), outcome.winner, [fighter, rival], [
         won ? { label: STRINGS.menu, primary: true, fn: title } : { label: STRINGS.retry, primary: true, fn: () => dailyMatch(date) },
         { label: STRINGS.daily.title, fn: dailyScreen },
       ], extra, won, recap, share);
@@ -1285,7 +1354,14 @@ function dailyMatch(date: string, resume?: SavedMatch): void {
 async function shareDaily(date: string, outcome: MatchOutcome, stats: MatchStats): Promise<void> {
   const c = dailyChallenge(date);
   const D = STRINGS.daily;
-  const result = outcome.winner === 0 ? D.won(stats.rounds) : outcome.winner === null ? D.drew(stats.rounds) : D.lost(stats.rounds);
+  // A win says which attempt it took (the first try is the one worth bragging about).
+  const tries = outcome.winner === 0 ? dailyWonIn(date) : null;
+  const result =
+    outcome.winner === 0
+      ? `${D.won(stats.rounds)}${tries ? ` · ${tries === 1 ? D.firstTry : D.tries(tries)}` : ''}`
+      : outcome.winner === null
+        ? D.drew(stats.rounds)
+        : D.lost(stats.rounds);
   const matchup = `${getFighter(c.fighter).name} vs ${getFighter(c.rival).name} · ${c.modifier.name}`;
   const text = D.shareText(date, matchup, tradeRow(stats.trades), result, dailyStreak());
   const url = gameUrl();
@@ -1340,7 +1416,7 @@ function profileScreen(): void {
     const rec = s.byFighter[f.id] ?? { played: 0, won: 0 };
     const l = ladder(f.id);
     return `<li style="--clr:${f.color}">${emblemHtml(f, 'hud-emblem')}
-      <b>${f.name}${l.champion ? ' <span class="champ inline">★</span>' : ''}</b>
+      <b>${f.name} ${champBadge(l, true)}</b>
       <span>${P.record(rec.won, rec.played)}</span>
       <span>${P.ladder(l.wins, rivalsFor(f.id).length)}</span></li>`;
   }).join('');

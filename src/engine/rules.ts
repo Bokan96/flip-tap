@@ -216,6 +216,39 @@ export function plantedOk(plan: Plan): boolean {
   return true;
 }
 
+/**
+ * Where `seat` could hit this round, for the planner's "enemy reach" aid: `now` = every square its
+ * affordable attacks cover from where it stands, facing the way it faces; `reach` = the extra
+ * squares after one affordable step (facing the other fighter, as a move card turns you; no
+ * planted attacks). Spent shots don't count. Only the deck is used, so a Two-tap card held face
+ * down is never given away.
+ */
+export function threatArea(state: MatchState, seat: Seat): { now: Pos[]; reach: Pos[] } {
+  const p = state.players[seat];
+  const foe = state.players[seat === 0 ? 1 : 0];
+  const arena = state.arena;
+  const cards = p.deck.map(getCard);
+  const attacks = cards.filter((c) => c.kind === 'attack' && !isSpent(p, c.id));
+  const key = (q: Pos) => q.r * arena.cols + q.c;
+  const now = new Map<number, Pos>();
+  const reach = new Map<number, Pos>();
+  for (const a of attacks) {
+    if (p.energy + a.cost < 0) continue;
+    for (const q of attackArea(arena, a, p.pos, p.facing)) now.set(key(q), q);
+  }
+  for (const m of cards) {
+    if (m.kind !== 'move' || m.swap || p.energy + m.cost < 0) continue;
+    const to = movePos(arena, p.pos, m, p.facing);
+    if (samePos(to, p.pos)) continue;
+    const facing = faceTowards(to, foe.pos, p.facing);
+    for (const a of attacks) {
+      if (a.planted || p.energy + m.cost + a.cost < 0) continue;
+      for (const q of attackArea(arena, a, to, facing)) if (!now.has(key(q))) reach.set(key(q), q);
+    }
+  }
+  return { now: [...now.values()], reach: [...reach.values()] };
+}
+
 /** Is this card a spent attack for this player right now? */
 export function isSpent(player: PlayerState, cardId: string): boolean {
   return player.mods.ammo && player.spent.includes(cardId) && getCard(cardId).kind === 'attack';

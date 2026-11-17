@@ -1059,6 +1059,23 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 /* ---------- progression: badges, loadout, daily, profile, toasts ---------- */
 .champ { font-style: normal; position: absolute; top: 6px; right: 8px; color: var(--accent); font-size: 1.1rem; text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent); }
 .champ.inline { position: static; font-size: inherit; }
+/* The ★ (and the hub's "Champion on …" line) by the hardest difficulty the ladder was won on. */
+.d-easy:is(.champ, .champ-at) { color: var(--medal-easy); }
+.d-normal:is(.champ, .champ-at) { color: var(--medal-normal); }
+.d-hard:is(.champ, .champ-at) { color: var(--accent); }
+.d-expert:is(.champ, .champ-at) { color: var(--fx-hex); text-shadow: 0 0 10px color-mix(in srgb, var(--fx-hex) 70%, transparent); }
+.champ-at { font-weight: 800; }
+
+/* Tournament reward: a few bonus cards side by side, each with what it does; tap one, then Take it. */
+.reward-cards { display: flex; gap: 10px; justify-content: center; width: min(560px, 100%); }
+.reward-opt {
+  flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 6px; cursor: pointer;
+  background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius); transition: border-color .15s, background .15s;
+}
+.reward-opt .card { --cw: min(96px, 24vw); }
+.reward-opt .desc { font-size: .72rem; line-height: 1.3; color: var(--muted); text-align: center; }
+.reward-opt.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg2)); box-shadow: inset 0 0 0 1px var(--accent); }
+.reward-opt.on .desc { color: var(--text); }
 .champion-line { color: var(--accent); font-weight: 800; }
 .match-tag { font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
 
@@ -1168,6 +1185,17 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .badges .fx-trap { color: var(--trap); }
 .badges .fx-swap { color: var(--fx-push); }
 .tile.preview-trap { background: color-mix(in srgb, var(--trap) 30%, transparent); box-shadow: inset 0 0 0 2px var(--trap); }
+/* Enemy reach (a planning aid, the ⚔ button): hatched in the opponent's colour (--threat) where they
+   can hit from where they stand, faintly where they can after one step. */
+.tile.threat-now::before, .tile.threat-reach::before { content: ''; position: absolute; inset: 0; pointer-events: none; }
+.tile.threat-now::before {
+  background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--threat) 55%, transparent) 0 3px, transparent 3px 8px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--threat) 75%, transparent);
+}
+.tile.threat-reach::before { background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--threat) 28%, transparent) 0 2px, transparent 2px 9px); }
+.threat-btn { flex: none; width: 32px; height: 32px; font-size: .95rem; }
+.threat-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 25%, var(--panel)); border-color: var(--accent); color: var(--accent); }
+.battle[data-mode="wait"] .threat-btn { display: none; }
 /* A trap covers its square: a faint tint and hatch in the owner's colour (player 2's hatch runs the
    other way, so two traps on one square cross), with its damage small in a corner. Tap it for details. */
 .trap-mark {

@@ -1,4 +1,5 @@
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { MATCHUP_TABLES, type MatchupTable } from '../src/content/matchups';
 import { it } from 'vitest';
 import { BALANCE } from '../src/content/balance';
 import { BONUS_CARD_IDS, CARDS, FIGHTERS, getCard } from '../src/content/cards';
@@ -18,6 +19,9 @@ import { Rng } from '../src/engine/rng';
  *   RULES="fatigueAfterRound=8"                       numbers in BALANCE
  *   CARD="umbraClaw.damage=20;vexHex.cost=-10"        card fields (patterns as 010/111/010)
  *   FIGHTER="umbra.passive.mods.vsMovedBonus=5"       fighter fields, by path
+ * Daily challenge pairings (default run only):
+ *   DAILY=2026-12-01   also add this run's matchup scores to src/content/matchups.ts, for daily
+ *                      challenges from that date on (older tables stay, so past days don't change)
  */
 const MATCHES = Number(process.env.MATCHES ?? 40);
 const BONUS = Number(process.env.BONUS ?? 0);
@@ -150,4 +154,22 @@ it('balance report', () => {
       : `../sim/balance-${ARENA}${VARIANT ? `-${VARIANT}` : ''}${BONUS ? `-bonus${BONUS}` : ''}${WEIGHTS ? '-weights' : ''}${tag}.md`;
   writeFileSync(new URL(file, import.meta.url), report);
   console.log(report);
+
+  const daily = process.env.DAILY;
+  if (daily) {
+    if (file !== '../docs/BALANCE.md') throw new Error('DAILY needs the default run (classic, no changes tried).');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(daily)) throw new Error('DAILY must be a date: YYYY-MM-DD.');
+    const scores = Object.fromEntries(
+      ids.map((a) => [a, Object.fromEntries(ids.filter((b) => b !== a).map((b) => [b, Math.round((100 * wins[a][b]) / games[a][b])]))]),
+    );
+    const table: MatchupTable = { from: daily, band: [40, 60], scores };
+    const tables = [...MATCHUP_TABLES.filter((t) => t.from !== daily), table].sort((x, y) => x.from.localeCompare(y.from));
+    // Keep the file's own header (its doc comment and type), replace the tables.
+    const url = new URL('../src/content/matchups.ts', import.meta.url);
+    const text = readFileSync(url, 'utf8');
+    const head = text.slice(0, text.indexOf('export const MATCHUP_TABLES'));
+    writeFileSync(url, `${head}export const MATCHUP_TABLES: MatchupTable[] = ${JSON.stringify(tables, null, 2)};\n`);
+    const fair = ids.flatMap((a) => ids.filter((b) => b !== a && scores[a][b] >= 40 && scores[a][b] <= 60)).length;
+    console.log(`Daily pairings from ${daily}: ${fair} of ${ids.length * (ids.length - 1)} in the 40–60% band.`);
+  }
 });

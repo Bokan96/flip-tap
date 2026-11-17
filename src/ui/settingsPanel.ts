@@ -10,6 +10,7 @@ import {
   isHapticsEnabled,
   isInstantSelect,
   isMusicEnabled,
+  isThreatShown,
   PLAN_TIMERS,
   setEffects,
   setHapticsEnabled,
@@ -17,7 +18,9 @@ import {
   setMusicEnabled,
   setPlanTimer,
   setSpeed,
+  setThreatShown,
   SPEEDS,
+  THREAT_EVENT,
   touchCapable,
   type PlanTimer,
   type Speed,
@@ -122,6 +125,8 @@ function rows(language = false): Row[] {
   );
   // On = one tap puts a card in the plan; off = the first tap only selects it (shows its squares).
   if (touchCapable()) list.push({ kind: 'switch', key: 'instant', label: S.instantSelect, get: isInstantSelect, set: setInstantSelect });
+  // The opponent's reach on the board while planning (also toggled from the planner).
+  list.push({ kind: 'switch', key: 'threat', label: S.threat, get: isThreatShown, set: setThreatShown, changes: THREAT_EVENT });
   list.push(
     {
       kind: 'slider',

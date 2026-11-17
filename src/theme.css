@@ -33,6 +33,10 @@
   /* ---------- signal colours ---------- */
   --accent: #ffd23d; /* buttons, highlights, selection */
   --accent-hi: #ffe06e;
+  /* Tournament champion stars, by the hardest difficulty the ladder was won on (Hard uses --accent,
+     Expert --fx-hex). */
+  --medal-easy: #cd8f5a;
+  --medal-normal: #c8d2e3;
   /* Player colours stay clear of red (attacks) and blue (movement). */
   --p0: #2fe0bf;
   --p1: #b98bff;

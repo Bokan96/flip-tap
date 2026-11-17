@@ -1,5 +1,6 @@
 import { BALANCE } from '../content/balance';
 import { BONUS_CARD_IDS, CARDS } from '../content/cards';
+import { DIFFICULTIES, type Difficulty } from '../engine/ai';
 import { Rng, randomSeed } from '../engine/rng';
 import type { MatchLog, MatchOutcome, Seat } from '../engine/types';
 import { readJson, readRaw, removeKey, writeJson } from './storage';
@@ -12,7 +13,9 @@ export interface Profile {
   /** Equipped bonus cards, at most BALANCE.bonusSlots. */
   loadout: string[];
   /** Tournament ladder progress per fighter. `champion` stays once earned. */
-  tournaments: Record<string, { wins: number; champion: boolean }>;
+  tournaments: Record<string, LadderRecord>;
+  /** A tournament win's reward still to be chosen (1 of the offered cards), kept so a reload can't lose or re-roll it. */
+  pendingReward: PendingReward | null;
   stats: Stats;
   /** Achievement id -> time it was unlocked. */
   achievements: Record<string, number>;
@@ -23,6 +26,24 @@ export interface Profile {
   /** First-time tips already shown in real matches (see ui/battle.ts). */
   tipsSeen: string[];
 }
+
+export interface LadderRecord {
+  wins: number;
+  champion: boolean;
+  /** The hardest difficulty a whole ladder was beaten on (absent for older champions). */
+  best?: Difficulty;
+  /** The easiest difficulty used so far in the current run up the ladder. */
+  run?: Difficulty;
+}
+
+export interface PendingReward {
+  fighterId: string;
+  /** Bonus cards to choose one from. */
+  offer: string[];
+}
+
+/** Bonus cards a tournament win offers to choose from. */
+export const REWARD_CHOICES = 3;
 
 export interface RecentMatch {
   code: string;
@@ -51,6 +72,10 @@ export interface DailyRecord {
   streak: number;
   best: number;
   results: Record<string, 'win' | 'loss' | 'draw'>;
+  /** Matches started per day (date key -> count). */
+  attempts: Record<string, number>;
+  /** Day (date key) -> the attempt it was first won on. */
+  wonIn: Record<string, number>;
 }
 
 export type MatchMode = 'cpu' | 'hotseat' | 'tournament' | 'daily' | 'tutorial';
@@ -70,9 +95,10 @@ function emptyProfile(): Profile {
     collection: [],
     loadout: [],
     tournaments: {},
+    pendingReward: null,
     stats: emptyStats(),
     achievements: {},
-    daily: { lastWin: null, streak: 0, best: 0, results: {} },
+    daily: { lastWin: null, streak: 0, best: 0, results: {}, attempts: {}, wonIn: {} },
     tutorialDone: false,
     recent: [],
     tipsSeen: [],
@@ -102,7 +128,8 @@ export function profile(): Profile {
   const saved = readJson<Profile>(KEY);
   if (saved && saved.version === 2) {
     // Fill in anything added since the save was written.
-    cache = { ...emptyProfile(), ...saved, stats: { ...emptyStats(), ...saved.stats } };
+    const blank = emptyProfile();
+    cache = { ...blank, ...saved, stats: { ...blank.stats, ...saved.stats }, daily: { ...blank.daily, ...saved.daily } };
   } else {
     cache = migrate();
     save();
@@ -151,37 +178,90 @@ export function toggleLoadout(id: string): boolean {
   return true;
 }
 
-/** Add a random bonus card the player doesn't own yet (auto-equipped if a slot is free). */
-export function grantRandomBonus(rng = new Rng(randomSeed())): string | null {
+/** Bonus cards the player doesn't own yet. */
+const unowned = () => BONUS_CARD_IDS.filter((id) => !profile().collection.includes(id));
+
+/** Add a bonus card to the collection (auto-equipped if a slot is free). Doesn't save. */
+function addToCollection(card: string): void {
   const p = profile();
-  const pool = BONUS_CARD_IDS.filter((id) => !p.collection.includes(id));
-  if (!pool.length) return null;
-  const card = rng.pick(pool);
+  if (p.collection.includes(card)) return;
   p.collection.push(card);
   if (p.loadout.length < BALANCE.bonusSlots) p.loadout.push(card);
+}
+
+/** Add a random bonus card the player doesn't own yet (auto-equipped if a slot is free). */
+export function grantRandomBonus(rng = new Rng(randomSeed())): string | null {
+  const pool = unowned();
+  if (!pool.length) return null;
+  const card = rng.pick(pool);
+  addToCollection(card);
   save();
   return card;
 }
 
 // ---------- tournament ladder ----------
-export function ladder(fighterId: string): { wins: number; champion: boolean } {
+export function ladder(fighterId: string): LadderRecord {
   return profile().tournaments[fighterId] ?? { wins: 0, champion: false };
 }
 
-/** Record a ladder win; returns the bonus card earned and whether this win finished the ladder. */
-export function recordLadderWin(fighterId: string, rivals: number): { card: string | null; champion: boolean } {
+const rank = (d: Difficulty) => DIFFICULTIES.indexOf(d);
+const easier = (a: Difficulty | undefined, b: Difficulty) => (a && rank(a) < rank(b) ? a : b);
+const harder = (a: Difficulty | undefined, b: Difficulty) => (a && rank(a) > rank(b) ? a : b);
+
+/**
+ * Record a ladder win at `difficulty`. A finished ladder crowns the fighter champion, at the
+ * easiest difficulty used on the way up (the champion badge keeps the hardest such run). The
+ * reward: a choice of up to REWARD_CHOICES bonus cards not owned yet, kept as the pending reward
+ * until one is claimed (`offer`); with only one card left it is simply given (`card`).
+ */
+export function recordLadderWin(
+  fighterId: string,
+  rivals: number,
+  difficulty: Difficulty = 'normal',
+  rng = new Rng(randomSeed()),
+): { card: string | null; offer: string[]; champion: boolean } {
   const p = profile();
   const t = (p.tournaments[fighterId] ??= { wins: 0, champion: false });
   t.wins += 1;
+  t.run = easier(t.run, difficulty);
   const finished = t.wins >= rivals;
-  if (finished) t.champion = true;
+  if (finished) {
+    t.champion = true;
+    t.best = harder(t.best, t.run);
+  }
+  const pool = unowned();
+  let card: string | null = null;
+  let offer: string[] = [];
+  if (pool.length === 1) {
+    card = pool[0];
+    addToCollection(card);
+  } else if (pool.length > 1) {
+    offer = rng.shuffle([...pool]).slice(0, REWARD_CHOICES);
+    p.pendingReward = { fighterId, offer };
+  }
   save();
-  return { card: grantRandomBonus(), champion: finished };
+  return { card, offer, champion: finished };
+}
+
+/** The tournament reward waiting to be chosen, if any. */
+export const pendingReward = (): PendingReward | null => profile().pendingReward;
+
+/** Take one of the offered cards. False if it isn't on offer (or nothing is pending). */
+export function claimReward(card: string): boolean {
+  const p = profile();
+  if (!p.pendingReward?.offer.includes(card)) return false;
+  addToCollection(card);
+  p.pendingReward = null;
+  save();
+  return true;
 }
 
 export function resetLadder(fighterId: string): void {
   const t = profile().tournaments[fighterId];
-  if (t) t.wins = 0;
+  if (t) {
+    t.wins = 0;
+    delete t.run;
+  }
   save();
 }
 
@@ -254,9 +334,22 @@ export function dailyStreak(today = dateKey()): number {
   return d.lastWin === today || d.lastWin === previousDay(today) ? d.streak : 0;
 }
 
+/** A daily challenge match starts (a fresh one, not a resumed one): one more attempt that day. */
+export function startDaily(today = dateKey()): void {
+  const d = profile().daily;
+  d.attempts[today] = (d.attempts[today] ?? 0) + 1;
+  save();
+}
+
+/** The attempt the day's challenge was first won on (1 = first try), or null if it wasn't won. */
+export function dailyWonIn(today = dateKey()): number | null {
+  return profile().daily.wonIn[today] ?? null;
+}
+
 export function recordDaily(result: 'win' | 'loss' | 'draw', today = dateKey()): void {
   const d = profile().daily;
   if (result === 'win') {
+    d.wonIn[today] ??= Math.max(1, d.attempts[today] ?? 1);
     if (d.results[today] !== 'win') {
       d.streak = d.lastWin === previousDay(today) ? d.streak + 1 : 1;
       d.lastWin = today;

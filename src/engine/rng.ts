@@ -34,3 +34,13 @@ export class Rng {
 export function randomSeed(): number {
   return (Math.random() * 2 ** 32) >>> 0;
 }
+
+/** FNV-1a hash of a string: a seed that is the same everywhere for the same text (a date, a ladder spot). */
+export function hashString(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}

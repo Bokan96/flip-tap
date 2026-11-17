@@ -23,12 +23,13 @@ import {
   resolveRound,
   samePos,
   stepsPerRound,
+  threatArea,
 } from '../engine/rules';
 import type { PlaceIssue } from '../engine/rules';
 import type { Facing, MatchLog, MatchOutcome, MatchState, Plan, Pos, RoundResult, Seat, StepResult, Trap } from '../engine/types';
 import { markTipSeen, tipSeen } from '../meta/profile';
 import type { PlanSource } from '../net/transport';
-import { fullEffects, getPlanTimer, isInstantSelect, speedMultiplier } from '../settings';
+import { fullEffects, getPlanTimer, isInstantSelect, isThreatShown, setThreatShown, speedMultiplier, THREAT_EVENT } from '../settings';
 import { cardHtml, describeCard, groupedCardsHtml, handRowLength, passiveHtml } from './card';
 import { enableDrag } from './drag';
 import { Fx, fxKind, haptic, retrigger, type FxKind } from './fx';
@@ -204,6 +205,8 @@ export class BattleView {
   private slow = 1;
   /** Bumped to cancel a running recap replay. */
   private replayRun = 0;
+  /** Stops listening for the "enemy reach" setting (see the constructor). */
+  private offThreat: () => void = () => undefined;
   /** Traps currently drawn on the board (to spot newly placed ones, and for tapping one). */
   private shownTraps: Trap[] = [];
   /** Floating texts still rising: their board row and width (px), when each started, how high it sits, how tall it is. */
@@ -245,6 +248,14 @@ export class BattleView {
     this.renderHud();
     this.setMode(opts.replay ? 'reveal' : 'idle');
     if (opts.replay) this.bindReplayControls();
+    // "Enemy reach" switched (the ⚔ button or Settings): redraw the board while planning. The
+    // listener goes once this view is gone (destroyed, or its screen replaced).
+    const onThreat = () => {
+      if (this.destroyed || !this.el.isConnected) return document.removeEventListener(THREAT_EVENT, onThreat);
+      if (this.resolvePlan) this.renderPreview();
+    };
+    document.addEventListener(THREAT_EVENT, onThreat);
+    this.offThreat = () => document.removeEventListener(THREAT_EVENT, onThreat);
     // Start after construction so plan sources can reference this view.
     setTimeout(() => void this.loop(), 0);
   }
@@ -272,6 +283,7 @@ export class BattleView {
     this.paused = false;
     this.replayRun++;
     this.stopTimer();
+    this.offThreat();
     closeTip();
     duckMusic(false);
   }
@@ -421,6 +433,7 @@ export class BattleView {
             <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="15.5"></circle><circle class="left" cx="18" cy="18" r="15.5" pathLength="100"></circle></svg>
             <b></b>
           </div>
+          ${this.opts.tutorial ? '' : `<button class="icon-btn threat-btn" data-act="threat" aria-pressed="false">⚔</button>`}
         </div>
         <div class="hand grouped"></div>
         <div class="actions">
@@ -730,7 +743,7 @@ export class BattleView {
       .querySelectorAll('.token.playing, .token.attacking, .token.dimmed, .panel.acting')
       .forEach((e) => e.classList.remove('playing', 'attacking', 'dimmed', 'acting'));
     this.el.querySelectorAll<HTMLElement>('.tile').forEach((t) => {
-      t.classList.remove('area-p0', 'area-p1', 'move-target', 'preview', 'preview-atk', 'preview-move', 'preview-trap', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake');
+      t.classList.remove('area-p0', 'area-p1', 'move-target', 'preview', 'preview-atk', 'preview-move', 'preview-trap', 'fx-slash', 'fx-burst', 'fx-wave', 'fx-beam', 'fx-quake', 'threat-now', 'threat-reach');
       t.style.removeProperty('--d');
       t.style.removeProperty('--sx');
     });
@@ -1269,6 +1282,7 @@ export class BattleView {
     // Only while a human is planning; never touch the board during the reveal animation.
     if (!this.resolvePlan) return;
     this.clearAreas();
+    this.showThreat();
     const path = this.projectedPath();
     this.renderPath(path);
     if (!this.hovered) return;
@@ -1287,6 +1301,28 @@ export class BattleView {
     const cls = c.kind === 'attack' ? 'preview-atk' : c.kind === 'trap' ? 'preview-trap' : c.kind === 'move' ? 'preview-move' : 'preview';
     const squares = c.kind === 'attack' || c.kind === 'trap' ? attackArea(this.state.arena, c, pos, facing) : [pos];
     this.showArea(squares, cls);
+  }
+
+  /**
+   * With "enemy reach" on (the ⚔ button or Settings): hatch the squares the opponent can hit this
+   * round from where they stand, and faintly the ones after one step. Planning only, and never in
+   * the tutorial (it coaches the board itself).
+   */
+  private showThreat(): void {
+    const btn = this.el.querySelector<HTMLElement>('[data-act="threat"]');
+    const on = isThreatShown() && !this.opts.tutorial;
+    if (btn) {
+      btn.setAttribute('aria-pressed', String(on));
+      btn.title = on ? STRINGS.threat.hide : STRINGS.threat.show;
+      btn.setAttribute('aria-label', btn.title);
+    }
+    if (!on || !this.resolvePlan) return;
+    const foe = this.planSeat === 0 ? 1 : 0;
+    const { now, reach } = threatArea(this.state, foe);
+    this.q('.arena').style.setProperty('--threat', `var(--p${foe})`);
+    const tile = (q: Pos) => this.el.querySelector(`.tile[data-r="${q.r}"][data-c="${q.c}"]`);
+    now.forEach((q) => tile(q)?.classList.add('threat-now'));
+    reach.forEach((q) => tile(q)?.classList.add('threat-reach'));
   }
 
   private instantSelect(): boolean {
@@ -1334,6 +1370,11 @@ export class BattleView {
       return;
     }
     if (act === 'lock') return this.lockIn();
+    if (act === 'threat') {
+      play('click');
+      // Redrawn through the settings event (see renderShell), like a change from the settings panel.
+      return setThreatShown(!isThreatShown());
+    }
     const slotEl = target.closest<HTMLElement>('[data-slot]');
     if (slotEl) {
       const i = Number(slotEl.dataset.slot);

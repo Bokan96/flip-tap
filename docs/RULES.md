@@ -204,17 +204,24 @@ pattern in the same slot avoids the hit.
   - Rounds are shorter, so fighters regain **+10 Energy** a round and **fatigue** starts after
     round 10 (`TWO_TAP` in `content/variants.ts`). The CPU can't see your face-down card either.
 - **Tournament (single player):** pick a fighter and beat the other 8 fighters in a fixed order.
-  - Each win earns **1 random bonus card** you don't own yet. Bonus cards form one collection
-    shared by all fighters.
+  - Each win lets you **choose 1 of 3 bonus cards** you don't own yet (with one left, you simply get
+    it). The choice waits until you make it, so closing the game can't lose or re-roll it. Bonus cards
+    form one collection shared by all fighters.
   - You can equip up to **3 bonus cards** (`BALANCE.bonusSlots`), which join your deck in
     Tournament and Versus CPU. Hot-seat always uses basic and signature cards only.
-  - Each rival brings as many random bonus cards as you have ladder wins (up to 3).
+  - Each rival brings as many bonus cards as you have ladder wins (up to 3), always the same ones for
+    that spot on that fighter's ladder, so retrying a loss can't fish for an easier draw.
   - Losing lets you retry. Beating all eight makes that fighter a **champion** (★), which stays
-    even if you restart the ladder.
+    even if you restart the ladder. The ★'s colour shows the hardest difficulty a whole ladder was
+    won on, counting each run at the easiest difficulty used in it (bronze Easy, silver Normal,
+    gold Hard, violet Expert).
 - **Daily challenge:** one match per day against the Hard CPU, with the fighter, rival and a rule
   twist (for example +10 damage for everyone, or both fighters starting at 50 life) chosen from the
-  date, so everyone gets the same challenge. Winning on consecutive days builds a streak. No bonus
-  cards are used.
+  date, so everyone gets the same challenge. Only even pairings are drawn: those scoring 40–60% in the
+  balance simulations (`src/content/matchups.ts`, written by `DAILY=YYYY-MM-DD npm run balance`; each
+  table applies from its date on, so earlier days keep their challenge). Winning on consecutive days
+  builds a streak, and a shared result says whether the day was won on the first try. No bonus cards
+  are used.
 - **Resume:** every match except the tutorial is saved at the start of each round's planning
   (never the plans themselves). After a reload, or after closing the installed app, the title screen
   offers *Resume match*; the round restarts from its planning. Quitting from the menu discards it.
@@ -228,7 +235,8 @@ pattern in the same slot avoids the hit.
 `npm run balance` plays every fighter pairing AI-vs-AI and writes [`BALANCE.md`](BALANCE.md): overall
 scores, matchup table and per-card usage. Re-run it after changing numbers in `cards.ts`.
 `VARIANT=twoTap npm run balance` does the same with the Two-tap rules (report in `sim/`), and
-`TWOTAP="energyPerRound=12"` tries other Two-tap numbers.
+`TWOTAP="energyPerRound=12"` tries other Two-tap numbers. `DAILY=YYYY-MM-DD` on the default run also
+adds its matchup scores to `src/content/matchups.ts` for the daily challenge from that date on.
 
 ## Rules versions
 `RULES.revision` in `rules.ts` goes into every replay code's content stamp (with the numbers in the

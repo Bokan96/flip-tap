@@ -55,6 +55,17 @@ export const setHapticsEnabled = (on: boolean) => haptics.set(on ? 'on' : 'off')
 const instant = stored<'on' | 'off'>('fliptap.instantSelect', ['on', 'off'], () => 'off');
 export const isInstantSelect = () => instant.get() === 'on';
 export const setInstantSelect = (on: boolean) => instant.set(on ? 'on' : 'off');
+// ---------- the opponent's reach ----------
+/** While planning, mark the squares the opponent could hit this round (off by default: an aid). */
+const threat = stored<'on' | 'off'>('fliptap.threat', ['on', 'off'], () => 'off');
+/** Fired on the document when the setting changes, so an open battle and settings panel follow it. */
+export const THREAT_EVENT = 'fliptap:threat';
+export const isThreatShown = () => threat.get() === 'on';
+export function setThreatShown(on: boolean): void {
+  threat.set(on ? 'on' : 'off');
+  if (typeof document !== 'undefined') document.dispatchEvent(new Event(THREAT_EVENT));
+}
+
 /** The setting only changes taps; a mouse click always adds straight away. */
 export const touchCapable = () => typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
 

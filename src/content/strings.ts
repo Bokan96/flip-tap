@@ -51,6 +51,7 @@ export const STRINGS = {
     effects: 'Effects',
     fullscreen: 'Fullscreen',
     instantSelect: 'Instant select',
+    threat: 'Enemy reach',
     language: 'Language',
     on: 'On',
     off: 'Off',
@@ -136,6 +137,17 @@ export const STRINGS = {
   restartLadder: 'Restart ladder',
   newChampion: (fighter: string) => `${fighter} is the champion!`,
   championBadge: 'Tournament champion',
+  /** The champion badge's label and the finished ladder's line, with the hardest difficulty it was won on. */
+  championAt: (difficulty: string) => `Champion on ${difficulty}`,
+  collectionComplete: 'Your bonus card collection is complete.',
+  reward: {
+    title: 'Choose your reward',
+    hint: 'Pick one bonus card to keep. It joins your collection, and your loadout if a slot is free.',
+    take: 'Take it',
+    added: 'Added to your collection',
+    ready: 'You earned a bonus card: pick it on the next screen.',
+    chip: 'Reward',
+  },
   achievementUnlocked: 'Achievement unlocked',
   howToNote:
     'The number in the corner is the card’s energy cost. On every grid the outlined centre square is you. Move cards mark where you will step in blue; attack cards mark the squares they hit in red, with an arrow showing the side you face. Icons in the top corner show special effects, such as ⇥ push, ⇤ pull, ✷ stun, ↺ counter and ♥ drain; the Glossary lists them all.',
@@ -236,6 +248,8 @@ export const STRINGS = {
     won: (rounds: number) => `Won in ${rounds} round${rounds === 1 ? '' : 's'}`,
     lost: (rounds: number) => `Lost in ${rounds} round${rounds === 1 ? '' : 's'}`,
     drew: (rounds: number) => `Draw after ${rounds} round${rounds === 1 ? '' : 's'}`,
+    firstTry: 'first try',
+    tries: (n: number) => `try ${n}`,
   },
 
   profile: {
@@ -419,6 +433,11 @@ export const STRINGS = {
   stunned: 'Stunned',
   /** The planner's first slot when a stun from last round cancels it. */
   stunnedSlot: 'Stunned: the card here won’t play (and costs nothing)',
+  /** The planner's toggle for the opponent's reach on the board. */
+  threat: {
+    show: 'Show where the opponent can hit this round',
+    hide: 'Hide the opponent’s reach',
+  },
   reloaded: 'Reloaded!',
   fatigueFloat: (n: number) => `Fatigue −${n}`,
   fatigueTag: (n: number) => `Fatigue −${n}/round`,
@@ -575,6 +594,7 @@ export const STRINGS = {
   rules: [
     'Both players secretly plan 3 cards, then the cards resolve one step at a time, simultaneously.',
     'Tap a card to see what it does and tap it again to put it in the next free slot (with a mouse one click does both, and so does one tap with Instant select on in Settings), or drag it into any slot. Drag between slots to reorder; tap a planned card or drag it out to remove it.',
+    'The ⚔ button while planning marks where the opponent could hit this round: hatched from where they stand, faint after one step.',
     'Movement happens first, then attacks. Step out of an attack’s area to dodge it.',
     'Attack cards hit the highlighted squares around you, aimed the way you face. Fighters face each other at the start of every round and turn only when they play a move card or get swapped, so stepping past an attacker can make their attack miss.',
     'Cards cost energy. Your plan must stay affordable step by step. Focus gives energy back.',
