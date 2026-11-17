@@ -581,6 +581,9 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
   background: color-mix(in srgb, var(--bg) 90%, transparent); border: 1px solid var(--line);
 }
 .slot .play-tag { pointer-events: none; }
+/* Stunned into the round: the first slot's card won't play. */
+.slot.stunned .card { opacity: .45; }
+.slot.stunned .empty { border-color: var(--fx-stun); color: var(--fx-stun); }
 
 /* the round's cards, by step: face down until played; the step playing now steps forward and glows */
 .play-col { --pc: var(--p0); min-width: 0; min-height: 0; align-items: center; justify-content: center; gap: 6px; }

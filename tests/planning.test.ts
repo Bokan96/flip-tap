@@ -60,7 +60,8 @@ describe('tutorial', () => {
         s = resolveRound(s, [choosePlan(s, 0, 'easy', rng), dummy]).state;
       }
     }
-  });
+    // Plays a dozen matches with the CPU: give it room when the whole suite runs at once.
+  }, 20_000);
 });
 
 describe('attack styles', () => {

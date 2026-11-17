@@ -144,13 +144,13 @@ describe('resolution', () => {
   });
 
   it('double KO is a draw', () => {
-    // Equal damage (25 vs 25) and equal life: both strike at the same time.
-    const s = match('cinder', 'volta');
+    // Equal damage (25 vs 25, no damage bonuses) and equal life: both strike at the same time.
+    const s = match('volta', 'ferro');
     s.players[0].pos = { r: 1, c: 1 };
     s.players[1].pos = { r: 1, c: 2 };
     s.players[0].life = 10;
     s.players[1].life = 10;
-    const r = resolveRound(s, [['cinderJab', 'up', 'down'], ['voltaZap', 'up', 'down']]);
+    const r = resolveRound(s, [['voltaZap', 'up', 'down'], ['ferroSnap', 'up', 'down']]);
     expect(r.state.outcome).toEqual({ winner: null, draw: true });
   });
 

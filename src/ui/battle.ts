@@ -11,6 +11,7 @@ import {
   energyRecovery,
   fatigueAfterRound,
   fatigueDamage,
+  firstCardCancelled,
   heldCard,
   isSpent,
   faceTowards,
@@ -648,7 +649,7 @@ export class BattleView {
     if (st.arena.traps.some((t) => t.until === st.round)) lines.push(B.trapsFade);
     st.players.forEach((p, i) => {
       if (p.hex) lines.push(B.hexed(names[i], p.hex));
-      if (p.dazed && heldCard(p)) lines.push(B.stunned(names[i]));
+      if (p.dazed) lines.push(heldCard(p) ? B.stunned(names[i]) : B.stunnedFirst(names[i]));
     });
     const after = fatigueAfterRound(st);
     if (st.round === after) lines.push(B.fatigueSoon);
@@ -1172,9 +1173,11 @@ export class BattleView {
         const locked = this.isLocked(i);
         const cls = locked ? ' locked' : twoTap && i === steps ? ' held-next' : '';
         const label = locked ? STRINGS.twoTap.locked : twoTap && i === steps ? STRINGS.twoTap.nextRound : STRINGS.slot(i + 1);
-        const stun = locked && me.dazed ? `<span class="play-tag">${STRINGS.stunned}</span>` : '';
+        // Stunned into this round: the first card won't play (Two-tap: the locked-in card).
+        const stunned = (locked && me.dazed) || (i === 0 && firstCardCancelled(me));
+        const stun = stunned ? `<span class="play-tag" title="${STRINGS.stunnedSlot}">${STRINGS.stunned}</span>` : '';
         const chip = cls ? `<span class="slot-chip" title="${locked ? STRINGS.twoTap.locked : STRINGS.twoTap.heldTitle}">${locked ? '🔒' : '⏭'}</span>` : '';
-        return `<div class="slot${next}${cls}" data-slot="${i}"><span class="slot-label">${label}</span>${inner}${energy}${chip}${stun}</div>`;
+        return `<div class="slot${next}${cls}${stunned ? ' stunned' : ''}" data-slot="${i}"${stunned ? ` title="${STRINGS.stunnedSlot}"` : ''}><span class="slot-label">${label}</span>${inner}${energy}${chip}${stun}</div>`;
       })
       .join(''));
     const filled = this.plan.some(Boolean);
@@ -1209,8 +1212,10 @@ export class BattleView {
     let pos = { ...me.pos };
     let facing = me.facing;
     const out = { pos: [] as Pos[], facing: [] as (1 | -1)[] };
-    for (const id of this.plan) {
-      const c = id ? getCard(id) : null;
+    const cancelled = firstCardCancelled(me);
+    for (const [k, id] of this.plan.entries()) {
+      // A first card a carried stun cancels doesn't move anyone.
+      const c = id && !(k === 0 && cancelled) ? getCard(id) : null;
       if (c) pos = movePos(this.state.arena, pos, c, facing);
       // Only your own move cards turn you (assuming the opponent stays put).
       if (c?.kind === 'move') facing = faceTowards(pos, them.pos, facing);
@@ -1270,6 +1275,8 @@ export class BattleView {
     const { slot, card } = this.hovered;
     const me = this.state.players[this.planSeat];
     const them = this.state.players[this.planSeat === 0 ? 1 : 0];
+    // The card a carried stun cancels shows nothing on the board.
+    if (slot === 0 && firstCardCancelled(me)) return;
     const before = slot === 0 ? me.pos : path.pos[slot - 1];
     const facingBefore = slot === 0 ? me.facing : path.facing[slot - 1];
     const c = getCard(card);
@@ -1531,8 +1538,7 @@ export class BattleView {
       const s = beatStamp(step, i as Seat);
       if (s) this.stamp(i, step.slot, s.kind, s.text);
     };
-    /** Put the pieces where the view has them, facing each other (as the rules do after every move). */
-    /** Put the pieces where the view has them; the `turn` seats (who just played a move card) face the other. */
+    /** Put the pieces where the view has them; the `turn` seats (who just moved or were swapped) face the other. */
     const place = (turn: number[] = []) => {
       for (const i of turn) view.facing[i] = faceTowards(view.pos[i], view.pos[i === 0 ? 1 : 0], view.facing[i]);
       if (ghost) this.snapTokens(view.pos, view.facing);
@@ -1730,8 +1736,8 @@ export class BattleView {
             show(() => this.showArea([P[0].to, P[1].to], 'move-target'));
             await pause(300);
             view.pos = [{ ...P[0].to }, { ...P[1].to }];
-            // Only the one who swapped turns: the other is left facing the old way.
-            place([i]);
+            // Both turn to face each other, the one swapped as well as the one who swapped.
+            place([0, 1]);
             [0, 1].forEach((j) => {
               show(() => this.tokenAnim(j, 'hop'));
               float(j, STRINGS.swappedFloat, 'swap');
@@ -1864,7 +1870,7 @@ export class BattleView {
     this.showDazed();
   }
 
-  /** Stun marks for whoever is still stunned between rounds (only in Two-tap: it cancels the held card). */
+  /** Stun marks for whoever is still stunned between rounds (it cancels their first card, or Two-tap's held card). */
   private showDazed(): void {
     this.state.players.forEach((p, i) => this.setDazed(i, p.dazed));
   }

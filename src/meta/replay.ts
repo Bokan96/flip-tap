@@ -4,7 +4,7 @@ import { BASIC_CARD_IDS, CARDS, FIGHTERS, getCard, getFighter } from '../content
 import { MODIFIERS } from '../content/modifiers';
 import { TWO_TAP, type Variant } from '../content/variants';
 import { DIFFICULTIES, type Difficulty } from '../engine/ai';
-import { resolveRound } from '../engine/rules';
+import { resolveRound, RULES } from '../engine/rules';
 import { buildDeck, createMatch } from '../engine/setup';
 import type { MatchLog, MatchOutcome, MatchState, Plan, Seat } from '../engine/types';
 import type { PlanSource } from '../net/transport';
@@ -116,11 +116,12 @@ function hash(text: string): number {
 }
 
 /**
- * 16-bit fingerprint of the rules and content that decide a match. A variant's own numbers only
- * count for matches played with it, so tuning Two-tap leaves classic replays fresh.
+ * 16-bit fingerprint of the rules and content that decide a match: the rules' revision (changes in
+ * code) and the content's numbers. A variant's own numbers only count for matches played with it,
+ * so tuning Two-tap leaves classic replays fresh.
  */
 export function contentStamp(variant?: Variant): number {
-  const content = { BALANCE, CARDS, FIGHTERS, ARENAS, MODIFIERS, ...(variant === 'twoTap' ? { TWO_TAP } : {}) };
+  const content = { RULES, BALANCE, CARDS, FIGHTERS, ARENAS, MODIFIERS, ...(variant === 'twoTap' ? { TWO_TAP } : {}) };
   const json = JSON.stringify(content, (k, v) => (COSMETIC.has(k) ? undefined : v));
   return hash(json) & 0xffff;
 }

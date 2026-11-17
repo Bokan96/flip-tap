@@ -15,7 +15,7 @@ function duel(a: string, b: string, posA: Pos, posB: Pos, bonusA: string[] = [],
   return s;
 }
 
-describe('facing turns only on your own move', () => {
+describe('facing turns on your own move, or when swapped', () => {
   it('an attacker keeps facing when the enemy leaps past, so the attack whiffs', () => {
     // Cinder faces right at (1,1); Marin leaps from (1,2) over to (1,0) as Ember Jab goes off.
     const s = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 }, [], ['leapLeft']);
@@ -27,21 +27,21 @@ describe('facing turns only on your own move', () => {
     expect(marin.facing).toBe(1); // the one who moved turned to face Cinder
   });
 
-  it('a swap leaves the other fighter facing away', () => {
-    // Vex swaps places with Cinder; Cinder didn't move, so Ember Jab goes the old way.
+  it('a swapped fighter turns to face the other, so its attack still lands', () => {
+    // Vex swaps places with Cinder: both end up facing each other, and Ember Jab hits Vex.
     const s = duel('cinder', 'vex', { r: 1, c: 1 }, { r: 1, c: 2 });
     const step = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['vexSwap', 'guard', 'focus']]).steps[0];
     const [cinder, vex] = step.players;
     expect(cinder.final).toEqual({ r: 1, c: 2 });
     expect(vex.final).toEqual({ r: 1, c: 1 });
-    expect(cinder.facing).toBe(1);
-    expect(vex.hit).toBe('miss');
+    expect(cinder.facing).toBe(-1);
     expect(vex.facing).toBe(1);
+    expect(vex.hit).toBe('hit');
   });
 
   it('the fighters face each other again before the next round', () => {
-    const s = duel('cinder', 'vex', { r: 1, c: 1 }, { r: 1, c: 2 });
-    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['vexSwap', 'guard', 'focus']]);
+    const s = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 }, [], ['leapLeft']);
+    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['leapLeft', 'guard', 'focus']]);
     expect(r.steps[2].players[0].facing).toBe(1); // still turned away at the end of the round's steps
     expect(r.state.players.map((p) => p.facing)).toEqual([-1, 1]); // and facing each other after it
   });

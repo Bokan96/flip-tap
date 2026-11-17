@@ -108,11 +108,47 @@ describe('stun', () => {
     expect(r.steps[1].players[1].active).toBe(true);
   });
 
-  it('wears off at the end of the round', () => {
+  it('on the last card carries into the next round: the first card there does nothing, for free', () => {
     const s = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 1 });
     const r = resolveRound(s, [['guard', 'focus', 'cinderPillar'], ['guard', 'focus', 'down']]);
     expect(r.steps[2].players[1].dazed).toBe(true);
-    expect(r.state.players[1].dazed).toBe(false);
+    const next = r.state;
+    expect(next.players[1].dazed).toBe(true);
+    // Marin may plan a card it couldn't afford first: it won't play, so it costs nothing.
+    next.players[1].energy = 10;
+    const flood = ['marinFlood', 'guard', 'focus'];
+    expect(-CARDS.marinFlood.cost).toBeGreaterThan(10);
+    expect(planError(next.players[1], flood)).toBeNull();
+    const r2 = resolveRound(next, [['guard', 'focus', 'up'], flood]);
+    const first = r2.steps[0].players[1];
+    expect(first.stunned).toBe(true);
+    expect(first.active).toBe(false);
+    expect(first.energy).toBe(10);
+    // Worn off after that one card.
+    expect(r2.steps[1].players[1].active).toBe(true);
+  });
+
+  it('can be switched off (then a stun on the last card is wasted)', () => {
+    const was = BALANCE.carryDaze;
+    (BALANCE as { carryDaze: boolean }).carryDaze = false;
+    try {
+      const s = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 1 });
+      const r = resolveRound(s, [['guard', 'focus', 'cinderPillar'], ['guard', 'focus', 'down']]);
+      expect(r.state.players[1].dazed).toBe(false);
+    } finally {
+      (BALANCE as { carryDaze: boolean }).carryDaze = was;
+    }
+  });
+
+  it('a stunned Ferro gets nothing from a Reload planned first', () => {
+    const s = duel('ferro', 'marin', { r: 1, c: 1 }, { r: 1, c: 3 });
+    const ferro = s.players[0];
+    ferro.dazed = true;
+    ferro.spent = ['ferroSnap'];
+    // The Reload in slot 1 won't play, so the spent Snap after it can't fire.
+    expect(planError(ferro, ['ferroReload', 'ferroSnap', 'guard'])).not.toBeNull();
+    // Anything can go in the cancelled slot, a spent shot included.
+    expect(planError(ferro, ['ferroSnap', 'guard', 'focus'])).toBeNull();
   });
 });
 
@@ -246,6 +282,7 @@ describe('fast simulator with every card, modifier and arena', () => {
       expect(fast.facing).toEqual([ps[0].facing, ps[1].facing]);
       expect(fast.spent).toEqual(ps.map((p) => (p.mods.ammo ? p.spent.length : -1)));
       expect(fast.hex).toEqual([ps[0].hex, ps[1].hex]);
+      if (!real.state.outcome) expect(fast.dazed).toEqual([ps[0].dazed, ps[1].dazed]);
       const key = (at: number, owner: number, dmg: number) => `${at}:${owner}:${dmg}`;
       const fastTraps: string[] = [];
       for (let k = 0; k < fast.traps.length; k += 3) fastTraps.push(key(fast.traps[k], fast.traps[k + 1], fast.traps[k + 2]));
@@ -292,23 +329,41 @@ describe('attack priority', () => {
     expect(r.state.outcome).toEqual({ winner: 0 });
   });
 
-  it('on equal damage the fighter with more life strikes first', () => {
-    // Ember Jab and Zap both deal 25.
-    const s = duel('cinder', 'volta', { r: 1, c: 1 }, { r: 1, c: 2 });
+  it('on equal damage the fighter with less life strikes first', () => {
+    // Zap and Snap both deal 25, and neither fighter has a damage bonus.
+    const s = duel('volta', 'ferro', { r: 1, c: 1 }, { r: 1, c: 2 });
     s.players[0].life = 20;
-    s.players[1].life = 30;
-    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['voltaZap', 'guard', 'focus']]);
-    expect(r.steps[0].sequence).toEqual([1, 0]);
-    expect(r.steps[0].players[0].interrupted).toBe(true);
-    expect(r.state.outcome).toEqual({ winner: 1 });
+    s.players[1].life = 25;
+    const r = resolveRound(s, [['voltaZap', 'guard', 'focus'], ['ferroSnap', 'guard', 'focus']]);
+    expect(r.steps[0].sequence).toEqual([0, 1]);
+    expect(r.steps[0].players[1].interrupted).toBe(true);
+    expect(r.state.outcome).toEqual({ winner: 0 });
   });
 
   it('equal damage and equal life still strike at the same time', () => {
-    const s = duel('cinder', 'volta', { r: 1, c: 1 }, { r: 1, c: 2 });
+    const s = duel('volta', 'ferro', { r: 1, c: 1 }, { r: 1, c: 2 });
     s.players[0].life = s.players[1].life = 10;
-    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['voltaZap', 'guard', 'focus']]);
+    const r = resolveRound(s, [['voltaZap', 'guard', 'focus'], ['ferroSnap', 'guard', 'focus']]);
     expect(r.steps[0].sequence).toBeNull();
     expect(r.state.outcome).toEqual({ winner: null, draw: true });
+  });
+
+  it('ranks the damage really dealt: a low-life passive counts', () => {
+    // Cinder at 50 life: Kindle makes Ember Jab 35 against Snap's 25, so she strikes first even
+    // though Ferro has less life.
+    const s = duel('cinder', 'ferro', { r: 1, c: 1 }, { r: 1, c: 2 });
+    s.players[0].life = 50;
+    s.players[1].life = 40;
+    const r = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['ferroSnap', 'guard', 'focus']]);
+    expect(r.steps[0].sequence).toEqual([0, 1]);
+    expect(r.steps[0].midLives).toEqual([50, 40 - 35]);
+  });
+
+  it('ranks the damage really dealt: a hex on the target counts', () => {
+    const s = duel('volta', 'ferro', { r: 1, c: 1 }, { r: 1, c: 2 });
+    s.players[1].hex = 10; // Zap would deal 35 to the hexed Ferro
+    const r = resolveRound(s, [['voltaZap', 'guard', 'focus'], ['ferroSnap', 'guard', 'focus']]);
+    expect(r.steps[0].sequence).toEqual([0, 1]);
   });
 
   it('a push from the first strike can carry the target out of its own attack', () => {

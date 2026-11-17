@@ -106,6 +106,8 @@ export interface FastResult {
   traps: number[];
   /** Hex on each player at the end of the round (0 = none). */
   hex: [number, number];
+  /** Classic: stunned into the next round (their first card there won't play). Always false in Two-tap. */
+  dazed: [boolean, boolean];
 }
 
 function covers(card: FastCard, r: number, c: number, facing: number, tr: number, tc: number): boolean {
@@ -254,7 +256,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
     // Swap (same as rules.resolveStep).
     const sw0 = act[0] && card[0].swap;
     const sw1 = act[1] && card[1].swap;
-    if ((sw0 || sw1) && (sw0 || !m[0].immovable) && (sw1 || !m[1].immovable)) {
+    const swapped = (sw0 || sw1) && (sw0 || !m[0].immovable) && (sw1 || !m[1].immovable);
+    if (swapped) {
       const tr = r[0];
       const tc = c[0];
       r[0] = r[1];
@@ -263,15 +266,18 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       c[1] = tc;
     }
     for (let i = 0; i < 2; i++) mv[i] = r[i] !== sr[i] || c[i] !== sc[i];
-    // Only a fighter who played a move card turns (same as rules.resolveStep).
-    if (act[0] && card[0].isMove) faceOne(0);
-    if (act[1] && card[1].isMove) faceOne(1);
+    // A fighter who played a move card turns, and so does one who was swapped (same as rules.resolveStep).
+    if ((act[0] && card[0].isMove) || swapped) faceOne(0);
+    if ((act[1] && card[1].isMove) || swapped) faceOne(1);
 
-    // Both attack: the stronger card (then the healthier fighter) strikes first.
+    // Both attack: the harder hit (as dealt now), then the fighter with less life, strikes first
+    // (same as rules.strikeOrder).
     let first = -1;
     if (act[0] && act[1] && card[0].isAttack && card[1].isAttack) {
-      if (card[0].damage !== card[1].damage) first = card[0].damage > card[1].damage ? 0 : 1;
-      else if (life[0] !== life[1]) first = life[0] > life[1] ? 0 : 1;
+      const d0 = damageOf(card[0], life[0], m[0], m[1], 0, mv[1], hx[1]);
+      const d1 = damageOf(card[1], life[1], m[1], m[0], 0, mv[0], hx[0]);
+      if (d0 !== d1) first = d0 > d1 ? 0 : 1;
+      else if (life[0] !== life[1]) first = life[0] < life[1] ? 0 : 1;
     }
 
     if (first >= 0) {
@@ -402,6 +408,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   }
   // Before the next round both turn to face each other (same as rules.resolveRound).
   if (outcome === -1 && roundEnd < 0) face();
+  // Classic: a stun from the last card carries into the next round (same as rules.resolveRound).
+  const carry = roundEnd < 0 && outcome === -1 && BALANCE.carryDaze;
   const left: number[] = [];
   for (const t of traps) if (t.keep) left.push(t.at, t.owner, t.damage);
   return {
@@ -413,5 +421,6 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
     spent: [spent[0] ? spent[0].length : -1, spent[1] ? spent[1].length : -1],
     traps: left,
     hex: [hx[0], hx[1]],
+    dazed: [carry && z[0], carry && z[1]],
   };
 }

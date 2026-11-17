@@ -4,8 +4,8 @@ import { TWO_TAP } from '../content/variants';
 import { fastSimulate, type FastResult } from './fastsim';
 import { readPlayer, type PlayerModel, type RoundRecord } from './playerModel';
 import { Rng } from './rng';
-import { energyRecovery, heldCard, heldPlays, playerTrace } from './rules';
-import type { MatchState, Plan, PlayerState, Seat } from './types';
+import { energyRecovery, firstCardCancelled, heldCard, heldPlays, playerTrace } from './rules';
+import type { CardDef, MatchState, Plan, PlayerState, Seat } from './types';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';
 export const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard', 'expert'];
@@ -31,16 +31,26 @@ export interface EvalWeights {
   danger: number;
   /** Share of a hex's extra damage counted as value (it only pays off on the next hit that lands). */
   hex: number;
+  /** Value of the other fighter starting next round stunned (their first card won't play). */
+  daze: number;
+  /**
+   * Value of each point of damage the strongest hit we can afford next round, from where we end
+   * this one, would deal them, minus the same for them on us (see threatOf): ending the round
+   * cornered, or in front of their best attack, costs us.
+   */
+  position: number;
+  /** Value of each square (up to 3) a fighter can be on at next round's start that the other can't hit. */
+  escape: number;
 }
 
 /** Life below which a fighter is in KO range of most rounds. */
 const DANGER_LIFE = 40;
 
 /** Only life and energy count (the original, short-sighted scoring). */
-const FLAT: EvalWeights = { energy: 0.2, energyHigh: 0.2, energySoft: 100, ammo: 0, trap: 0, danger: 0, hex: 0 };
+export const FLAT: EvalWeights = { energy: 0.2, energyHigh: 0.2, energySoft: 100, ammo: 0, trap: 0, danger: 0, hex: 0, daze: 0, position: 0, escape: 0 };
 /** Full look-ahead. */
-const FULL: EvalWeights = { energy: 0.3, energyHigh: 0.1, energySoft: 50, ammo: 4, trap: 0.3, danger: 0.4, hex: 0.5 };
-const HALF: EvalWeights = { energy: 0.25, energyHigh: 0.15, energySoft: 50, ammo: 2, trap: 0.15, danger: 0.2, hex: 0.25 };
+const FULL: EvalWeights = { energy: 0.3, energyHigh: 0.1, energySoft: 50, ammo: 4, trap: 0.3, danger: 0.4, hex: 0.5, daze: 6, position: 0.1, escape: 1 };
+const HALF: EvalWeights = { energy: 0.25, energyHigh: 0.15, energySoft: 50, ammo: 2, trap: 0.15, danger: 0.2, hex: 0.25, daze: 3, position: 0.05, escape: 0.5 };
 
 export interface AiProfile {
   /** How many of our plans are used to guess the opponent's likely replies. */
@@ -99,16 +109,21 @@ export const SIM_PROFILE: AiProfile = {
   personality: false,
 };
 
+/** Cards a stunned CPU prefers to put in the slot the stun cancels (any card would do the same). */
+const THROWAWAY = ['guard', 'focus', 'up', 'down', 'left', 'right'];
+
 /**
  * Every legal plan for a player (ordered, affordable, unique cards). In Two-tap the plan starts
  * with the player's locked-in card, and the energy refill comes before the held-over slot
- * (same as rules.playerTrace).
+ * (same as rules.playerTrace). When a carried stun cancels the first card (Classic), that card is
+ * free and plays no part, so only one plan is kept per choice of the other two.
  */
 export function enumeratePlans(player: PlayerState): Plan[] {
   const out: Plan[] = [];
   const deck = player.deck;
   const slots = BALANCE.slotsPerRound;
   const refillAt = player.carry ? TWO_TAP.stepsPerRound : -1;
+  const cancelled = firstCardCancelled(player);
   const cur: string[] = [];
   const rec = (energy: number, reloaded: boolean, moved: boolean) => {
     if (cur.length === slots) {
@@ -116,17 +131,19 @@ export function enumeratePlans(player: PlayerState): Plan[] {
       return;
     }
     if (cur.length === refillAt) energy = Math.min(player.energyMax, energy + energyRecovery(player));
+    // The card a stun cancels costs nothing and neither fires nor reloads (same as rules.playerTrace / ammoOk).
+    const free = cancelled && cur.length === 0;
     for (const id of deck) {
       if (BALANCE.uniqueCardsPerPlan && cur.includes(id)) continue;
       const card = getCard(id);
       // Ammo fighters can't fire a spent attack until a Reload earlier in the plan.
-      if (!reloaded && card.kind === 'attack' && player.mods.ammo && player.spent.includes(id)) continue;
+      if (!free && !reloaded && card.kind === 'attack' && player.mods.ammo && player.spent.includes(id)) continue;
       // Planted attacks can't follow a move.
       if (moved && card.planted) continue;
-      const e = energy + card.cost;
+      const e = free ? energy : energy + card.cost;
       if (e < 0) continue;
       cur.push(id);
-      rec(Math.min(e, player.energyMax), reloaded || card.kind === 'reload', moved || card.kind === 'move');
+      rec(Math.min(e, player.energyMax), reloaded || (!free && card.kind === 'reload'), moved || card.kind === 'move');
       cur.pop();
     }
   };
@@ -141,7 +158,16 @@ export function enumeratePlans(player: PlayerState): Plan[] {
       card.kind === 'move',
     );
   } else rec(player.energy, false, false);
-  return out;
+  if (!cancelled) return out;
+  // The cancelled card changes nothing, so keep one plan per pair of cards after it.
+  const rank = (id: string) => (THROWAWAY.includes(id) ? THROWAWAY.indexOf(id) : THROWAWAY.length);
+  const best = new Map<string, Plan>();
+  for (const p of out) {
+    const key = p.slice(1).join('|');
+    const kept = best.get(key);
+    if (!kept || rank(p[0]) < rank(kept[0])) best.set(key, p);
+  }
+  return [...best.values()];
 }
 
 /** Two-tap: the opponent as a fair CPU sees them, without the card they locked in face-down. */
@@ -209,11 +235,146 @@ function side(p: PlayerState): Side {
   };
 }
 
+// ---------- position: who can hit whom next round ----------
+
+interface Reach {
+  /** The deck's attacks: cost, damage (with any flat bonus), planted, and squares hit as (dr, dc) pairs facing right. */
+  attacks: { cost: number; damage: number; planted: boolean; cells: number[] }[];
+  /** Plain moves (no swaps): cost, step, and whether the step is relative to facing. */
+  moves: { cost: number; dr: number; dc: number; forward: boolean }[];
+}
+
+function reachOf(p: PlayerState): Reach {
+  const cards = p.deck.map(getCard);
+  const cellsOf = (c: CardDef) => {
+    const out: number[] = [];
+    (c.pattern ?? []).forEach((row, i) => {
+      const half = (row.length - 1) / 2;
+      for (let j = 0; j < row.length; j++) if (row[j] === '1') out.push(i - 1, j - half);
+    });
+    return out;
+  };
+  return {
+    attacks: cards
+      .filter((c) => c.kind === 'attack')
+      .map((c) => ({ cost: c.cost, damage: Math.max(0, (c.damage ?? 0) + p.mods.damageBonus), planted: !!c.planted, cells: cellsOf(c) })),
+    moves: cards
+      .filter((c) => c.kind === 'move' && !c.swap && c.step && (c.step[0] || c.step[1]))
+      .map((c) => ({ cost: c.cost, dr: c.step![0], dc: c.step![1], forward: !!c.forward })),
+  };
+}
+
+/**
+ * How hard each fighter could hit the other at the start of next round, and where they could go,
+ * from where a simulated round leaves them. Everything is worked out once per (side, square,
+ * facing, energy) and kept: the same few positions come up again and again across a decision's
+ * thousands of simulated rounds, so scoring one costs a few table reads.
+ */
+function positionModel(state: MatchState) {
+  const A = state.arena;
+  const rows = A.rows;
+  const cols = A.cols;
+  const N = rows * cols; // at most 20 squares, so a set of squares fits in one 32-bit mask
+  const open = (r: number, c: number) => r >= 0 && r < rows && c >= 0 && c < cols && !A.blocked.includes(r * cols + c);
+  const reach = [reachOf(state.players[0]), reachOf(state.players[1])];
+  /** Energy goes in steps of 5 (every cost, refill and drain is a multiple of 5), up to 200. */
+  const BUCKETS = 41;
+  const bucket = (e: number) => (e <= 0 ? 0 : e >= 200 ? BUCKETS - 1 : (e / 5) | 0);
+  /** Index of (side, square, facing, energy bucket). */
+  const at = (s: number, a: number, f: number, eb: number) => ((s * N + a) * 2 + (f > 0 ? 1 : 0)) * BUCKETS + eb;
+  const hits = (cells: number[], r: number, c: number, f: number, vr: number, vc: number) => {
+    for (let k = 0; k < cells.length; k += 2) if (r + cells[k] === vr && c + cells[k + 1] * f === vc) return true;
+    return false;
+  };
+  /** The strongest affordable hit from (r, c) facing f on a fighter at (vr, vc). */
+  const best = (s: number, r: number, c: number, f: number, vr: number, vc: number, e: number, movedFirst: boolean) => {
+    let d = 0;
+    for (const a of reach[s].attacks) {
+      if (e + a.cost < 0 || a.damage <= d || (movedFirst && a.planted)) continue;
+      if (hits(a.cells, r, c, f, vr, vc)) d = a.damage;
+    }
+    return d;
+  };
+  /** Where one affordable move takes side `s` from (r, c) facing f, and which way it then faces `v`. */
+  const landings = (s: number, r: number, c: number, f: number, e: number, visit: (nr: number, nc: number, cost: number) => void) => {
+    for (const m of reach[s].moves) {
+      if (e + m.cost < 0) continue;
+      const nr = Math.min(rows - 1, Math.max(0, r + m.dr));
+      const nc = Math.min(cols - 1, Math.max(0, c + (m.forward ? m.dc * f : m.dc)));
+      if (open(nr, nc)) visit(nr, nc, m.cost);
+    }
+  };
+  const done = new Uint8Array(2 * N * 2 * BUCKETS);
+  /** Squares side `s` can hit standing at `a` (bitmask), and the squares it can be on after one move (bitmask, own included). */
+  const coverT = new Int32Array(2 * N * 2 * BUCKETS);
+  const spotsT = new Int32Array(2 * N * 2 * BUCKETS);
+  /** [side, square, facing, energy][victim square]: its strongest hit standing still, or half its strongest after one move. */
+  const threatT = new Int16Array(2 * N * 2 * BUCKETS * N).fill(-1);
+  const prepare = (s: number, a: number, f: number, eb: number, k: number) => {
+    const r = Math.floor(a / cols);
+    const c = a % cols;
+    const e = eb * 5;
+    let cover = 0;
+    for (let v = 0; v < N; v++) if (v !== a && best(s, r, c, f, Math.floor(v / cols), v % cols, e, false) > 0) cover |= 1 << v;
+    let spots = 1 << a;
+    landings(s, r, c, f, e, (nr, nc) => (spots |= 1 << (nr * cols + nc)));
+    coverT[k] = cover;
+    spotsT[k] = spots;
+    done[k] = 1;
+  };
+  /** Threat of side `s` (at `a`, facing `f`, energy `e`) on a fighter at `v`. */
+  const threat = (s: number, a: number, f: number, v: number, e: number) => {
+    const eb = bucket(e);
+    const k = at(s, a, f, eb) * N + v;
+    let t = threatT[k];
+    if (t < 0) {
+      const r = Math.floor(a / cols);
+      const c = a % cols;
+      const vr = Math.floor(v / cols);
+      const vc = v % cols;
+      const en = eb * 5;
+      let moved = 0;
+      landings(s, r, c, f, en, (nr, nc, cost) => {
+        if (nr === vr && nc === vc) return;
+        // A move card turns its player to face the other.
+        const nf = vc > nc ? 1 : vc < nc ? -1 : f;
+        moved = Math.max(moved, best(s, nr, nc, nf, vr, vc, en + cost, true));
+      });
+      t = threatT[k] = Math.max(best(s, r, c, f, vr, vc, en, false), Math.floor(moved / 2));
+    }
+    return t;
+  };
+  /** How many (up to 3) of the squares side `s` can be on next round the other side can't hit from where it stands. */
+  const escapes = (s: number, a: number, f: number, e: number, oa: number, of: number, oe: number) => {
+    const k = at(s, a, f, bucket(e));
+    if (!done[k]) prepare(s, a, f, bucket(e), k);
+    const ko = at(1 - s, oa, of, bucket(oe));
+    if (!done[ko]) prepare(1 - s, oa, of, bucket(oe), ko);
+    let free = spotsT[k] & ~coverT[ko] & ~(1 << oa);
+    let n = 0;
+    while (free && n < 3) {
+      free &= free - 1;
+      n++;
+    }
+    return n;
+  };
+  return { threat, escapes, cols };
+}
+
+/** One position model per state, shared by both sides' evaluators in a decision. */
+const positionModels = new WeakMap<MatchState, ReturnType<typeof positionModel>>();
+function positionModelFor(state: MatchState): ReturnType<typeof positionModel> {
+  let m = positionModels.get(state);
+  if (!m) positionModels.set(state, (m = positionModel(state)));
+  return m;
+}
+
 /** Score a simulated round from `seat`'s point of view. `aggression` > 0 values damage dealt over damage taken. */
 function makeEvaluator(state: MatchState, seat: Seat, w: EvalWeights, aggression: number): Evaluator {
   const o = seat === 0 ? 1 : 0;
   const me = side(state.players[seat]);
   const them = side(state.players[o]);
+  const where = w.position || w.escape ? positionModelFor(state) : null;
   const cols = state.arena.cols;
   const selfW = 1 - aggression / 2;
   const oppW = 1 + aggression / 2;
@@ -249,6 +410,29 @@ function makeEvaluator(state: MatchState, seat: Seat, w: EvalWeights, aggression
     }
     // A hex is worth the extra damage the next hit on its holder will deal.
     if (w.hex) v += w.hex * (r.hex[o] - r.hex[seat]);
+    // A stun carried into next round costs its holder their first card there.
+    if (w.daze) v += w.daze * (Number(r.dazed[o]) - Number(r.dazed[seat]));
+    if (where) {
+      // (No arrays or closures here: this runs for every simulated round.)
+      const P = r.pos;
+      const s0 = P[0] * where.cols + P[1];
+      const s1 = P[2] * where.cols + P[3];
+      const side0 = seat === 0 ? me : them;
+      const side1 = seat === 0 ? them : me;
+      const e0 = energyAfter(side0, r.energy[0]);
+      const e1 = energyAfter(side1, r.energy[1]);
+      // Ammo fighters can only threaten with the shots they still have loaded.
+      const l0 = side0.ammo && side0.attacks ? Math.max(0, side0.attacks - r.spent[0]) / side0.attacks : 1;
+      const l1 = side1.ammo && side1.attacks ? Math.max(0, side1.attacks - r.spent[1]) / side1.attacks : 1;
+      const by0 = where.threat(0, s0, r.facing[0], s1, e0) * l0;
+      const by1 = where.threat(1, s1, r.facing[1], s0, e1) * l1;
+      v += w.position * (seat === 0 ? by0 - by1 : by1 - by0);
+      if (w.escape) {
+        const x0 = where.escapes(0, s0, r.facing[0], e0, s1, r.facing[1], e1);
+        const x1 = where.escapes(1, s1, r.facing[1], e1, s0, r.facing[0], e0);
+        v += w.escape * (seat === 0 ? x0 - x1 : x1 - x0);
+      }
+    }
     return v;
   };
 }

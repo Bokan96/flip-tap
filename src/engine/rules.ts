@@ -21,6 +21,16 @@ import type {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/**
+ * The version of the rules below. Bump it whenever how a match plays out changes in code (not in the
+ * content files): it goes into replay codes' content stamp, so older replays show as made with an
+ * older version instead of quietly playing out differently. A golden test (tests/rules.test.ts)
+ * fails when the rules change, as a reminder.
+ *   2: strike order by real damage, lower life first on a tie; a swapped fighter turns;
+ *      a stun on a round's last card carries into the next round in Classic too.
+ */
+export const RULES = { revision: 2 };
+
 export function cloneState(s: MatchState): MatchState {
   return {
     round: s.round,
@@ -133,12 +143,29 @@ export function heldPlays(player: PlayerState): boolean {
 }
 
 /**
+ * Classic: a stun on the last card of the round before carries into this one, so the first card
+ * this player plans won't play (it costs nothing, and does nothing). In Two-tap a carried stun
+ * cancels the locked-in card instead (see heldPlays).
+ */
+export function firstCardCancelled(player: PlayerState): boolean {
+  return player.dazed && !player.carry;
+}
+
+/**
  * Energy left after each filled slot of a player's (possibly partial) plan, or null if it runs out.
- * Same as planEnergyTrace, except in Two-tap: a locked-in card that will fizzle costs nothing, and
- * the round's energy refill lands before the card held over for next round.
+ * Same as planEnergyTrace, except: a first card a carried stun cancels costs nothing (Classic), and
+ * in Two-tap a locked-in card that will fizzle costs nothing and the round's energy refill lands
+ * before the card held over for next round.
  */
 export function playerTrace(player: PlayerState, plan: Plan): number[] | null {
-  if (!player.carry) return planEnergyTrace(player.energy, player.energyMax, plan);
+  if (!player.carry) {
+    // Stunned into this round: the first card won't play, so it costs nothing.
+    if (firstCardCancelled(player) && plan[0]) {
+      const rest = planEnergyTrace(player.energy, player.energyMax, plan.slice(1));
+      return rest && [player.energy, ...rest];
+    }
+    return planEnergyTrace(player.energy, player.energyMax, plan);
+  }
   const held = heldCard(player);
   const trace: number[] = [];
   let e = player.energy;
@@ -158,13 +185,16 @@ export function playerTrace(player: PlayerState, plan: Plan): number[] | null {
 
 /**
  * Ammo fighters can't plan a spent attack unless a Reload comes earlier in the same plan.
- * Always true for everyone else. (A Two-tap locked-in card is never checked: it fizzles instead.)
+ * Always true for everyone else. (A Two-tap locked-in card is never checked: it fizzles instead.
+ * Nor is a first card a carried stun cancels.)
  */
 export function ammoOk(player: PlayerState, plan: Plan): boolean {
   if (!player.mods.ammo) return true;
   const held = heldCard(player);
+  // A first card a stun cancels never fires (nor reloads), so it isn't checked either.
+  const from = firstCardCancelled(player) ? 1 : 0;
   let reloaded = false;
-  for (let i = 0; i < plan.length; i++) {
+  for (let i = from; i < plan.length; i++) {
     const id = plan[i];
     if (!id) continue;
     const c = getCard(id);
@@ -377,14 +407,14 @@ export function fatigueDamage(state: MatchState): number {
 }
 
 /**
- * Who strikes first when both fighters attack in the same step: the attack with the higher
- * damage value, or on a tie the fighter with more life. Returns null (simultaneous) if both tie.
+ * Who strikes first when both fighters attack in the same step, from the damage each hit would
+ * really deal (bonuses such as a low-life passive or a hex included, see hitDamage): the harder hit
+ * first, or on a tie the fighter with LESS life, so the one behind gets a chance to turn it around.
+ * Returns null (simultaneous) if both tie.
  */
-export function strikeOrder(c0: CardDef, c1: CardDef, life0: number, life1: number): [Seat, Seat] | null {
-  const d0 = c0.damage ?? 0;
-  const d1 = c1.damage ?? 0;
+export function strikeOrder(d0: number, d1: number, life0: number, life1: number): [Seat, Seat] | null {
   if (d0 !== d1) return d0 > d1 ? [0, 1] : [1, 0];
-  if (life0 !== life1) return life0 > life1 ? [0, 1] : [1, 0];
+  if (life0 !== life1) return life0 < life1 ? [0, 1] : [1, 0];
   return null;
 }
 
@@ -400,9 +430,10 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const active = [0, 1].map((i) => !stunned[i] && ps[i].energy + cards[i].cost >= 0 && !isSpent(ps[i], cardIds[i]));
   const from = [{ ...ps[0].pos }, { ...ps[1].pos }];
 
-  // 1. Movement (simultaneous), then a swap if anyone played one. Only a fighter who played a move
-  //    card turns to face the other; one who was leapt past or swapped keeps facing the old way, so
-  //    their attack can whiff (both turn to face each other again before the next round).
+  // 1. Movement (simultaneous), then a swap if anyone played one. A fighter who played a move card
+  //    turns to face the other, and so does one who was swapped; one who was only leapt past keeps
+  //    facing the old way, so their attack can whiff (both turn to face each other again before the
+  //    next round).
   for (const i of [0, 1] as const) {
     if (active[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i], ps[i].facing);
   }
@@ -413,7 +444,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const moved = [0, 1].map((i) => !samePos(from[i], ps[i].pos));
   const to = [{ ...ps[0].pos }, { ...ps[1].pos }];
   for (const i of [0, 1] as const) {
-    if (active[i] && cards[i].kind === 'move') ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
+    if ((active[i] && cards[i].kind === 'move') || swapped) ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
   }
 
   const hit: StepPlayerResult['hit'][] = ['none', 'none'];
@@ -459,7 +490,10 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   // 2. Attacks. If both fighters attack, they strike one after the other (see strikeOrder);
   //    otherwise everything happens at once.
   const bothAttack = active[0] && active[1] && cards[0].kind === 'attack' && cards[1].kind === 'attack';
-  const sequence = bothAttack ? strikeOrder(cards[0], cards[1], ps[0].life, ps[1].life) : null;
+  // Ranked by what each hit would deal now, after this step's moves (hitParts has no side effects).
+  const sequence = bothAttack
+    ? strikeOrder(hitDamage(cards[0], ps[0], ps[1], 0, moved[1]), hitDamage(cards[1], ps[1], ps[0], 0, moved[0]), ps[0].life, ps[1].life)
+    : null;
 
   if (sequence) {
     sequence.forEach((o, k) => {
@@ -654,8 +688,9 @@ export function resolveRound(state: MatchState, plans: [Plan, Plan]): RoundResul
     for (const p of next.players) p.life = Math.max(0, p.life - fatigue);
     next.outcome = outcomeFor(next.players);
   }
-  // A stun on the last card of a round is wasted, except in Two-tap, where it cancels the held card.
-  if (state.variant !== 'twoTap' || !TWO_TAP.carryDaze) for (const p of next.players) p.dazed = false;
+  // A stun on the last card of a round carries into the next: it cancels the first card planned
+  // (Classic) or the card held over (Two-tap).
+  if (!(state.variant === 'twoTap' ? TWO_TAP.carryDaze : BALANCE.carryDaze)) for (const p of next.players) p.dazed = false;
   // Traps last until the end of the round after the one they were set in.
   next.arena.traps = next.arena.traps.filter((t) => t.until > state.round);
   if (!next.outcome) {

@@ -36,7 +36,7 @@ Every card has:
 | `pattern` | 3×3 attack area centred on the user (only for attack and trap cards); rows may be 5 wide for a reach of 2 |
 | `damage` | Life removed from the opponent if they stand in the pattern |
 | `push` | Attack effect: on a connecting hit, move the target *n* squares away (positive) or toward you (negative, a **pull**) |
-| `stun` | Attack effect: if the hit deals damage, the target's **next card this round** is cancelled |
+| `stun` | Attack effect: if the hit deals damage, the target's **next card** is cancelled (after a round's last card: their first card next round) |
 | `counter` | Guard effect: if an attack hits you this step, the attacker takes this much damage |
 | `blockSap` | Guard effect: if an attack hits you this step (even one the guard doesn't fully stop), the attacker loses this much energy (basic Guard: 10) |
 | `drain` | Attack effect: heal this percentage of the damage the attack dealt |
@@ -47,7 +47,7 @@ Every card has:
 | `planted` | Attack rule: can't be planned after a move card in the same round |
 | `healAtOrBelow` | Heal rule: only heals if the user's life is at or below this after the step's hits |
 | `trap` | Trap card: sets a trap with this damage on each square of its pattern |
-| `swap` | Move card: after movement, the two fighters trade places |
+| `swap` | Move card: after movement, the two fighters trade places and both turn to face each other |
 | `forward` | Move card: the step's columns count toward the side the user faces |
 
 Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, **trap**, **reload**.
@@ -59,7 +59,9 @@ Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, 
   - Both players' pushes happen at the same time.
 - **Stun** only works if the hit deals at least 1 damage after guard.
   - The stunned player's next card does nothing and costs nothing.
-  - A stun on the last step of a round has no effect, because stuns wear off at the end of every round.
+  - A stun on the last step of a round **carries over**: the stunned player's first card next round does
+    nothing (and costs nothing, so it may even be a card they couldn't afford). They see the stun while
+    planning, and the planner marks that slot. (`BALANCE.carryDaze`; in Two-tap it cancels the locked-in card.)
 - **Counter** damage is fixed (not reduced by guard or passives). It triggers on any hit, even one fully guarded.
   Guard cards and move cards (Zephyr's dashes) can carry a counter.
 - **Drain** rounds down.
@@ -121,10 +123,11 @@ Patterns are written facing **right**: the left column is behind the user and th
 front, mirrored when the fighter faces left.
 
 **Facing (design choice):** both fighters turn to face each other's column at the start of every round.
-During a round a fighter turns only when they play a move card (swaps included): after moving they face
-the opponent's column. A fighter who doesn't move keeps facing the same way, even if the opponent
-leaps past them or swaps places with them, so their attacks can go the wrong way and miss. Pushes and
-pulls never turn anyone. When both fighters share a column, a turning fighter keeps their previous facing.
+During a round a fighter turns when they play a move card (swaps included), and also when a swap
+moves them: afterwards they face the opponent's column. A fighter who doesn't move keeps facing the
+same way, even if the opponent leaps past them, so their attacks can go the wrong way and miss. Pushes
+and pulls never turn anyone. When both fighters share a column, a turning fighter keeps their previous
+facing.
 
 ## Round flow
 1. **Plan:** each player fills **3 slots** with cards from their deck.
@@ -137,7 +140,8 @@ pulls never turn anyone. When both fighters share a column, a turning fighter ke
    attacks in strike order, then heals and traps), each for about the same time; the outcome is the same.
 3. **Fatigue (design choice):** from round 8 on, both fighters lose **5 Life** at the end of every
    round. This can knock out one or both fighters (both at once is a draw).
-4. **Recover:** at the end of the round both fighters gain **+15 Energy** plus any passive bonus (capped at max). Stuns wear off, and both fighters turn to face each other.
+4. **Recover:** at the end of the round both fighters gain **+15 Energy** plus any passive bonus (capped at max), and both fighters turn to face each other. A stun from the
+   round's last card carries into the next round.
 5. If the match isn't over, start a new round.
 
 ### Resolving one slot (both players at once)
@@ -146,12 +150,15 @@ previous step and can afford it at the start of this slot (`energy + cost >= 0`)
 does nothing.
 
 1. **Movement:** every active card's `step` is applied. Positions are clamped to the board. A fighter
-   whose active card is a move (a swap included) then turns to face the opponent; the other keeps their facing.
+   whose active card is a move (a swap included), or who was swapped, then turns to face the opponent; the
+   other keeps their facing.
 2. **Hits:** for each player *X*, if the opponent's active card is an attack whose pattern (from the
    opponent's **new** position and facing) covers *X*'s **new** square, *X* is hit.
    - **Attack priority (design choice):** if *both* players attack in the same step, they don't
-     strike at the same time. The attack with the higher `damage` value strikes first; on equal
-     damage, the fighter with more life strikes first. The first strike is resolved completely
+     strike at the same time. The hit that would deal more damage right now strikes first, counting
+     every bonus (a low-life passive, a hex on the target, the daily rule twist) and the target's
+     reductions; on equal damage, the fighter with **less** life strikes first, so the one behind gets
+     the chance to turn it around. The first strike is resolved completely
      (damage, drain, stun, push) before the second attacker acts, from wherever they stand after a
      push. A fighter knocked out by the first strike never makes their attack. Only if damage
      *and* life are equal do both attacks land at the same time.
@@ -196,13 +203,13 @@ pattern in the same slot avoids the hit.
   - A stun on a round's last card is not wasted: it **carries over and cancels the locked-in card**.
   - Rounds are shorter, so fighters regain **+10 Energy** a round and **fatigue** starts after
     round 10 (`TWO_TAP` in `content/variants.ts`). The CPU can't see your face-down card either.
-- **Tournament (single player):** pick a fighter and beat the other 5 fighters in a fixed order.
+- **Tournament (single player):** pick a fighter and beat the other 8 fighters in a fixed order.
   - Each win earns **1 random bonus card** you don't own yet. Bonus cards form one collection
     shared by all fighters.
   - You can equip up to **3 bonus cards** (`BALANCE.bonusSlots`), which join your deck in
     Tournament and Versus CPU. Hot-seat always uses basic and signature cards only.
   - Each rival brings as many random bonus cards as you have ladder wins (up to 3).
-  - Losing lets you retry. Beating all five makes that fighter a **champion** (★), which stays
+  - Losing lets you retry. Beating all eight makes that fighter a **champion** (★), which stays
     even if you restart the ladder.
 - **Daily challenge:** one match per day against the Hard CPU, with the fighter, rival and a rule
   twist (for example +10 damage for everyone, or both fighters starting at 50 life) chosen from the
@@ -212,7 +219,7 @@ pattern in the same slot avoids the hit.
   (never the plans themselves). After a reload, or after closing the installed app, the title screen
   offers *Resume match*; the round restarts from its planning. Quitting from the menu discards it.
 - **Profile:** stats (matches, wins, damage dealt, best win streak, favourite card), per-fighter
-  records and ladder progress, 13 achievements and the bonus card collection. Everything is saved in
+  records and ladder progress, 14 achievements and the bonus card collection. Everything is saved in
   the browser (localStorage) and can be reset from the Profile screen.
 - **Online (planned):** the engine is deterministic and action-based, so two browsers can run in
   lockstep over WebRTC (PeerJS) and exchange only each round's plans.
@@ -223,6 +230,13 @@ scores, matchup table and per-card usage. Re-run it after changing numbers in `c
 `VARIANT=twoTap npm run balance` does the same with the Two-tap rules (report in `sim/`), and
 `TWOTAP="energyPerRound=12"` tries other Two-tap numbers.
 
+## Rules versions
+`RULES.revision` in `rules.ts` goes into every replay code's content stamp (with the numbers in the
+content files), so a replay recorded under older rules says so instead of playing out differently.
+Bump it whenever a code change alters how a match plays out; the golden match in `tests/rules.test.ts`
+fails as a reminder. Revision 2: strike order by real damage (less life first on a tie), a swapped
+fighter turns, and a last-card stun carries into the next round in Classic.
+
 ## CPU opponent (original design)
 The AI enumerates every affordable 3-card plan it could make. It scores each plan against a sample of
 plausible opponent plans by simulating the round with a fast copy of the rules engine (`fastsim.ts`).
@@ -231,7 +245,12 @@ plausible opponent plans by simulating the round with a fast copy of the rules e
 - a KO is worth ±1000 and a draw −150;
 - otherwise, life swing, with extra weight on life below 40 (one bad round from a KO);
 - energy after next round's refill, where the first 50 points matter most;
-- Ferro's loaded shots, the most dangerous lasting trap next to the enemy, and a hex on either side (by its value).
+- Ferro's loaded shots, the most dangerous lasting trap next to the enemy, and a hex on either side (by its value);
+- a stun carried into next round (it costs its holder their first card there);
+- **position:** the strongest hit each fighter could afford on the other at next round's start, from where
+  the round leaves them (standing still, or half of it after one move), and how many squares each could
+  step to that the other can't hit. Ending a round cornered, or right in front of the opponent's best
+  attack, costs the CPU.
 
 **Difficulties:**
 - **Easy, Normal and Hard** guess the opponent's likely replies, then pick a strong plan against

@@ -13,6 +13,8 @@ export const BALANCE = {
   tiles: { spikes: 10, well: 10 },
   /** Each card may appear at most once in a plan. */
   uniqueCardsPerPlan: true,
+  /** A stun on the last card of a round carries over: the stunned fighter's first card next round won't play. */
+  carryDaze: true as boolean,
   /** How many bonus cards a player can bring into a match. */
   bonusSlots: 3,
 } as const;

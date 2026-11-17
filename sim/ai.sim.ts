@@ -1,7 +1,7 @@
 import { it } from 'vitest';
 import { BONUS_CARD_IDS, FIGHTERS } from '../src/content/cards';
 import type { Variant } from '../src/content/variants';
-import { PROFILES, SIM_PROFILE, type AiProfile } from '../src/engine/ai';
+import { FLAT, PROFILES, SIM_PROFILE, type AiProfile } from '../src/engine/ai';
 import { runMatch } from '../src/engine/match';
 import { Rng } from '../src/engine/rng';
 
@@ -29,7 +29,7 @@ const named = (spec: string): AiProfile => {
 };
 const baseNamed = (n: string): AiProfile => {
   if (n === 'sim') return SIM_PROFILE;
-  if (n === 'hard-flat') return { ...PROFILES.hard, weights: { energy: 0.2, energyHigh: 0.2, energySoft: 100, ammo: 0, trap: 0, danger: 0, hex: 0 } };
+  if (n === 'hard-flat') return { ...PROFILES.hard, weights: FLAT };
   if (n === 'expert-blind') return { ...PROFILES.expert, readPlayer: 0 };
   return PROFILES[n as keyof typeof PROFILES];
 };
