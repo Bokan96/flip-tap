@@ -69,13 +69,22 @@ import { applySkin, themeColor } from './ui/skin';
 import { toast } from './ui/toast';
 
 const app = document.getElementById('app')!;
+/** The class of the screen on show (see screen()). */
+let shownScreen: string | null = null;
 let difficulty: Difficulty = 'normal';
 let arenaId = DEFAULT_ARENA;
 
+/**
+ * Show a screen. A new screen starts at the top of the page; drawing the same screen again (a
+ * glossary tab, the hero editor after picking a card) keeps the scroll position.
+ */
 function screen(html: string, cls = ''): HTMLElement {
   roundReplay?.destroy();
   roundReplay = null;
+  const redraw = cls === shownScreen;
+  shownScreen = cls;
   app.innerHTML = `<div class="screen ${cls}">${html}</div>`;
+  if (!redraw) window.scrollTo(0, 0);
   setMusic(cls === 'battle-screen' || cls === 'versus' ? 'battle' : 'menu');
   pinBack();
   requestAnimationFrame(pinBack);
@@ -252,7 +261,7 @@ function twoTapMenu(): void {
     </div>`,
     'play-menu',
   );
-  on(root, '[data-mode]', (el) => matchSetup(el.dataset.mode as 'cpu' | 'hotseat', 'twoTap'));
+  on(root, '[data-mode]', (el) => matchSetup(el.dataset.mode as VersusMode, 'twoTap', twoTapMenu));
   on(root, '[data-act="back"]', playMenu);
 }
 
@@ -370,59 +379,113 @@ function bindDifficulty(root: HTMLElement): void {
   });
 }
 
-/** Equip up to BALANCE.bonusSlots bonus cards from the collection. */
+/**
+ * The equipped bonus cards (up to BALANCE.bonusSlots) as a row of slots. Tapping them opens the
+ * whole collection to equip or remove cards, so a big collection never makes the screen taller.
+ */
 function loadoutHtml(showEmpty: boolean): string {
-  const owned = collection();
-  if (!owned.length) return showEmpty ? `<p class="note loadout">${STRINGS.loadout.empty}</p>` : '';
+  if (!collection().length) return showEmpty ? `<p class="note loadout">${STRINGS.loadout.empty}</p>` : '';
   const equipped = loadout();
+  const slots = Array.from({ length: BALANCE.bonusSlots }, (_, i) =>
+    equipped[i] ? cardHtml(equipped[i], { small: true, readonly: true }) : '<span class="loadout-empty">+</span>',
+  ).join('');
   return `<div class="loadout">
     <h3>${STRINGS.loadout.title(equipped.length, BALANCE.bonusSlots)}</h3>
-    <div class="loadout-cards">${owned
-      .map((id) => `<div class="loadout-card${equipped.includes(id) ? ' on' : ''}" data-equip="${id}">${cardHtml(id, { small: true, readonly: true })}</div>`)
-      .join('')}</div>
-    <p class="note">${STRINGS.loadout.hint}</p>
+    <button class="loadout-slots" data-act="loadout" aria-label="${STRINGS.loadout.choose}">${slots}</button>
   </div>`;
 }
 
+/** The collection, each card on (equipped) or off. */
+function loadoutPickerHtml(): string {
+  const equipped = loadout();
+  return `<h2>${STRINGS.loadout.title(equipped.length, BALANCE.bonusSlots)}</h2>
+    <p class="note">${STRINGS.loadout.hint}</p>
+    <div class="loadout-cards">${collection()
+      .map((id) => `<div class="loadout-card${equipped.includes(id) ? ' on' : ''}" data-equip="${id}">${cardHtml(id, { small: true, readonly: true })}</div>`)
+      .join('')}</div>`;
+}
+
 function bindLoadout(root: HTMLElement): void {
-  root.querySelector('.loadout')?.addEventListener('click', (e) => {
-    const card = (e.target as HTMLElement).closest<HTMLElement>('[data-equip]');
-    if (!card) return;
-    if (!toggleLoadout(card.dataset.equip!)) {
-      play('deny');
-      toast('!', STRINGS.loadout.fullTitle, STRINGS.loadout.full);
-      return;
-    }
-    play('place');
-    root.querySelector('.loadout')!.outerHTML = loadoutHtml(false);
+  const refresh = () => {
+    const el = root.querySelector('.loadout');
+    if (el) el.outerHTML = loadoutHtml(false);
     bindLoadout(root);
+  };
+  root.querySelector('[data-act="loadout"]')?.addEventListener('click', () => {
+    play('click');
+    modal(`<div class="loadout-picker">${loadoutPickerHtml()}</div>`, (box) => {
+      const picker = box.querySelector<HTMLElement>('.loadout-picker')!;
+      picker.addEventListener('click', (e) => {
+        const card = (e.target as HTMLElement).closest<HTMLElement>('[data-equip]');
+        if (!card) return;
+        if (!toggleLoadout(card.dataset.equip!)) {
+          play('deny');
+          toast('!', STRINGS.loadout.fullTitle, STRINGS.loadout.full);
+          return;
+        }
+        play('place');
+        picker.innerHTML = loadoutPickerHtml();
+        refresh();
+      });
+    });
   });
 }
 
+/** The rules a versus match can be played with: Classic, or one of the variants. */
+function rulesPicker(rules: Variant | undefined): string {
+  const choices: { id: string; name: string }[] = [{ id: 'classic', name: STRINGS.setup.classic }, { id: 'twoTap', name: STRINGS.twoTap.name }];
+  return `<div class="difficulty"><span>${STRINGS.setup.gameMode}:</span>${choices
+    .map((c) => `<button class="chip${c.id === (rules ?? 'classic') ? ' on' : ''}" data-rules="${c.id}">${c.name}</button>`)
+    .join('')}</div><p class="note rules-note">${rulesHint(rules)}</p>`;
+}
+
+const rulesHint = (rules: Variant | undefined) => (rules ? STRINGS.twoTap.hint : STRINGS.setup.classicHint);
+
 type SetupMode = 'cpu' | 'hotseat' | 'tournament';
+type VersusMode = Exclude<SetupMode, 'tournament'>;
 
 /** The last picks per mode in this session, so coming back to setup keeps them. */
 const lastPicks: Partial<Record<SetupMode, (string | null)[]>> = {};
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/** Seat labels on the setup screens. */
+function seatNames(mode: SetupMode): string[] {
+  if (mode === 'hotseat') return [STRINGS.player(1), STRINGS.player(2)];
+  return mode === 'cpu' ? [STRINGS.setup.you, STRINGS.cpu] : [STRINGS.setup.you];
+}
+
+/** "Versus CPU", or "Two-tap · Versus CPU" with the Two-tap rules. */
+function setupHeading(mode: SetupMode, rules: Variant | undefined): string {
+  const name = mode === 'cpu' ? STRINGS.modeCpu : mode === 'hotseat' ? STRINGS.modeHotseat : STRINGS.modeTournament;
+  return rules ? `${STRINGS.twoTap.name} · ${name}` : name;
+}
+
+/** A seat's slot: its label and fighter (or "Choose"), with "VS" before the second seat. */
+function seatSlotHtml(id: string | null, seat: number, label: string, active = false): string {
+  const f = id ? getFighter(id) : null;
+  const slot = `<button class="slot-card p${seat}${active ? ' active' : ''}" data-seat="${seat}"${f ? ` style="--clr:${f.color}"` : ''}>
+    ${f ? emblemHtml(f, 'slot-emblem') : '<span class="slot-empty">?</span>'}
+    <span class="slot-text"><small>${label}</small><b>${f ? f.name : STRINGS.setup.choose}</b></span>
+  </button>`;
+  return seat === 1 ? `<span class="setup-vs">${STRINGS.vs}</span>${slot}` : slot;
+}
 
 /**
- * Match setup: the fighter slots (tap one to change it), the roster with a Random tile, details of
- * the highlighted fighter, the mode's options and a Fight button. Nothing starts until Fight.
+ * Match setup, step 1: the fighter slots (tap one to change it), the roster with a Random tile and
+ * details of the highlighted fighter. Continue goes on to the match options (versus modes) or the
+ * tournament ladder. `back` is where Back goes; `seat` is the slot to start on.
  */
-function matchSetup(mode: SetupMode, variant?: Variant): void {
+function matchSetup(mode: SetupMode, variant?: Variant, back: () => void = playMenu, seat?: number): void {
   const seats = mode === 'tournament' ? 1 : 2;
-  const names = mode === 'hotseat' ? [STRINGS.player(1), STRINGS.player(2)] : mode === 'cpu' ? [STRINGS.setup.you, STRINGS.cpu] : [STRINGS.setup.you];
+  const names = seatNames(mode);
   const known = (id: string | null) => !!id && (FIGHTERS.some((f) => f.id === id) || isCustomFighter(id));
   const picks: (string | null)[] = (lastPicks[mode] ?? Array(seats).fill(null)).map((id) => (known(id) ? id : null));
-  let active = picks.findIndex((p) => !p);
+  let active = seat ?? picks.findIndex((p) => !p);
   if (active < 0) active = 0;
   let focus: string | null = picks[active] ?? picks[0];
   let busy = false;
 
-  const modeName = mode === 'cpu' ? STRINGS.modeCpu : mode === 'hotseat' ? STRINGS.modeHotseat : STRINGS.modeTournament;
-  const heading = variant ? `${STRINGS.twoTap.name} · ${modeName}` : modeName;
   // Custom heroes play in Versus CPU and Hot-seat, not the Tournament.
   const roster = mode === 'tournament' ? FIGHTERS : [...FIGHTERS, ...customHeroes().map((h) => getFighter(h.id))];
   const tiles = roster.map((f) => {
@@ -431,36 +494,24 @@ function matchSetup(mode: SetupMode, variant?: Variant): void {
       ${champ}<span class="pick-marks"></span>${portraitHtml(f, 'pick-emblem')}<b>${f.name}</b><small>${f.role}</small>
     </button>`;
   }).join('');
-  const options =
-    (mode === 'cpu' ? difficultyPicker() : '') + (mode !== 'tournament' ? arenaPicker() : '') + (mode === 'cpu' ? loadoutHtml(false) : '');
   const root = screen(
-    `<h2>${heading}</h2>
+    `<h2>${setupHeading(mode, variant)}</h2>
      <div class="setup">
        <div class="setup-slots seats-${seats}"></div>
        <div class="roster">${tiles}
          <button class="pick random" data-random><span class="random-glyph">?</span><b>${STRINGS.setup.random}</b><small>&nbsp;</small></button>
        </div>
        <div class="fighter-detail"></div>
-       ${options ? `<div class="setup-options">${options}</div>` : ''}
        <div class="row setup-actions">
          <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>
-         <button class="btn primary fight-btn" data-act="fight">${mode === 'tournament' ? STRINGS.setup.next : STRINGS.setup.fight}</button>
+         <button class="btn primary fight-btn" data-act="next">${STRINGS.setup.next}</button>
        </div>
      </div>`,
     'setup-screen',
   );
 
   const render = () => {
-    root.querySelector('.setup-slots')!.innerHTML = picks
-      .map((id, i) => {
-        const f = id ? getFighter(id) : null;
-        const slot = `<button class="slot-card p${i}${i === active ? ' active' : ''}" data-seat="${i}"${f ? ` style="--clr:${f.color}"` : ''}>
-          ${f ? emblemHtml(f, 'slot-emblem') : '<span class="slot-empty">?</span>'}
-          <span class="slot-text"><small>${names[i]}</small><b>${f ? f.name : STRINGS.setup.choose}</b></span>
-        </button>`;
-        return i === 1 ? `<span class="setup-vs">${STRINGS.vs}</span>${slot}` : slot;
-      })
-      .join('');
+    root.querySelector('.setup-slots')!.innerHTML = picks.map((id, i) => seatSlotHtml(id, i, names[i], i === active)).join('');
     root.querySelectorAll<HTMLElement>('[data-pick]').forEach((tile) => {
       const id = tile.dataset.pick!;
       tile.classList.toggle('focus', id === focus);
@@ -485,7 +536,7 @@ function matchSetup(mode: SetupMode, variant?: Variant): void {
             : `<p class="detail-blurb">${f.blurb}</p>${passiveHtml(f)}`
         }`;
     }
-    root.querySelector<HTMLButtonElement>('[data-act="fight"]')!.disabled = picks.some((p) => !p);
+    root.querySelector<HTMLButtonElement>('[data-act="next"]')!.disabled = picks.some((p) => !p);
   };
 
   const choose = (id: string) => {
@@ -530,17 +581,55 @@ function matchSetup(mode: SetupMode, variant?: Variant): void {
     focus = picks[active] ?? focus;
     render();
   });
-  bindDifficulty(root);
-  bindArena(root);
-  bindLoadout(root);
-  on(root, '[data-act="back"]', variant ? twoTapMenu : playMenu);
-  on(root, '[data-act="fight"]', () => {
+  on(root, '[data-act="back"]', back);
+  on(root, '[data-act="next"]', () => {
     if (picks.some((p) => !p)) return;
     lastPicks[mode] = [...picks];
     if (mode === 'tournament') return tournamentHub(picks[0]!);
-    startMatch(mode, picks[0]!, picks[1]!, undefined, variant);
+    matchOptions(mode, [picks[0]!, picks[1]!], variant, back);
   });
   render();
+}
+
+/**
+ * Match setup, step 2 (versus modes): the chosen fighters (tap one to change it), then the game
+ * mode, difficulty (CPU), arena and bonus cards (CPU), and Fight.
+ */
+function matchOptions(mode: VersusMode, picks: [string, string], variant: Variant | undefined, back: () => void): void {
+  let rules = variant;
+  const names = seatNames(mode);
+  const root = screen(
+    `<h2>${setupHeading(mode, rules)}</h2>
+     <div class="setup">
+       <div class="opt-col">
+         <div class="setup-slots seats-2">${picks.map((id, i) => seatSlotHtml(id, i, names[i])).join('')}</div>
+         <div class="opt opt-rules">${rulesPicker(rules)}</div>
+         ${mode === 'cpu' ? `<div class="opt opt-diff">${difficultyPicker()}</div>` : ''}
+         ${mode === 'cpu' ? `<div class="opt opt-loadout">${loadoutHtml(false)}</div>` : ''}
+       </div>
+       <div class="opt-col">
+         <div class="opt opt-arena">${arenaPicker()}</div>
+         <div class="row setup-actions">
+           <button class="btn ghost-btn" data-act="back">${STRINGS.back}</button>
+           <button class="btn primary fight-btn" data-act="fight">${STRINGS.setup.fight}</button>
+         </div>
+       </div>
+     </div>`,
+    'setup-screen setup-options-step',
+  );
+  on(root, '[data-rules]', (el) => {
+    rules = el.dataset.rules === 'classic' ? undefined : (el.dataset.rules as Variant);
+    root.querySelectorAll('[data-rules]').forEach((c) => c.classList.toggle('on', c === el));
+    root.querySelector('h2')!.textContent = setupHeading(mode, rules);
+    root.querySelector('.rules-note')!.textContent = rulesHint(rules);
+  });
+  bindDifficulty(root);
+  bindArena(root);
+  bindLoadout(root);
+  // Tapping a fighter goes back to the roster with that seat chosen.
+  on(root, '[data-seat]', (el) => matchSetup(mode, rules, back, Number(el.dataset.seat)));
+  on(root, '[data-act="back"]', () => matchSetup(mode, rules, back));
+  on(root, '[data-act="fight"]', () => startMatch(mode, picks[0], picks[1], undefined, rules));
 }
 
 /** Short "A vs B" splash before a match. Tap to skip. */

@@ -1016,6 +1016,19 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .match-tag { font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
 
 .loadout { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+/* The equipped cards as slots; tapping them opens the collection (.loadout-picker, in a modal). */
+.loadout-slots {
+  display: flex; gap: 6px; padding: 5px; cursor: pointer; background: var(--bg2);
+  border: 1px solid var(--line-hi); border-radius: var(--radius); transition: border-color .15s;
+}
+.loadout-slots:hover { border-color: var(--accent); }
+.loadout-slots .card { --cw: 52px; }
+.loadout-empty {
+  width: 52px; height: calc(52px * 1.28); display: grid; place-items: center;
+  border: 1px dashed var(--line-hi); color: var(--muted); font-size: 1.3rem; font-weight: 900;
+}
+.loadout-picker { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.loadout-picker .note { margin: 0; }
 .loadout-cards { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .loadout-card { opacity: .4; cursor: pointer; transition: opacity .15s, transform .15s; }
 .loadout-card.on { opacity: 1; transform: translateY(-3px); }
@@ -1213,10 +1226,23 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .stars .off { color: var(--line-hi); }
 .detail-blurb { margin: 0; color: var(--muted); font-size: .85rem; }
 .fighter-detail .passive { font-size: .8rem; }
-.setup-options { display: flex; flex-direction: column; gap: 8px; align-items: center; }
-/* Back / Fight stay on screen when options (bonus cards) make the setup taller than the phone. */
-.setup-actions {
-  gap: 12px; position: sticky; bottom: 0; z-index: 6; padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+/* Match options (setup step 2): one group per choice, each a row of choices over a one-line note.
+   The two .opt-col wrappers only become columns on a phone held sideways; elsewhere their groups
+   stack in this order: fighters, game mode, difficulty, arena, bonus cards, buttons. */
+.opt-col { display: contents; }
+.opt { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.opt .note { margin: 0; font-size: .8rem; }
+.setup-options-step .setup { gap: 8px; }
+.setup-options-step .opt-loadout { order: 1; }
+.setup-options-step .setup-actions { order: 2; }
+.setup-options-step .slot-card { padding: 6px 10px; }
+.setup-options-step .slot-card .slot-emblem { width: 34px; height: 34px; }
+/* Both setup steps fit on a phone screen, so Back / Fight simply follow the content. (A sticky bar
+   here stuttered on phones as the browser's address bar slid in and out.) */
+.setup-actions { gap: 12px; padding: 4px 0 env(safe-area-inset-bottom); }
+/* The hero creator's long forms keep Cancel / Save on screen. */
+.hero-screen .setup-actions, .card-editor-screen .setup-actions {
+  position: sticky; bottom: 0; z-index: 6; padding: 8px 0 max(8px, env(safe-area-inset-bottom));
   background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 94%, transparent) 35%);
 }
 /* arena picker: a tiny drawing of each board */
@@ -1248,7 +1274,10 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 .daily-rule.arena > div { display: flex; flex-direction: column; gap: 4px; }
 .daily-rule.arena .arena-mini { width: 84px; flex: none; }
 @media (max-width: 600px), (orientation: landscape) and (max-height: 520px) {
+  .arena-pick { gap: 4px; }
   .arena-opts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .arena-opt { padding: 5px 4px; gap: 3px; }
+  .arena-mini { max-width: 60px; }
 }
 
 .fight-btn { min-width: 200px; padding: 14px 28px; font-size: 1.1rem; }
@@ -1476,18 +1505,21 @@ img.emblem, img.token-art, img.hud-emblem, img.logo-emblem { object-fit: contain
 }
 
 
-/* Match setup on phones held sideways: roster on the left, details and options on the right. */
+/* Match setup on phones held sideways. Fighters: roster on the left, details and buttons on the
+   right. Options: fighters, game mode and difficulty on the left, arena and bonus cards on the right. */
 @media (orientation: landscape) and (max-height: 520px) {
   .setup-screen h2 { display: none; }
   .setup {
     width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; align-items: start;
-    grid-template-areas: 'slots detail' 'roster detail' 'roster options' 'roster actions';
+    grid-template-areas: 'slots detail' 'roster detail' 'roster actions';
   }
   .setup-slots { grid-area: slots; }
   .roster { grid-area: roster; }
   .fighter-detail { grid-area: detail; }
-  .setup-options { grid-area: options; }
-  .setup-actions { grid-area: actions; }
+  .setup-actions { grid-area: actions; align-self: end; }
+  .setup-options-step .setup { grid-template-areas: none; }
+  .setup-options-step .opt-col { display: flex; flex-direction: column; gap: 8px; }
+  .setup-options-step .setup-slots, .setup-options-step .setup-actions { grid-area: auto; }
   .pick .pick-emblem, .random-glyph { width: 34px; height: 34px; }
 }
 

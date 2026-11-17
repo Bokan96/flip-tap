@@ -87,6 +87,9 @@ export const STRINGS = {
     fight: 'Fight!',
     next: 'Continue',
     complexity: 'How tricky to play (1–3 stars)',
+    gameMode: 'Game mode',
+    classic: 'Classic',
+    classicHint: 'All three planned cards play each round',
     you: 'You',
     /** Short seat marks on the roster tiles. */
     markP1: 'P1',
@@ -209,6 +212,7 @@ export const STRINGS = {
     title: (n: number, max: number) => `Bonus cards · ${n}/${max} equipped`,
     hint: 'Tap a card to equip or remove it. Equipped cards join your deck in Tournament and Versus CPU.',
     empty: 'Win tournament matches to earn bonus cards.',
+    choose: 'Choose bonus cards',
     fullTitle: 'All slots are full',
     full: 'Remove an equipped card first.',
   },
