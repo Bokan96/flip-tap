@@ -2,7 +2,7 @@ import { BASIC_CARD_IDS, CARDS, registerCustom } from '../content/cards';
 import { STRINGS } from '../content/strings';
 import { clearFastCards } from '../engine/fastsim';
 import type { CardDef, FighterDef } from '../engine/types';
-import { EMBLEM_KEYS } from '../ui/emblems';
+import { HERO_EMBLEM_KEYS } from '../ui/emblems';
 import { readJson, writeJson } from './storage';
 
 /*
@@ -15,7 +15,7 @@ import { readJson, writeJson } from './storage';
 export interface CustomHero {
   id: string;
   name: string;
-  /** One of EMBLEM_KEYS. */
+  /** One of HERO_EMBLEM_KEYS. */
   emblem: string;
   /** #rrggbb */
   color: string;
@@ -137,6 +137,29 @@ export function heroCardOk(id: string, customIds: Set<string>): boolean {
   return customIds.has(id) || (!!CARDS[id] && !BASIC_CARD_IDS.includes(id));
 }
 
+/**
+ * Heroes made before custom heroes had their own icons used the fighters' emblems: each becomes the
+ * hero icon closest in spirit, so old heroes keep a familiar look without copying a fighter.
+ */
+const OLD_EMBLEMS: Record<string, string> = {
+  flame: 'sun',
+  wave: 'anchor',
+  swirl: 'feather',
+  hex: 'shield',
+  bolt: 'star',
+  moon: 'eye',
+  crosshair: 'gear',
+  thorn: 'leaf',
+  mask: 'crown',
+};
+
+/** A saved emblem as a hero icon: kept if it is one, an old fighter emblem mapped, else the first. */
+export function heroEmblem(raw: unknown): string {
+  const key = String(raw);
+  if (HERO_EMBLEM_KEYS.includes(key)) return key;
+  return OLD_EMBLEMS[key] ?? HERO_EMBLEM_KEYS[0];
+}
+
 /** A custom hero made safe, or null if it doesn't name exactly HERO_CARDS usable, different cards. */
 export function cleanHero(input: unknown, customIds: Set<string>): CustomHero | null {
   const raw = input as Raw | null;
@@ -147,7 +170,7 @@ export function cleanHero(input: unknown, customIds: Set<string>): CustomHero | 
   return {
     id: raw.id,
     name,
-    emblem: EMBLEM_KEYS.includes(String(raw.emblem)) ? String(raw.emblem) : EMBLEM_KEYS[0],
+    emblem: heroEmblem(raw.emblem),
     color: /^#[0-9a-f]{6}$/i.test(String(raw.color)) ? String(raw.color) : HERO_COLORS[0],
     cards,
   };

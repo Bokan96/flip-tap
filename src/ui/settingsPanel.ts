@@ -256,11 +256,28 @@ function bindSwitch(el: HTMLElement, row: SwitchRow): void {
     // Fullscreen can be refused: once the request settles, show what actually happened.
     if (pending) void pending.finally(() => show(row.get()));
   });
-  if (row.changes) {
-    const event = row.changes;
-    const sync = () => (document.contains(btn) ? show(row.get()) : document.removeEventListener(event, sync));
-    document.addEventListener(event, sync);
+  if (row.changes) follow(row.changes, btn, () => show(row.get()));
+}
+
+/** Switches that follow a document event (e.g. leaving fullscreen by the system's own gesture), by event. */
+const followers = new Map<string, { btn: HTMLElement; sync: () => void }[]>();
+
+/**
+ * Keep `btn` in step with `event`. One listener per event serves every switch; switches from closed
+ * panels drop out whenever another is added, so a panel opened many times leaves nothing behind.
+ */
+function follow(event: string, btn: HTMLElement, sync: () => void): void {
+  let list = followers.get(event);
+  if (!list) {
+    list = [];
+    followers.set(event, list);
+    document.addEventListener(event, () => {
+      const live = followers.get(event)!.filter((f) => f.btn.isConnected);
+      followers.set(event, live);
+      live.forEach((f) => f.sync());
+    });
   }
+  followers.set(event, [...list.filter((f) => f.btn.isConnected), { btn, sync }]);
 }
 
 function bindSlider(el: HTMLElement, row: SliderRow): void {

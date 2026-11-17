@@ -110,8 +110,29 @@ const FLOAT_RISE = 36;
 const FLOAT_GAP = 320;
 /** Space kept around each floating text (px). */
 const FLOAT_PAD = 6;
+/** The round recap (and a match summary's round highlight) plays this many times, then holds. */
+const RECAP_LOOPS = 3;
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/*
+ * Writes that skip themselves when nothing changed. Re-writing the same markup, text or style value
+ * still makes the browser re-style (and often re-lay out and repaint) that part of the screen, and
+ * the planner and HUD are redrawn many times per round.
+ */
+const shownHtml = new WeakMap<Element, string>();
+/** Set an element's HTML (only ever through here, so the last markup written is known). */
+function setHtml(el: Element, html: string): void {
+  if (shownHtml.get(el) === html) return;
+  el.innerHTML = html;
+  shownHtml.set(el, html);
+}
+function setText(el: Element, text: string): void {
+  if (el.textContent !== text) el.textContent = text;
+}
+function setVar(el: HTMLElement, name: string, value: string): void {
+  if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
+}
 /** Thrown by a recap's waits once it has been stopped or restarted. */
 const CANCELLED = Symbol('cancelled');
 /** Corner icon on a greyed-out card, by why it can't be planned (see placeIssue). */
@@ -292,6 +313,7 @@ export class BattleView {
   private async loop(): Promise<void> {
     // A one-round replay starts that round over each time it ends.
     const again = this.opts.replay?.single ? structuredClone(this.state) : null;
+    let plays = 0;
     while (!this.state.outcome) {
       this.opts.onRoundStart?.(this.state, this.lastPlans, this.log);
       this.setRoundLabel();
@@ -322,6 +344,12 @@ export class BattleView {
       await this.animateRound(plans as [Plan, Plan]);
       if (this.destroyed) return;
       if (again) {
+        // A highlight plays its round a few times, then holds on its end until ▶ (no endless loop).
+        if (++plays % RECAP_LOOPS === 0) {
+          this.setReplayPaused(true);
+          await this.hold(0);
+          if (this.destroyed) return;
+        }
         this.state = structuredClone(again);
         this.log = { rounds: [] };
         this.lastPlans = null;
@@ -492,20 +520,22 @@ export class BattleView {
         panel.title = STRINGS.tapHint;
         panel.dataset.ready = '1';
       }
-      const lb = panel.querySelector('.bar.life')!;
-      const lifePct = `${(life / p.lifeMax) * 100}%`;
-      (lb.querySelector('i') as HTMLElement).style.width = lifePct;
+      // Fills are scaled to the value (see .bar i). Only changed values are written: every write
+      // re-styles the bar, and renderHud runs several times per card.
+      const lb = panel.querySelector<HTMLElement>('.bar.life')!;
+      const lifeF = String(life / p.lifeMax);
+      setVar(lb.querySelector('i')!, '--f', lifeF);
       // The pale "chip" trails behind so the damage just taken stays visible for a moment.
-      (lb.querySelector('.chip') as HTMLElement).style.width = lifePct;
+      setVar(lb.querySelector('.chip')!, '--f', lifeF);
       // The number rides the end of the fill (see .bar span), so the bar tells it where that is.
-      (lb as HTMLElement).style.setProperty('--pct', String((life / p.lifeMax) * 100));
-      lb.querySelector('span')!.textContent = String(life);
+      setVar(lb, '--pct', String((life / p.lifeMax) * 100));
+      setText(lb.querySelector('span')!, String(life));
       // Low on life: the bar pulses red.
       panel.classList.toggle('low', life > 0 && life <= p.lifeMax * 0.3);
-      const eb = panel.querySelector('.bar.energy')!;
-      (eb.querySelector('i') as HTMLElement).style.width = `${(energy / p.energyMax) * 100}%`;
-      (eb as HTMLElement).style.setProperty('--pct', String((energy / p.energyMax) * 100));
-      eb.querySelector('span')!.textContent = String(energy);
+      const eb = panel.querySelector<HTMLElement>('.bar.energy')!;
+      setVar(eb.querySelector('i')!, '--f', String(energy / p.energyMax));
+      setVar(eb, '--pct', String((energy / p.energyMax) * 100));
+      setText(eb.querySelector('span')!, String(energy));
     });
     this.renderChips();
   }
@@ -519,12 +549,16 @@ export class BattleView {
       const p = this.state.players[i];
       const traps = this.shownTraps.filter((t) => t.owner === i).length;
       const spent = p.mods.ammo ? p.spent.length : 0;
-      box.innerHTML = [
-        this.shownHex[i] ? chip('hex', `${STRINGS.effectIcons.hex}+${this.shownHex[i]}`) : '',
-        this.q(`.token.p${i}`).classList.contains('dazed') ? chip('stun', STRINGS.effectIcons.stun) : '',
-        traps ? chip('trap', `${STRINGS.effectIcons.trap}${traps}`) : '',
-        spent ? chip('spent', `⟳${spent}`) : '',
-      ].join('');
+      // Only when they change: new chips can change the HUD's height, which re-lays out the battle.
+      setHtml(
+        box,
+        [
+          this.shownHex[i] ? chip('hex', `${STRINGS.effectIcons.hex}+${this.shownHex[i]}`) : '',
+          this.q(`.token.p${i}`).classList.contains('dazed') ? chip('stun', STRINGS.effectIcons.stun) : '',
+          traps ? chip('trap', `${STRINGS.effectIcons.trap}${traps}`) : '',
+          spent ? chip('spent', `⟳${spent}`) : '',
+        ].join(''),
+      );
     }
   }
 
@@ -634,9 +668,7 @@ export class BattleView {
 
   /** Play a one-shot animation on a fighter's piece, cutting off any other one still playing. */
   private tokenAnim(seat: number, cls: string): void {
-    const t = this.q(`.token.p${seat}`);
-    t.classList.remove(...TOKEN_ANIMS);
-    retrigger(t, cls);
+    retrigger(this.q(`.token.p${seat}`), cls, TOKEN_ANIMS);
   }
 
   /**
@@ -794,40 +826,51 @@ export class BattleView {
       f.style.setProperty('--r', String(pos.r));
       f.style.setProperty('--c', String(pos.c));
       this.q('.floats').appendChild(f);
-      // Its size (offset sizes ignore the pop-in scale) and where it spans across the board.
-      const h = label.offsetHeight;
-      const arena = this.q('.arena');
-      const cellW = (arena.clientWidth - 8) / this.state.arena.cols;
-      const cellH = (arena.clientHeight - 8) / this.state.arena.rows;
-      const cx = 4 + (pos.c + 0.5) * cellW;
-      const x0 = cx - label.offsetWidth / 2 - FLOAT_PAD;
-      const x1 = cx + label.offsetWidth / 2 + FLOAT_PAD;
-      const t = performance.now();
-      this.floatsLive = this.floatsLive.filter((x) => t - x.start < FLOAT_MS);
-      // Where the texts it would touch are now (bottom, top, in px above this text's start line); a
-      // text from a lower row has risen toward this one, one from a higher row starts a square up.
-      const spans = this.floatsLive
-        .filter((x) => x.x1 > x0 && x.x0 < x1)
-        .map((x) => {
-          const y = (pos.r - x.row) * cellH + x.lift + (FLOAT_RISE * (t - x.start)) / FLOAT_MS;
-          return { lo: y, hi: y + x.h };
-        })
-        .sort((p, q) => p.lo - q.lo);
-      // The lowest height that clears them all, so the texts stay close to the piece.
-      let lift = 0;
-      for (const { lo, hi } of spans) {
-        if (lift + h + FLOAT_PAD <= lo) break;
-        lift = Math.max(lift, hi + FLOAT_PAD);
-      }
-      // No room within a square above the piece: wait a moment for the others to rise.
-      if (lift > cellH && tries < 10) {
-        f.remove();
-        setTimeout(() => show(tries + 1), 160);
-        return;
-      }
-      this.floatsLive.push({ row: pos.r, x0, x1, start: t, lift, h });
-      f.style.setProperty('--lift', `${lift}px`);
-      setTimeout(() => f.remove(), FLOAT_MS);
+      // Where it goes, from its size (layout sizes ignore the pop-in scale) and the texts already up.
+      const place = (w: number, h: number) => {
+        const board = this.fx.board();
+        const cellW = (board.w - 8) / board.cols;
+        const cellH = (board.h - 8) / board.rows;
+        const cx = 4 + (pos.c + 0.5) * cellW;
+        const x0 = cx - w / 2 - FLOAT_PAD;
+        const x1 = cx + w / 2 + FLOAT_PAD;
+        const t = performance.now();
+        this.floatsLive = this.floatsLive.filter((x) => t - x.start < FLOAT_MS);
+        // Where the texts it would touch are now (bottom, top, in px above this text's start line); a
+        // text from a lower row has risen toward this one, one from a higher row starts a square up.
+        const spans = this.floatsLive
+          .filter((x) => x.x1 > x0 && x.x0 < x1)
+          .map((x) => {
+            const y = (pos.r - x.row) * cellH + x.lift + (FLOAT_RISE * (t - x.start)) / FLOAT_MS;
+            return { lo: y, hi: y + x.h };
+          })
+          .sort((p, q) => p.lo - q.lo);
+        // The lowest height that clears them all, so the texts stay close to the piece.
+        let lift = 0;
+        for (const { lo, hi } of spans) {
+          if (lift + h + FLOAT_PAD <= lo) break;
+          lift = Math.max(lift, hi + FLOAT_PAD);
+        }
+        // No room within a square above the piece: wait a moment for the others to rise.
+        if (lift > cellH && tries < 10) {
+          f.remove();
+          setTimeout(() => show(tries + 1), 160);
+          return;
+        }
+        this.floatsLive.push({ row: pos.r, x0, x1, start: t, lift, h });
+        f.style.setProperty('--lift', `${lift}px`);
+        setTimeout(() => f.remove(), FLOAT_MS);
+      };
+      // Placed once the browser has laid it out anyway (before that frame is painted), from the size
+      // it reports: measuring it right away would force a layout in the middle of a hit.
+      if (typeof ResizeObserver === 'undefined') return place(label.offsetWidth, label.offsetHeight);
+      const ro = new ResizeObserver(([e]) => {
+        ro.disconnect();
+        if (this.destroyed || !f.isConnected) return;
+        const box = e.borderBoxSize?.[0];
+        place(box ? box.inlineSize : label.offsetWidth, box ? box.blockSize : label.offsetHeight);
+      });
+      ro.observe(label);
     };
     if (at > now) setTimeout(() => show(), at - now);
     else show();
@@ -1002,8 +1045,10 @@ export class BattleView {
     const total = this.opts.noTimer ? 0 : getPlanTimer();
     if (!total) return;
     const planner = this.q('.planner');
+    const bar = this.q('.time-bar');
     const clock = this.q('.plan-clock');
     const ring = clock.querySelector('.left')!;
+    const digits = clock.querySelector('b')!;
     let left = total * 1000;
     let lastSecond = Math.ceil(left / 1000);
     planner.classList.add('timed');
@@ -1011,11 +1056,13 @@ export class BattleView {
     const tick = 250;
     const update = () => {
       const t = left / (total * 1000);
-      planner.style.setProperty('--t', String(t));
+      // On the bar itself: set on the planner, the change would re-style every card in the hand.
+      bar.style.setProperty('--t', String(t));
       ring.setAttribute('stroke-dasharray', `${(t * 100).toFixed(1)} 100`);
       const sec = Math.ceil(left / 1000);
-      clock.querySelector('b')!.textContent = String(sec);
-      planner.classList.toggle('urgent', sec <= 10);
+      if (digits.textContent !== String(sec)) digits.textContent = String(sec);
+      // Only on a change: toggling a class on the planner re-styles the whole hand.
+      if (planner.classList.contains('urgent') !== sec <= 10) planner.classList.toggle('urgent', sec <= 10);
       if (sec !== lastSecond && sec <= 10 && sec > 0) play('tick');
       lastSecond = sec;
     };
@@ -1039,7 +1086,7 @@ export class BattleView {
     const planner = this.el.querySelector<HTMLElement>('.planner');
     if (!planner) return;
     planner.classList.remove('timed', 'urgent');
-    planner.style.removeProperty('--t');
+    this.el.querySelector<HTMLElement>('.time-bar')?.style.removeProperty('--t');
     this.q('.plan-clock').classList.add('hidden');
   }
 
@@ -1114,7 +1161,9 @@ export class BattleView {
     const trace = playerTrace(me, this.plan);
     const twoTap = this.state.variant === 'twoTap';
     const steps = stepsPerRound(this.state);
-    this.q('.slots').innerHTML = this.plan
+    // Slots and hand are only rewritten when their markup changed (selecting a card changes neither):
+    // rebuilding a hand of a dozen cards re-styles, lays out and repaints the whole planner.
+    setHtml(this.q('.slots'), this.plan
       .map((id, i) => {
         const inner = id ? cardHtml(id, { facing: facings[i], small: true }) : `<span class="empty"><b>${i + 1}</b>${STRINGS.emptySlot}</span>`;
         const next = i === this.nextEmptySlot() ? ' next' : '';
@@ -1127,21 +1176,24 @@ export class BattleView {
         const chip = cls ? `<span class="slot-chip" title="${locked ? STRINGS.twoTap.locked : STRINGS.twoTap.heldTitle}">${locked ? '🔒' : '⏭'}</span>` : '';
         return `<div class="slot${next}${cls}" data-slot="${i}"><span class="slot-label">${label}</span>${inner}${energy}${chip}${stun}</div>`;
       })
-      .join('');
+      .join(''));
     const filled = this.plan.some(Boolean);
     this.showPlannedEnergy(filled && trace ? trace[trace.length - 1] : null);
     const target = this.nextEmptySlot();
-    this.el.style.setProperty('--row-n', String(handRowLength(me.deck)));
-    this.q('.hand').innerHTML = groupedCardsHtml(me.deck, (id) => {
+    setVar(this.el, '--row-n', String(handRowLength(me.deck)));
+    const hand = this.q('.hand');
+    setHtml(hand, groupedCardsHtml(me.deck, (id) => {
       const used = this.plan.includes(id);
       const ok = target >= 0 && canPlace(me, this.plan, target, id);
       const issue = !ok && !used && target >= 0 ? placeIssue(me, this.plan, target, id) : null;
       const why = issue ? WHY_ICONS[issue.kind] : undefined;
       return cardHtml(id, { facing: facings[Math.max(0, target)], disabled: used || !ok, selected: used, spent: isSpent(me, id), why });
-    });
+    }));
     this.q<HTMLButtonElement>('[data-act="lock"]').disabled = planError(me, this.plan) !== null;
     const armedOk = !!this.armed && target >= 0 && canPlace(me, this.plan, target, this.armed);
-    if (this.armed) this.q('.hand').querySelector(`.card[data-card="${this.armed}"]`)?.classList.add('armed');
+    // The hand may not have been rebuilt, so move the "selected" ring by hand.
+    hand.querySelectorAll('.card.armed').forEach((c) => c.classList.toggle('armed', (c as HTMLElement).dataset.card === this.armed));
+    if (this.armed) hand.querySelector(`.card[data-card="${this.armed}"]`)?.classList.add('armed');
     // A selected card that can't be planned says why.
     const why = !armedOk && this.armed ? this.whyNot(this.armed) : null;
     this.setStatus(armedOk ? STRINGS.tapAgainToAdd(getCard(this.armed!).name) : why || this.planningText(), !!why);
@@ -1239,13 +1291,13 @@ export class BattleView {
     const panel = this.q('.card-preview');
     if (!this.previewCard) {
       const hint = this.instantSelect() ? STRINGS.previewHintInstant : STRINGS.previewHint;
-      panel.innerHTML = `<p class="preview-hint">${hint}</p><p class="preview-hint">${STRINGS.previewHint2}</p>`;
+      setHtml(panel, `<p class="preview-hint">${hint}</p><p class="preview-hint">${STRINGS.previewHint2}</p>`);
       return;
     }
     const slot = this.hovered?.slot ?? Math.max(0, this.nextEmptySlot());
     const facing = this.projectedPath().facing[slot] ?? this.state.players[this.planSeat].facing;
     const desc = describeCard(this.previewCard);
-    panel.innerHTML = cardHtml(this.previewCard, { facing, readonly: true }) + (desc ? `<p class="desc">${desc}</p>` : '');
+    setHtml(panel, cardHtml(this.previewCard, { facing, readonly: true }) + (desc ? `<p class="desc">${desc}</p>` : ''));
   }
 
   private onPlannerHover(e: Event): void {
@@ -1254,6 +1306,8 @@ export class BattleView {
     const id = cardEl.dataset.card!;
     const slotEl = cardEl.closest<HTMLElement>('[data-slot]');
     const slot = slotEl ? Number(slotEl.dataset.slot) : this.nextEmptySlot();
+    // Touch fires this on every tap: nothing to redraw when it's the card already shown.
+    if (this.previewCard === id && this.hovered?.card === id && (slot < 0 || this.hovered.slot === slot)) return;
     if (slot >= 0) this.hovered = { slot, card: id };
     if (this.previewCard !== id) {
       this.previewCard = id;
@@ -1358,9 +1412,7 @@ export class BattleView {
       const id = src.dataset.card!;
       if (target && !src.closest('[data-slot]')) this.deny(id, this.plan.map((x) => (x === id ? '' : x)), Number(target.dataset.slot));
       else play('deny');
-      target?.classList.remove('shake');
-      void target?.offsetWidth;
-      target?.classList.add('shake');
+      if (target) retrigger(target, 'shake');
       return;
     }
     play('place');
@@ -1871,15 +1923,16 @@ export class BattleView {
   }
 
   /**
-   * Loop the round on the board (silently), card by card exactly like the reveal, with the HUD bars
-   * following along and a short pause before each loop. Runs until `replayRun` changes.
+   * Replay the round on the board (silently), card by card exactly like the reveal, with the HUD bars
+   * following along: RECAP_LOOPS times with a short pause between, then the board holds the round's
+   * end (Replay plays it again). Stops early when `replayRun` changes.
    */
   private async replayRound(run: number): Promise<void> {
     const { result } = this.recap!;
     const tokens = [this.q('.token.p0'), this.q('.token.p1')];
     const recap = this.recapPlayback(run);
     try {
-      for (;;) {
+      for (let pass = 1; ; pass++) {
         const view = this.rewindTo(0);
         await recap.wait(700);
         for (const step of result.steps) await this.playStep(step, recap, view);
@@ -1904,9 +1957,15 @@ export class BattleView {
           end.forEach((p) => this.floatText(p.pos, STRINGS.energyBack(energyRecovery(p)), 'energy'));
         }
         this.renderHud();
+        if (pass >= RECAP_LOOPS) break;
         // Hold the final position a while before starting over.
         await recap.wait(2400);
       }
+      // Done: let the last effects settle, then hold the round's end (with every card stamped).
+      await recap.wait(1200);
+      this.restoreBoard();
+      const btn = this.el.querySelector<HTMLElement>('.summary [data-act="replay"]');
+      if (btn) btn.textContent = STRINGS.replay;
     } catch (e) {
       if (e !== CANCELLED) throw e;
     }
@@ -1996,8 +2055,7 @@ export class BattleView {
           this.destroy();
           return r.exit();
         case 'pause':
-          r.paused = !r.paused;
-          break;
+          return this.setReplayPaused(!r.paused);
         case 'speed':
           r.speed = REPLAY_SPEEDS[(REPLAY_SPEEDS.indexOf(r.speed) + 1) % REPLAY_SPEEDS.length];
           this.el.style.setProperty('--pace', String(1 / r.speed));
@@ -2006,6 +2064,16 @@ export class BattleView {
       r.onChange(r.speed, r.paused);
       summary.querySelector('.row')!.innerHTML = this.replayButtons();
     });
+  }
+
+  /** Pause or resume the replay viewer, and show it on its play/pause button. */
+  private setReplayPaused(paused: boolean): void {
+    const r = this.opts.replay;
+    if (!r) return;
+    r.paused = paused;
+    r.onChange(r.speed, r.paused);
+    const row = this.el.querySelector('.summary .row');
+    if (row) row.innerHTML = this.replayButtons();
   }
 
   /** The bar under the cards: a title and (in the recap) the buttons. Same size in both, so nothing jumps. */

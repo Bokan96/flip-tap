@@ -27,6 +27,14 @@ export function enableDrag(root: HTMLElement, h: DragHandlers): void {
     let offY = 0;
 
     const underPointer = (x: number, y: number) => document.elementFromPoint(x, y) as HTMLElement | null;
+    // Pointer moves come faster than frames: the card follows each one, but what's under it (a hit
+    // test, which needs an up-to-date layout) is checked once a frame.
+    let last: PointerEvent | null = null;
+    let frame = 0;
+    const checkOver = () => {
+      frame = 0;
+      if (clone && last) h.over?.(underPointer(last.clientX, last.clientY), src);
+    };
 
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== e.pointerId) return;
@@ -45,11 +53,14 @@ export function enableDrag(root: HTMLElement, h: DragHandlers): void {
       }
       ev.preventDefault();
       clone.style.transform = `translate(${ev.clientX - offX}px, ${ev.clientY - offY}px) rotate(-4deg)`;
-      h.over?.(underPointer(ev.clientX, ev.clientY), src);
+      last = ev;
+      if (!frame) frame = requestAnimationFrame(checkOver);
     };
 
     const finish = (ev: PointerEvent, dropped: boolean) => {
       if (ev.pointerId !== e.pointerId) return;
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);

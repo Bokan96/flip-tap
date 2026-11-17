@@ -448,6 +448,9 @@ type VersusMode = Exclude<SetupMode, 'tournament'>;
 const lastPicks: Partial<Record<SetupMode, (string | null)[]>> = {};
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** Run `fn` when the page is idle (within a second at most). */
+const whenIdle = (fn: () => void) =>
+  typeof requestIdleCallback === 'function' ? requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 200);
 
 /** Seat labels on the setup screens. */
 function seatNames(mode: SetupMode): string[] {
@@ -693,20 +696,27 @@ function runBattle(setup: BattleSetup): void {
   const opponent =
     setup.opponent ??
     (setup.mode === 'hotseat' ? new HumanPlanSource(() => view!) : new CpuPlanSource(setup.difficulty ?? 'normal', randomSeed()));
-  // Every mode except the tutorial is saved at each round start, so it can be resumed.
+  let over = false;
+  // Every mode except the tutorial is saved at each round start, so it can be resumed. The write
+  // waits for a quiet moment: the save holds every round so far, and writing it is slow enough to
+  // stutter the round banner. (Nothing changes the state while a round is being planned.)
   const save =
     setup.mode === 'tutorial'
       ? undefined
       : (state: MatchState, lastPlans: SavedMatch['lastPlans'], log: MatchLog) =>
-          saveMatch({
-            version: 1,
-            mode: setup.mode as SavedMatch['mode'],
-            fighters: [setup.p0.fighterId, setup.p1.fighterId],
-            difficulty: setup.difficulty,
-            context: setup.context ?? null,
-            state,
-            lastPlans,
-            log,
+          whenIdle(() => {
+            // Not once the match has ended or been quit meanwhile (that would bring it back).
+            if (over) return;
+            saveMatch({
+              version: 1,
+              mode: setup.mode as SavedMatch['mode'],
+              fighters: [setup.p0.fighterId, setup.p1.fighterId],
+              difficulty: setup.difficulty,
+              context: setup.context ?? null,
+              state,
+              lastPlans,
+              log,
+            });
           });
   const intro = setup.resume ? Promise.resolve() : versusSplash(setup.p0.fighterId, setup.p1.fighterId, setup.names);
   void intro.then(() => {
@@ -719,6 +729,7 @@ function runBattle(setup: BattleSetup): void {
         { name: setup.names[1], source: opponent },
       ],
       (outcome, state, log) => {
+        over = true;
         clearSavedMatch();
         const recap = setup.mode === 'tutorial' ? null : recordReplay(setup, state, log, outcome);
         // The mode's own handler runs first (it may record a ladder win or daily result).
@@ -735,6 +746,7 @@ function runBattle(setup: BattleSetup): void {
         );
       },
       () => {
+        over = true;
         clearSavedMatch();
         (setup.onQuit ?? title)();
       },

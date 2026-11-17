@@ -28,7 +28,7 @@ import {
   type CustomKind,
 } from '../meta/custom';
 import { cardHtml, describeCard } from './card';
-import { EMBLEM_KEYS, emblemHtml } from './emblems';
+import { HERO_EMBLEM_KEYS, emblemHtml } from './emblems';
 
 /*
  * The hero creator: My heroes (list), the hero editor (name, icon, colour, 4 cards), a card picker
@@ -63,7 +63,7 @@ export function myHeroes(ui: Screens): void {
     'heroes-screen',
   );
   ui.on(root, '[data-act="back"]', () => ui.menu());
-  ui.on(root, '[data-act="new"]', () => heroEditor(ui, { id: newId('ch'), name: '', emblem: EMBLEM_KEYS[0], color: HERO_COLORS[6], cards: [] }));
+  ui.on(root, '[data-act="new"]', () => heroEditor(ui, { id: newId('ch'), name: '', emblem: HERO_EMBLEM_KEYS[0], color: HERO_COLORS[6], cards: [] }));
   ui.on(root, '[data-edit]', (el) => {
     const h = heroes.find((x) => x.id === el.dataset.edit);
     if (h) heroEditor(ui, { ...h, cards: [...h.cards] });
@@ -124,7 +124,7 @@ function heroEditor(ui: Screens, draft: CustomHero): void {
     root.style.setProperty('--clr', draft.color);
     head();
     const f = heroFighter(draft);
-    root.querySelector('.emblem-picks')!.innerHTML = EMBLEM_KEYS.map(
+    root.querySelector('.emblem-picks')!.innerHTML = HERO_EMBLEM_KEYS.map(
       (k) => `<button class="emblem-pick${k === draft.emblem ? ' on' : ''}" data-emblem="${k}" aria-label="${k}">${emblemHtml({ ...f, emblem: k }, 'pick-icon')}</button>`,
     ).join('');
     root.querySelector('.colour-picks')!.innerHTML = HERO_COLORS.map(

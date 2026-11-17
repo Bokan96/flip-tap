@@ -36,18 +36,67 @@ export function haptic(kind: Haptic): void {
   }
 }
 
-/** Restart a CSS animation class on an element. */
-export function retrigger(el: Element, cls: string): void {
+/** Classes waiting to go back on (see retrigger), per element. */
+const pending = new WeakMap<Element, Set<string>>();
+
+/**
+ * Start (or restart) the CSS animation that class `cls` plays on `el`, first taking off `others`
+ * (animations it cuts short). A class that is already on comes off now and back on two frames
+ * later, which restarts its animation. The usual trick, reading a size in between, would make the
+ * browser lay out the whole screen right then, in the middle of the hit it animates.
+ */
+export function retrigger(el: Element, cls: string, others: readonly string[] = []): void {
+  const waiting = pending.get(el) ?? new Set<string>();
+  pending.set(el, waiting);
+  for (const o of others) {
+    if (o === cls) continue;
+    el.classList.remove(o);
+    waiting.delete(o);
+  }
+  if (!el.classList.contains(cls) && !waiting.has(cls)) {
+    el.classList.add(cls);
+    return;
+  }
   el.classList.remove(cls);
-  void (el as HTMLElement).offsetWidth;
-  el.classList.add(cls);
+  waiting.add(cls);
+  // One frame is styled without the class (ending its animation), the next starts it again.
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      if (waiting.delete(cls)) el.classList.add(cls);
+    }),
+  );
 }
 
 export class Fx {
+  /** The board's border-box size, kept current by a ResizeObserver (null until first measured). */
+  private size: { w: number; h: number } | null = null;
+  /** The board's grid, read once (it never changes during a match). */
+  private grid: { cols: number; rows: number } | null = null;
+
   constructor(
     private arena: HTMLElement,
     private layer: HTMLElement,
-  ) {}
+  ) {
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(([e]) => {
+        const box = e.borderBoxSize?.[0];
+        this.size = box ? { w: box.inlineSize, h: box.blockSize } : null;
+      }).observe(arena);
+    }
+  }
+
+  /** The board's size and grid without measuring it (a measurement mid-animation forces a layout). */
+  board(): { w: number; h: number; cols: number; rows: number } {
+    if (!this.size) {
+      const rect = this.arena.getBoundingClientRect();
+      this.size = { w: rect.width, h: rect.height };
+    }
+    if (!this.grid) {
+      const style = getComputedStyle(this.arena);
+      this.grid = { cols: Number(style.getPropertyValue('--cols')) || 4, rows: Number(style.getPropertyValue('--rows')) || 3 };
+    }
+    return { ...this.size, ...this.grid };
+  }
 
   private cell(pos: Pos, cls: string, life: number): HTMLElement {
     const el = document.createElement('div');
@@ -77,11 +126,9 @@ export class Fx {
   /** Dots that travel from one square to another (counter sparks, drain motes). */
   travel(from: Pos, to: Pos, color: string, count: number, kind: 'spark' | 'mote'): void {
     if (!fullEffects()) return;
-    const rect = this.arena.getBoundingClientRect();
-    const cols = Number(getComputedStyle(this.arena).getPropertyValue('--cols')) || 4;
-    const rows = Number(getComputedStyle(this.arena).getPropertyValue('--rows')) || 3;
-    const dx = ((to.c - from.c) * (rect.width - 8)) / cols;
-    const dy = ((to.r - from.r) * (rect.height - 8)) / rows;
+    const b = this.board();
+    const dx = ((to.c - from.c) * (b.w - 8)) / b.cols;
+    const dy = ((to.r - from.r) * (b.h - 8)) / b.rows;
     const el = this.cell(from, `travel ${kind}`, 1100);
     el.style.setProperty('--clr', color);
     el.style.setProperty('--dx', `${dx}px`);
@@ -118,7 +165,6 @@ export class Fx {
   /** Shake the board; strength 1-3. */
   shake(strength: 1 | 2 | 3): void {
     if (!fullEffects()) return;
-    this.arena.classList.remove('shake-1', 'shake-2', 'shake-3');
-    retrigger(this.arena, `shake-${strength}`);
+    retrigger(this.arena, `shake-${strength}`, ['shake-1', 'shake-2', 'shake-3']);
   }
 }

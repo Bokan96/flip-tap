@@ -11,6 +11,7 @@ import {
   cleanName,
   customData,
   deleteCard,
+  heroEmblem,
   heroFighter,
   resetCustomCache,
   saveCard,
@@ -20,9 +21,10 @@ import {
 import { contentStamp } from '../src/meta/replay';
 import { memoryStorage, setStorageBackend } from '../src/meta/storage';
 import { customFor } from '../src/net/transport';
+import { emblemHtml, HERO_EMBLEM_KEYS } from '../src/ui/emblems';
 
 const bolt: CardDef = { id: 'cc-bolt', name: 'Bolt', kind: 'attack', cost: -20, damage: 30, pattern: ['000', '011', '000'], stun: true };
-const hero: CustomHero = { id: 'ch-test', name: 'Testa', emblem: 'bolt', color: '#3da5ff', cards: ['cc-bolt', 'cinderJab', 'vexSwap', 'leech'] };
+const hero: CustomHero = { id: 'ch-test', name: 'Testa', emblem: 'star', color: '#3da5ff', cards: ['cc-bolt', 'cinderJab', 'vexSwap', 'leech'] };
 
 beforeEach(() => {
   setStorageBackend(memoryStorage());
@@ -56,7 +58,21 @@ describe('cleaning what the hero creator saves', () => {
     expect(cleanHero({ ...hero, cards: ['cc-bolt', 'cinderJab', 'vexSwap', 'guard'] }, ids)).toBeNull(); // a basic card
     expect(cleanHero({ ...hero, cards: ['cc-bolt', 'cinderJab', 'cinderJab', 'leech'] }, ids)).toBeNull();
     expect(cleanHero(hero, new Set())).toBeNull(); // its custom card is gone
-    expect(cleanHero({ ...hero, color: 'red;}', emblem: 'nope' }, ids)).toMatchObject({ color: '#ff6b3d', emblem: 'flame' });
+    expect(cleanHero({ ...hero, color: 'red;}', emblem: 'nope' }, ids)).toMatchObject({ color: '#ff6b3d', emblem: HERO_EMBLEM_KEYS[0] });
+  });
+
+  it('gives heroes their own icons, never a fighter emblem', () => {
+    const ids = new Set(['cc-bolt']);
+    const fighterEmblems = new Set(FIGHTERS.map((f) => f.emblem));
+    expect(HERO_EMBLEM_KEYS.length).toBeGreaterThanOrEqual(12);
+    expect(HERO_EMBLEM_KEYS.filter((k) => fighterEmblems.has(k))).toEqual([]);
+    // A hero saved with a fighter's emblem (before heroes had their own) gets a matching hero icon.
+    expect(cleanHero({ ...hero, emblem: 'bolt' }, ids)?.emblem).toBe('star');
+    expect(cleanHero({ ...hero, emblem: 'flame' }, ids)?.emblem).toBe('sun');
+    for (const f of FIGHTERS) expect(HERO_EMBLEM_KEYS).toContain(heroEmblem(f.emblem));
+    // Every hero icon has its own drawing (none falls back to the default hexagon).
+    const drawn = HERO_EMBLEM_KEYS.map((k) => emblemHtml(heroFighter({ ...hero, emblem: k })));
+    expect(new Set([...drawn, emblemHtml(heroFighter({ ...hero, emblem: 'hex' }))]).size).toBe(drawn.length + 1);
   });
 });
 

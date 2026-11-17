@@ -107,12 +107,20 @@ function drum(a: AudioContext, kind: 'kick' | 'snare' | 'hat', t: number): void 
   src.stop(t + dur + 0.02);
 }
 
+/**
+ * Notes are queued this far ahead (s) on a timer every TICK_MS. A long look-ahead lets the timer run
+ * rarely (a quick timer wakes the page 40 times a second) and rides out a busy moment without a gap.
+ * Switching tracks fades the old one out, so notes queued ahead never linger.
+ */
+const LOOKAHEAD = 0.4;
+const TICK_MS = 100;
+
 function schedule(): void {
   const a = audioContext();
   if (!a || !master || !playing) return;
   const song = SONGS[playing];
   const stepDur = 60 / song.bpm / 4;
-  while (nextTime < a.currentTime + 0.15) {
+  while (nextTime < a.currentTime + LOOKAHEAD) {
     const chord = song.chords[Math.floor(step / 16) % song.chords.length];
     const s = step % 16;
     if (song.bass.includes(s)) voice(a, midi(chord[0] - 24), nextTime, stepDur * 1.8, 'triangle', 0.22);
@@ -167,7 +175,7 @@ function start(track: Track): void {
   step = 0;
   nextTime = a.currentTime + 0.05;
   schedule();
-  timer = window.setInterval(schedule, 25);
+  timer = window.setInterval(schedule, TICK_MS);
 }
 
 /** Choose the background track (null = silence). Starts after the first user gesture. */
