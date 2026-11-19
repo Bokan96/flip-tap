@@ -307,7 +307,7 @@ function cardEditor(ui: Screens, d: CardDef, done: (saved: CardDef | null) => vo
     `<div class="field"><span>${label}</span><div class="chips">${options
       .map((o) => `<button class="chip${o.v === current ? ' on' : ''}" data-chip="${key}" data-v="${o.v}">${o.label}</button>`)
       .join('')}</div></div>`;
-  const toggle = (key: 'stun' | 'planted' | 'forward' | 'swap' | 'reach', label: string, on: boolean) =>
+  const toggle = (key: 'stun' | 'root' | 'planted' | 'forward' | 'swap' | 'reach', label: string, on: boolean) =>
     `<button class="chip${on ? ' on' : ''}" data-toggle="${key}">${label}</button>`;
 
   /** The squares grid (attack and trap), written facing right with the user in the middle. */
@@ -359,7 +359,7 @@ function cardEditor(ui: Screens, d: CardDef, done: (saved: CardDef | null) => vo
         stepper('hex', E.hex) +
         stepper('recoil', E.recoil) +
         stepper('vsMoved', H().vsMoved) +
-        `<div class="field"><span>${H().effects}</span><div class="chips">${toggle('stun', E.stun, !!d.stun)}${toggle('planted', E.planted, !!d.planted)}</div></div>`;
+        `<div class="field"><span>${H().effects}</span><div class="chips">${toggle('stun', E.stun, !!d.stun)}${toggle('root', E.root, !!d.root)}${toggle('planted', E.planted, !!d.planted)}</div></div>`;
     } else if (d.kind === 'trap') body = squaresGrid() + stepper('trap', H().trapDamage);
     else if (d.kind === 'guard') body = stepper('guard', H().guard) + stepper('counter', E.counter) + stepper('blockSap', H().drainsEnergy);
     else if (d.kind === 'move') body = destinationGrid() + stepper('counter', E.counter);
@@ -403,7 +403,7 @@ function cardEditor(ui: Screens, d: CardDef, done: (saved: CardDef | null) => vo
         else delete d.healAtOrBelow;
       }
     } else if (tog) {
-      const key = tog.dataset.toggle as 'stun' | 'planted' | 'forward' | 'swap' | 'reach';
+      const key = tog.dataset.toggle as 'stun' | 'root' | 'planted' | 'forward' | 'swap' | 'reach';
       if (key === 'reach') {
         const p = d.pattern ?? ['000', '000', '000'];
         // 3 wide <-> 5 wide, keeping the squares around the user.

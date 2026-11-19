@@ -157,6 +157,8 @@ interface BoardView {
 interface RoundStart extends BoardView {
   traps: Trap[];
   hex: [number, number];
+  /** Stunned going into the round (a stun carried over from the last one). */
+  dazed: [boolean, boolean];
 }
 
 /** A fresh, independent copy of a round's starting view. */
@@ -215,6 +217,10 @@ export class BattleView {
   private floatNext = new Map<string, number>();
   /** Hex on each fighter as drawn (it changes mid-reveal, before `state` catches up). */
   private shownHex: [number, number] = [0, 0];
+  /** Rooted, as the board shows it now (only during a round's reveal or recap). */
+  private shownRoot: [boolean, boolean] = [false, false];
+  /** Life as the HUD shows it now (it runs behind the state during the reveal), for the low-life passive's badge. */
+  private shownLives: [number, number] = [Infinity, Infinity];
   /** The round being revealed or recapped. */
   private shownRound = 0;
   /** Settles when this round's start banner has gone (the plan timer waits for it). */
@@ -388,7 +394,7 @@ export class BattleView {
     const tokens = this.state.players
       .map((p, i) => `<div class="token p${i}" data-seat="${i}" title="${this.seats[i].name}">
           <span class="token-ring"></span><span class="token-body">${tokenArtHtml(getFighter(p.fighterId))}</span><span class="facing"></span>
-          <span class="hex-mark" title="${STRINGS.effectNames.hex}">${STRINGS.effectIcons.hex}</span></div>`)
+          <span class="token-status"></span></div>`)
       .join('');
     // Each player's cards for the round, one per step: face down until that step plays.
     const playCol = (i: number) => `<div class="play-col p${i}" data-seat="${i}">
@@ -455,6 +461,8 @@ export class BattleView {
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(measure).observe(hud);
     this.renderTraps(this.state.arena.traps);
     this.showHexes([this.state.players[0].hex, this.state.players[1].hex]);
+    // A stun carried into this round (a resumed match, or a replay's round) shows from the start.
+    this.showDazed();
     this.el.querySelectorAll<HTMLElement>('.token').forEach((t) =>
       t.addEventListener('animationend', (e) => {
         const cls = ANIM_CLASS[e.animationName];
@@ -516,6 +524,7 @@ export class BattleView {
   // ---------- HUD ----------
 
   private renderHud(lives?: [number, number], energies?: [number, number]): void {
+    this.shownLives = [lives?.[0] ?? this.state.players[0].life, lives?.[1] ?? this.state.players[1].life];
     this.state.players.forEach((p, i) => {
       const f = getFighter(p.fighterId);
       const life = lives?.[i] ?? p.life;
@@ -554,25 +563,54 @@ export class BattleView {
     this.renderChips();
   }
 
-  /** Status chips under each fighter's name: hex, stun, their traps on the board, spent shots. */
+  /**
+   * Each fighter's statuses, twice: chips under their name (hex, stun, root, a low-life passive
+   * like Kindle switched on, their traps, spent shots) and small badges on their piece (hex, stun,
+   * root, passive on). Tapping a chip explains it.
+   */
   private renderChips(): void {
-    const chip = (key: string, text: string) => `<i class="chip-fx ${key}" data-tip="${key}">${text}</i>`;
+    const chip = (key: string, text: string, tip = key) => `<i class="chip-fx ${key}" data-tip="${tip}">${text}</i>`;
+    const badge = (key: string, text: string, title: string) => `<i class="ts ts-${key}" title="${title}">${text}</i>`;
+    const I = STRINGS.effectIcons;
+    const N = STRINGS.effectNames;
     for (const i of [0, 1]) {
       const box = this.el.querySelector(`.panel.p${i} .status-chips`);
-      if (!box) continue;
+      const token = this.el.querySelector<HTMLElement>(`.token.p${i}`);
+      if (!box || !token) continue;
       const p = this.state.players[i];
       const traps = this.shownTraps.filter((t) => t.owner === i).length;
       const spent = p.mods.ammo ? p.spent.length : 0;
+      const hex = this.shownHex[i];
+      const dazed = token.classList.contains('dazed');
+      const rooted = this.shownRoot[i];
+      // A low-life passive (Cinder's Kindle) is on while life is at its threshold or below.
+      const life = this.shownLives[i];
+      const passive = getFighter(p.fighterId).passive;
+      const kindled = p.mods.lowLifeThreshold > 0 && life > 0 && life <= p.mods.lowLifeThreshold;
+      const passiveName = passive?.name ?? STRINGS.dmgParts.lowLife;
+      const on = STRINGS.passiveOn;
       // Only when they change: new chips can change the HUD's height, which re-lays out the battle.
       setHtml(
         box,
         [
-          this.shownHex[i] ? chip('hex', `${STRINGS.effectIcons.hex}+${this.shownHex[i]}`) : '',
-          this.q(`.token.p${i}`).classList.contains('dazed') ? chip('stun', STRINGS.effectIcons.stun) : '',
-          traps ? chip('trap', `${STRINGS.effectIcons.trap}${traps}`) : '',
+          hex ? chip('hex', `${I.hex}+${hex}`) : '',
+          dazed ? chip('stun', I.stun) : '',
+          rooted ? chip('root', I.root) : '',
+          kindled ? chip('kindle', `${on.icon} ${passiveName}`, `passive:${p.fighterId}`) : '',
+          traps ? chip('trap', `${I.trap}${traps}`) : '',
           spent ? chip('spent', `⟳${spent}`) : '',
         ].join(''),
       );
+      setHtml(
+        token.querySelector('.token-status')!,
+        [
+          hex ? badge('hex', I.hex, `${N.hex} +${hex}`) : '',
+          dazed ? badge('stun', I.stun, N.stun) : '',
+          rooted ? badge('root', I.root, N.root) : '',
+          kindled ? badge('kindle', on.icon, on.title(passiveName)) : '',
+        ].join(''),
+      );
+      token.classList.toggle('kindled', kindled);
     }
   }
 
@@ -612,6 +650,13 @@ export class BattleView {
   private setHex(seat: number, hex: number): void {
     this.shownHex[seat] = hex;
     this.q(`.token.p${seat}`).classList.toggle('hexed', hex > 0);
+    this.renderChips();
+  }
+
+  /** Mark (or clear) a fighter as rooted: their move cards don't move them this round. */
+  private setRooted(seat: number, on: boolean): void {
+    this.shownRoot[seat] = on;
+    this.q(`.token.p${seat}`).classList.toggle('rooted', on);
     this.renderChips();
   }
 
@@ -968,6 +1013,14 @@ export class BattleView {
     if (hex > 0) rows.push(`<p class="status-fx hex"><b>${STRINGS.effectIcons.hex} ${S.hex}</b> ${S.hexText(name, hex)}</p>`);
     if (this.q(`.token.p${seat}`).classList.contains('dazed')) {
       rows.push(`<p class="status-fx stun"><b>${STRINGS.effectIcons.stun} ${S.stun}</b> ${S.stunText(name)}</p>`);
+    }
+    if (this.shownRoot[seat]) rows.push(`<p class="status-fx root"><b>${STRINGS.effectIcons.root} ${S.rooted}</b> ${S.rootText(name)}</p>`);
+    // A low-life passive switched on (Kindle): what it does right now.
+    const p = this.state.players[seat];
+    const passive = getFighter(p.fighterId).passive;
+    const life = this.shownLives[seat];
+    if (passive && p.mods.lowLifeThreshold > 0 && life > 0 && life <= p.mods.lowLifeThreshold) {
+      rows.push(`<p class="status-fx kindle"><b>${STRINGS.passiveOn.icon} ${STRINGS.passiveOn.title(passive.name)}</b> ${passive.text}</p>`);
     }
     return rows.length ? `<div class="status-list"><h3>${S.title}</h3>${rows.join('')}</div>` : '';
   }
@@ -1479,6 +1532,7 @@ export class BattleView {
       facing: [ps[0].facing, ps[1].facing],
       traps: this.state.arena.traps.map((t) => ({ ...t })),
       hex: [ps[0].hex, ps[1].hex],
+      dazed: [ps[0].dazed, ps[1].dazed],
       lives: [ps[0].life, ps[1].life],
       energies: [ps[0].energy, ps[1].energy],
     };
@@ -1651,6 +1705,12 @@ export class BattleView {
         float(d, STRINGS.dazed, 'stun');
         sounds.push('zap');
       }
+      if (pd.rootApplied) {
+        this.setRooted(d, true);
+        show(() => this.fx.ring(view.pos[d], 'root'));
+        float(d, STRINGS.rootedFloat, 'root');
+        sounds.push('thud');
+      }
       if (pd.energyLost > 0) {
         // Energy crackles out of the target toward the attacker.
         show(() => this.fx.travel(view.pos[d], view.pos[a], themeColor('--fx-sap'), 5, 'spark'));
@@ -1771,7 +1831,13 @@ export class BattleView {
         show(() => this.cardActs(i, step.slot));
         energy(i, c.cost);
         hud();
-        if (c.kind === 'move' && c.swap) {
+        if (c.kind === 'move' && p.rootBlocked) {
+          // Rooted: the move card doesn't move them (it still turns them to face the other).
+          float(i, STRINGS.rootHeld, 'root');
+          show(() => this.tokenAnim(i, 'skid'));
+          sfx('thud');
+          place([i]);
+        } else if (c.kind === 'move' && c.swap) {
           // Both fighters trade places (once, even if both played a swap).
           if (p.swapped && !(samePos(view.pos[0], P[0].to) && samePos(view.pos[1], P[1].to))) {
             show(() => this.showArea([P[0].to, P[1].to], 'move-target'));
@@ -1911,9 +1977,15 @@ export class BattleView {
     this.showDazed();
   }
 
-  /** Stun marks for whoever is still stunned between rounds (it cancels their first card, or Two-tap's held card). */
+  /**
+   * Status marks between rounds: a stun carried over (it cancels their first card, or Two-tap's
+   * held card) stays; a root has worn off.
+   */
   private showDazed(): void {
-    this.state.players.forEach((p, i) => this.setDazed(i, p.dazed));
+    this.state.players.forEach((p, i) => {
+      this.setDazed(i, p.dazed);
+      this.setRooted(i, !!p.rooted);
+    });
   }
 
   /** Two-tap: the card each player holds over for next round stays face down, with a lock. */
@@ -1960,7 +2032,9 @@ export class BattleView {
     this.clearAreas();
     [0, 1].forEach((i) => {
       this.q(`.token.p${i}`).classList.remove('ko', 'ko-fall', 'guarding', ...TOKEN_ANIMS);
-      this.setDazed(i, !!prev?.players[i].dazed);
+      this.setDazed(i, prev ? prev.players[i].dazed : start.dazed[i]);
+      // Rooted by any step before this one (a root lasts the rest of the round).
+      this.setRooted(i, result.steps.slice(0, slot).some((s) => !!s.players[i].rootApplied));
     });
     this.renderTraps(prev ? prev.traps : start.traps);
     this.showHexes(prev ? [prev.players[0].hex, prev.players[1].hex] : start.hex);
@@ -1985,6 +2059,8 @@ export class BattleView {
         for (const step of result.steps) await this.playStep(step, recap, view);
 
         // End of the round: fatigue, then the energy refill; the bars land on the round's final numbers.
+        // A root wears off with the round.
+        [0, 1].forEach((i) => this.setRooted(i, false));
         this.markCard(null);
         this.setCaption(STRINGS.narrate.tapCard);
         const end = this.state.players;

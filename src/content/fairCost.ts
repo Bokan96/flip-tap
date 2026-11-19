@@ -21,7 +21,7 @@ export function fairCost(c: CardDef): number {
       const d = c.damage ?? 0;
       // Damage is worth more spread over more squares; each effect adds (or recoil takes away) value.
       let v = d * (1 + 0.1 * (squares(c.pattern) - 1));
-      v += (c.stun ? 8 : 0) + Math.abs(c.push ?? 0) + ((c.drain ?? 0) / 100) * d * 0.8 + (c.sap ?? 0) * 0.2;
+      v += (c.stun ? 8 : 0) + (c.root ? 6 : 0) + Math.abs(c.push ?? 0) + ((c.drain ?? 0) / 100) * d * 0.8 + (c.sap ?? 0) * 0.2;
       v += (c.hex ?? 0) * 0.3 + (c.vsMoved ?? 0) * 0.6 - (c.recoil ?? 0) * 0.5;
       if (c.planted) v *= 0.75;
       return round5(0.53 * Math.pow(Math.max(0, v), 1.08));

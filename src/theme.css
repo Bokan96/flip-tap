@@ -96,5 +96,7 @@
   --fx-sap: #ffe36b; /* energy drained by Volta */
   --fx-hex: #d58bff; /* hex marks */
   --fx-planted: #d9b98a;
+  --fx-root: #b6d36b; /* rooted fighters: Root cards, their badge and chip */
+  --fx-kindle: #ff9147; /* a low-life passive switched on (Cinder's Kindle) */
   --trap: #ffb347; /* trap squares on cards, trap previews */
 }

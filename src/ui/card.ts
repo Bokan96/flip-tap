@@ -56,6 +56,7 @@ export function cardEffects(id: string | CardDef): Effect[] {
   if (c.push && c.push > 0) out.push('push');
   if (c.push && c.push < 0) out.push('pull');
   if (c.stun) out.push('stun');
+  if (c.root) out.push('root');
   if (c.counter) out.push('counter');
   if (c.drain) out.push('drain');
   if (c.sap || c.blockSap) out.push('sap');
@@ -149,6 +150,7 @@ export function describeCard(id: string | CardDef): string {
   if (c.push && c.push > 0) parts.push(STRINGS.descPush(c.push));
   if (c.push && c.push < 0) parts.push(STRINGS.descPull(-c.push));
   if (c.stun) parts.push(STRINGS.descStun);
+  if (c.root) parts.push(STRINGS.descRoot);
   if (c.counter) parts.push(STRINGS.descCounter(c.counter));
   if (c.drain) parts.push(STRINGS.descDrain(c.drain));
   if (c.sap) parts.push(STRINGS.descSap(c.sap));

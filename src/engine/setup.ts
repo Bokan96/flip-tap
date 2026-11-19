@@ -70,6 +70,7 @@ function createPlayer(seat: Seat, cfg: SeatConfig, mod: MatchModifier, arenaId: 
     spent: [],
     hex: 0,
     dazed: false,
+    rooted: false,
     ...(variant === 'twoTap' ? { carry: { held: null } } : {}),
   };
 }

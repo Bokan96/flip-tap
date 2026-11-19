@@ -96,6 +96,7 @@ export function cleanCard(input: unknown): CardDef | null {
       const push = Math.max(-2, Math.min(2, Math.round(Number(raw.push) || 0)));
       if (push) c.push = push;
       if (raw.stun) c.stun = true;
+      if (raw.root) c.root = true;
       if (DRAIN_STEPS.includes(Number(raw.drain))) c.drain = Number(raw.drain);
       (['sap', 'hex', 'recoil', 'vsMoved'] as const).forEach(optional);
       if (raw.planted) c.planted = true;

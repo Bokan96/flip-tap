@@ -156,8 +156,8 @@ export class Fx {
     }
   }
 
-  /** Expanding ring on a square: a shield for guards, a starburst for stuns, a red flash for hits. */
-  ring(pos: Pos, kind: 'shield' | 'stun' | 'impact'): void {
+  /** Expanding ring on a square: a shield for guards, a starburst for stuns, a red flash for hits, vines for a root. */
+  ring(pos: Pos, kind: 'shield' | 'stun' | 'impact' | 'root'): void {
     if (!fullEffects()) return;
     this.cell(pos, `ring ${kind}`, 800).appendChild(document.createElement('i'));
   }

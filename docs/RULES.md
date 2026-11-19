@@ -37,6 +37,7 @@ Every card has:
 | `damage` | Life removed from the opponent if they stand in the pattern |
 | `push` | Attack effect: on a connecting hit, move the target *n* squares away (positive) or toward you (negative, a **pull**) |
 | `stun` | Attack effect: if the hit deals damage, the target's **next card** is cancelled (after a round's last card: their first card next round) |
+| `root` | Attack effect: if the hit deals damage, the target is **rooted** for the rest of the round: their move cards don't move them |
 | `counter` | Guard effect: if an attack hits you this step, the attacker takes this much damage |
 | `blockSap` | Guard effect: if an attack hits you this step (even one the guard doesn't fully stop), the attacker loses this much energy (basic Guard: 10) |
 | `drain` | Attack effect: heal this percentage of the damage the attack dealt |
@@ -62,6 +63,11 @@ Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, 
   - A stun on the last step of a round **carries over**: the stunned player's first card next round does
     nothing (and costs nothing, so it may even be a card they couldn't afford). They see the stun while
     planning, and the planner marks that slot. (`BALANCE.carryDaze`; in Two-tap it cancels the locked-in card.)
+- **Root** only works if the hit deals at least 1 damage after guard.
+  - For the rest of the round the rooted player's move cards don't move them (and their own swap
+    doesn't happen); the card is still paid for and still turns them to face the opponent. Pushes,
+    pulls and the opponent's swap still move them. It wears off at the end of the round.
+  - It is on the bonus card **Entangle** and can be put on custom attack cards in the hero creator.
 - **Counter** damage is fixed (not reduced by guard or passives). It triggers on any hit, even one fully guarded.
   Guard cards and move cards (Zephyr's dashes) can carry a counter.
 - **Drain** rounds down.
@@ -165,9 +171,11 @@ does nothing.
    - Damage = attack `damage` + the attacker's passive bonuses + *X*'s hex (if any) − *X*'s `guard`
      (if *X*'s own card is active) − *X*'s passive reductions, never below 0. A hit with `guard > 0` counts as "guarded".
    - Then: *X*'s counter hurts the attacker, the attacker's drain heals them, a stun marks *X*'s
-     next card, and a push or pull is queued.
+     next card, a root roots *X*, and a push or pull is queued.
 3. **Self effects:** every active card applies its own `cost`, `heal` (if its condition holds) and
    `recoil`, any `sap` comes off the target's energy, and Life and Energy are clamped to `0..max`.
+   A fighter the step's hits (and counters) bring to 0 is out: neither their heal card nor their
+   drain brings them back that step.
 4. **Push and pull:** queued displacements happen at the same time. Nobody turns.
    Then, in order: attacks **break** the enemy traps they covered, **square effects** (thorns,
    springs), **traps** springing, and finally new **traps** being set.
@@ -243,7 +251,8 @@ adds its matchup scores to `src/content/matchups.ts` for the daily challenge fro
 content files), so a replay recorded under older rules says so instead of playing out differently.
 Bump it whenever a code change alters how a match plays out; the golden match in `tests/rules.test.ts`
 fails as a reminder. Revision 2: strike order by real damage (less life first on a tie), a swapped
-fighter turns, and a last-card stun carries into the next round in Classic.
+fighter turns, and a last-card stun carries into the next round in Classic. Revision 3: a fighter
+knocked out by a step's hits can't be healed back that step (heal cards, drain); the Root effect.
 
 ## CPU opponent (original design)
 The AI enumerates every affordable 3-card plan it could make. It scores each plan against a sample of

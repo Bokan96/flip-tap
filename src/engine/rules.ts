@@ -28,8 +28,10 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  * fails when the rules change, as a reminder.
  *   2: strike order by real damage, lower life first on a tie; a swapped fighter turns;
  *      a stun on a round's last card carries into the next round in Classic too.
+ *   3: a fighter knocked out by a step's hits can't be healed back that step (heal cards and
+ *      drain); the Root effect.
  */
-export const RULES = { revision: 2 };
+export const RULES = { revision: 3 };
 
 export function cloneState(s: MatchState): MatchState {
   return {
@@ -467,10 +469,12 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   //    turns to face the other, and so does one who was swapped; one who was only leapt past keeps
   //    facing the old way, so their attack can whiff (both turn to face each other again before the
   //    next round).
+  // A rooted fighter's move card doesn't move them (nor can they swap); it still turns them.
+  const rootBlocked = [0, 1].map((i) => active[i] && cards[i].kind === 'move' && !!ps[i].rooted);
   for (const i of [0, 1] as const) {
-    if (active[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i], ps[i].facing);
+    if (active[i] && !rootBlocked[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i], ps[i].facing);
   }
-  const swappers = [0, 1].filter((i) => active[i] && cards[i].swap);
+  const swappers = [0, 1].filter((i) => active[i] && cards[i].swap && !rootBlocked[i]);
   // An immovable fighter can't be swapped by the other side (but can swap itself).
   const swapped = swappers.length > 0 && [0, 1].every((i) => swappers.includes(i) || !ps[i].mods.immovable);
   if (swapped) [ps[0].pos, ps[1].pos] = [ps[1].pos, ps[0].pos];
@@ -490,6 +494,13 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const healed = [0, 0];
   const hexApplied = [false, false];
   const hexBroken = [false, false];
+  const rootApplied = [false, false];
+  /** A damaging hit with Root roots `i` for the rest of the round (this step's moves are already done). */
+  const rootHit = (i: 0 | 1, atk: CardDef, dealt: number) => {
+    if (!atk.root || dealt <= 0) return;
+    rootApplied[i] = true;
+    ps[i].rooted = true;
+  };
   const parts: DamagePart[][] = [[], []];
   const interrupted = [false, false];
   let areas: [Pos[], Pos[]] = [[], []];
@@ -511,7 +522,8 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     let energy = p.energy - sapped[i];
     if (active[i]) {
       recoil[i] = cards[i].recoil ?? 0;
-      healed[i] = healAmount(cards[i], life);
+      // Knocked out by this step's hits: a heal can't bring them back.
+      healed[i] = life > 0 ? healAmount(cards[i], life) : 0;
       life += healed[i] - recoil[i];
       energy += cards[i].cost;
     }
@@ -553,6 +565,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
         if (atk.stun && damage[i] > 0) dazed[i] = true;
         if (atk.sap) sapped[i] = atk.sap;
         hexHit(i, atk, damage[i]);
+        rootHit(i, atk, damage[i]);
         if (atk.push && !ps[i].mods.immovable) {
           ps[i].pos = displace(state.arena, ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
         }
@@ -586,11 +599,17 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
       if (atk.sap) sapped[i] = atk.sap;
       // Only touches ps[i].hex, which the other side's damage (worked out next) doesn't read.
       hexHit(i, atk, damage[i]);
+      rootHit(i, atk, damage[i]);
       if (atk.push && !ps[i].mods.immovable) pushTo[i] = displace(state.arena, ps[i].pos, ps[o].pos, ps[o].facing, pushAmount(atk.push, ps[o].mods));
     }
 
-    // 3. Self effects, then clamp.
-    for (const i of [0, 1] as const) selfEffects(i, ps[i].life - damage[i] - counter[i] + drained[i]);
+    // 3. Self effects, then clamp. A fighter the hits knock out gains nothing back from their own
+    //    drain (and no heal, see selfEffects): they are out.
+    for (const i of [0, 1] as const) {
+      const afterHits = ps[i].life - damage[i] - counter[i];
+      if (afterHits <= 0) drained[i] = 0;
+      selfEffects(i, afterHits + drained[i]);
+    }
 
     // 4. Push and pull (simultaneous). Being pushed doesn't turn anyone.
     for (const i of [0, 1] as const) {
@@ -681,6 +700,8 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     energyLost: sapped[i],
     hexApplied: hexApplied[i],
     hexBroken: hexBroken[i],
+    rootApplied: rootApplied[i],
+    rootBlocked: rootBlocked[i],
     hex: ps[i].hex,
     healed: healed[i],
     life: ps[i].life,
@@ -724,6 +745,8 @@ export function resolveRound(state: MatchState, plans: [Plan, Plan]): RoundResul
   // A stun on the last card of a round carries into the next: it cancels the first card planned
   // (Classic) or the card held over (Two-tap).
   if (!(state.variant === 'twoTap' ? TWO_TAP.carryDaze : BALANCE.carryDaze)) for (const p of next.players) p.dazed = false;
+  // Root wears off at the end of every round.
+  for (const p of next.players) p.rooted = false;
   // Traps last until the end of the round after the one they were set in.
   next.arena.traps = next.arena.traps.filter((t) => t.until > state.round);
   if (!next.outcome) {

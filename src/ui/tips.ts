@@ -1,3 +1,4 @@
+import { getFighter } from '../content/cards';
 import { STRINGS } from '../content/strings';
 
 /*
@@ -19,6 +20,11 @@ export function tipContent(key: string): TipContent | null {
   const tiles = G.tileTexts();
   if (tiles[key]) return { icon: (STRINGS.tileIcons as Record<string, string>)[key] ?? '', name: G.tileNames[key], text: tiles[key] };
   if (key === 'spent') return { icon: '⟳', name: STRINGS.spentTag, text: STRINGS.spentText };
+  // A fighter's passive while it is switched on (key "passive:<fighter id>").
+  if (key.startsWith('passive:')) {
+    const passive = getFighter(key.slice('passive:'.length)).passive;
+    if (passive) return { icon: STRINGS.passiveOn.icon, name: passive.name, text: passive.text };
+  }
   return null;
 }
 

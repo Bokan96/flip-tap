@@ -31,6 +31,8 @@ interface FastCard {
   vsMoved: number;
   /** Hex value it puts on a target (0 = none). */
   hex: number;
+  /** Roots the target for the rest of the round on a damaging hit. */
+  root: boolean;
   /** Trap card: damage of each trap it sets (0 otherwise). */
   trap: number;
   swap: boolean;
@@ -80,6 +82,7 @@ export function fastCard(id: string): FastCard {
       sap: isAttack ? (c.sap ?? 0) : 0,
       vsMoved: isAttack ? (c.vsMoved ?? 0) : 0,
       hex: isAttack ? (c.hex ?? 0) : 0,
+      root: isAttack && !!c.root,
       trap: c.kind === 'trap' ? (c.trap ?? 0) : 0,
       swap: !!c.swap,
       isMove: c.kind === 'move',
@@ -164,6 +167,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
   const c = [P[0].pos.c, P[1].pos.c];
   const f = [P[0].facing as number, P[1].facing as number];
   const z = [P[0].dazed, P[1].dazed];
+  const rt = [!!P[0].rooted, !!P[1].rooted];
   const hx = [P[0].hex || 0, P[1].hex || 0];
   // Spent attacks, tracked only for ammo fighters (null otherwise).
   const spent: (string[] | null)[] = [m[0].ammo ? [...P[0].spent] : null, m[1].ammo ? [...P[1].spent] : null];
@@ -230,6 +234,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       en[0] = Math.min(energyMax[0], en[0] + energyRecovery(P[0]));
       en[1] = Math.min(energyMax[1], en[1] + energyRecovery(P[1]));
       if (!TWO_TAP.carryDaze) z[0] = z[1] = false;
+      rt[0] = rt[1] = false; // root wears off at the end of the round
       face(); // the round ends before the held-over card: both turn to face each other
     }
     ids[0] = plan0[slot];
@@ -244,7 +249,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       struck[i] = false;
       sr[i] = r[i];
       sc[i] = c[i];
-      if (act[i] && (card[i].dr || card[i].dc)) {
+      // A rooted fighter's move card doesn't move them (same as rules.resolveStep).
+      if (act[i] && (card[i].dr || card[i].dc) && !rt[i]) {
         const nr = clamp(r[i] + card[i].dr, 0, rows - 1);
         const ncc = clamp(c[i] + (card[i].forward ? card[i].dc * f[i] : card[i].dc), 0, cols - 1);
         if (open(nr, ncc)) {
@@ -254,8 +260,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       }
     }
     // Swap (same as rules.resolveStep).
-    const sw0 = act[0] && card[0].swap;
-    const sw1 = act[1] && card[1].swap;
+    const sw0 = act[0] && card[0].swap && !rt[0];
+    const sw1 = act[1] && card[1].swap && !rt[1];
     const swapped = (sw0 || sw1) && (sw0 || !m[0].immovable) && (sw1 || !m[1].immovable);
     if (swapped) {
       const tr = r[0];
@@ -295,6 +301,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (a.sap) sap[i] = a.sap;
         if (hx[i]) hx[i] = 0;
         else if (a.hex && d > 0) hx[i] = a.hex;
+        if (a.root && d > 0) rt[i] = true;
         if (a.push && !m[i].immovable) {
           c[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
         }
@@ -303,7 +310,7 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         let l = life[i];
         let e = en[i] - sap[i];
         if (act[i]) {
-          l += healOf(card[i], l) - card[i].recoil;
+          l += (l > 0 ? healOf(card[i], l) : 0) - card[i].recoil;
           e += card[i].cost;
         }
         life[i] = clamp(l, 0, lifeMax[i]);
@@ -327,13 +334,16 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
         if (a.sap) sap[i] = a.sap;
         if (hx[i]) hx[i] = 0;
         else if (a.hex && dmg[i] > 0) hx[i] = a.hex;
+        if (a.root && dmg[i] > 0) rt[i] = true;
         if (a.push && !m[i].immovable) nc[i] = displaceCol(r[i], c[i], c[o], f[o], a.push + Math.sign(a.push) * m[o].pushBonus);
       }
       for (let i = 0; i < 2; i++) {
-        let l = life[i] - dmg[i] - ctr[i] + drn[i];
+        // Knocked out by the hits: no drain or heal brings them back (same as rules.resolveStep).
+        let l = life[i] - dmg[i] - ctr[i];
+        if (l > 0) l += drn[i];
         let e = en[i] - sap[i];
         if (act[i]) {
-          l += healOf(card[i], l) - card[i].recoil;
+          l += (l > 0 ? healOf(card[i], l) : 0) - card[i].recoil;
           e += card[i].cost;
         }
         life[i] = clamp(l, 0, lifeMax[i]);

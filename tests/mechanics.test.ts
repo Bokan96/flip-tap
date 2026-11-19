@@ -261,6 +261,7 @@ describe('fast simulator with every card, modifier and arena', () => {
         p.life = 1 + rng.int(p.lifeMax);
         p.energy = rng.int(p.energyMax + 1);
         p.dazed = rng.int(5) === 0;
+        p.rooted = rng.int(6) === 0;
         if (p.mods.ammo) p.spent = p.deck.filter((id) => CARDS[id].kind === 'attack' && rng.int(2) === 0);
         p.hex = rng.int(3) === 0 ? 10 + rng.int(2) * 10 : 0;
       }

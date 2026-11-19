@@ -36,6 +36,7 @@ const bonus: CardDef[] = [
   // Was Ignite (a burn); the id stays so saved collections keep the card.
   { id: 'ignite', name: 'Evil Eye', kind: 'attack', cost: -15, damage: 10, pattern: ['000', '011', '000'], hex: 10, bonus: true, fx: 'beam' },
   { id: 'phaseStep', name: 'Phase Step', kind: 'move', cost: -15, swap: true, bonus: true },
+  { id: 'entangle', name: 'Entangle', kind: 'attack', cost: -20, damage: 15, pattern: ['001', '011', '001'], root: true, bonus: true, fx: 'wave' },
 ];
 
 const signature: CardDef[] = [

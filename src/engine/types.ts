@@ -32,6 +32,11 @@ export interface CardDef {
   push?: number;
   /** Attack: if the hit deals damage, the target's next card this round is cancelled. */
   stun?: boolean;
+  /**
+   * Attack: if the hit deals damage, the target is rooted for the rest of the round: their move
+   * cards don't move them (pushes, pulls and the other fighter's swap still do).
+   */
+  root?: boolean;
   /** Guard: if an attack hits you this step, the attacker takes this much damage. */
   counter?: number;
   /** Guard: if an attack hits you this step (even one the guard doesn't fully stop), the attacker loses this much energy. */
@@ -142,6 +147,8 @@ export interface PlayerState {
   hex: number;
   /** Stunned: this player's next card is cancelled. Cleared at the end of every round (except in Two-tap). */
   dazed: boolean;
+  /** Rooted: this player's move cards don't move them. Wears off at the end of every round (absent in older saves). */
+  rooted?: boolean;
   /** Two-tap only: the card locked in last round, which plays first this round (null in round 1). */
   carry?: { held: string | null };
 }
@@ -214,6 +221,10 @@ export interface StepPlayerResult {
   drained: number;
   /** Got stunned this step: the next card this round is cancelled. */
   dazed: boolean;
+  /** Got rooted this step: their move cards don't move them for the rest of the round (absent in older logs). */
+  rootApplied?: boolean;
+  /** This player's move card didn't move them because they are rooted (absent in older logs). */
+  rootBlocked?: boolean;
   /** This player's attack never landed because they were knocked out by a faster attack first. */
   interrupted: boolean;
   /** This player's Reload card resolved: all spent attacks are usable again. */

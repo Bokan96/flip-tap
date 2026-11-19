@@ -33,6 +33,7 @@ export function beatCaption(step: StepResult, seat: Seat, names: [string, string
   if (!p.active) return line(N.fizzle);
   switch (c.kind) {
     case 'move': {
+      if (p.rootBlocked) return line(N.rooted);
       if (c.swap) return line(p.swapped ? N.swaps : N.noSwap);
       // Where this move alone took them (a swap later in the step moves them again).
       const dest = p.swapped ? rival.to : p.to;
@@ -63,6 +64,7 @@ export function beatCaption(step: StepResult, seat: Seat, names: [string, string
       }
       if (rival.hit === 'hit' || rival.hit === 'guard') {
         if (rival.dazed) parts.push(N.stuns);
+        if (rival.rootApplied) parts.push(N.roots);
         if (c.push && !samePos(rival.to, rival.final)) parts.push(c.push > 0 ? N.pushes : N.pulls);
         if (rival.hexBroken) parts.push(N.breaksHex);
         else if (rival.hexApplied) parts.push(N.hexes(rival.hex));
@@ -157,6 +159,7 @@ export function roundTips(result: RoundResult): string[] {
   if (steps.some((s) => s.traps.length > 0)) tips.push('trap');
   if (players.some((p) => p.hexApplied)) tips.push('hex');
   if (players.some((p) => p.dazed)) tips.push('stun');
+  if (players.some((p) => p.rootApplied)) tips.push('root');
   if (players.some((p) => !samePos(p.to, p.final))) tips.push('push');
   if (steps.some((s) => s.sequence)) tips.push('first');
   if (result.fatigue > 0) tips.push('fatigue');
