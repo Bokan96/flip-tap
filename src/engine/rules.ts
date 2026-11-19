@@ -30,8 +30,10 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  *      a stun on a round's last card carries into the next round in Classic too.
  *   3: a fighter knocked out by a step's hits can't be healed back that step (heal cards and
  *      drain); the Root effect.
+ *   4: a swapped fighter no longer turns: only a fighter who plays a move card does (revision 2's
+ *      swap rule undone).
  */
-export const RULES = { revision: 3 };
+export const RULES = { revision: 4 };
 
 export function cloneState(s: MatchState): MatchState {
   return {
@@ -465,10 +467,10 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const active = [0, 1].map((i) => !stunned[i] && ps[i].energy + cards[i].cost >= 0 && !isSpent(ps[i], cardIds[i]));
   const from = [{ ...ps[0].pos }, { ...ps[1].pos }];
 
-  // 1. Movement (simultaneous), then a swap if anyone played one. A fighter who played a move card
-  //    turns to face the other, and so does one who was swapped; one who was only leapt past keeps
-  //    facing the old way, so their attack can whiff (both turn to face each other again before the
-  //    next round).
+  // 1. Movement (simultaneous), then a swap if anyone played one. Only a fighter who played a move
+  //    card (a swap included) turns to face the other; one who was leapt past or swapped keeps
+  //    facing the old way until they play a move card themselves, so their attack can whiff (both
+  //    turn to face each other again before the next round).
   // A rooted fighter's move card doesn't move them (nor can they swap); it still turns them.
   const rootBlocked = [0, 1].map((i) => active[i] && cards[i].kind === 'move' && !!ps[i].rooted);
   for (const i of [0, 1] as const) {
@@ -481,7 +483,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const moved = [0, 1].map((i) => !samePos(from[i], ps[i].pos));
   const to = [{ ...ps[0].pos }, { ...ps[1].pos }];
   for (const i of [0, 1] as const) {
-    if ((active[i] && cards[i].kind === 'move') || swapped) ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
+    if (active[i] && cards[i].kind === 'move') ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
   }
 
   const hit: StepPlayerResult['hit'][] = ['none', 'none'];

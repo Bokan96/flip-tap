@@ -19,7 +19,7 @@ describe('rules version', () => {
   it('golden match: when this changes, the rules changed, so bump RULES.revision (and update this)', () => {
     // Volta vs Vex on the classic board: a Thunderclap stun on the last card (carried into the next
     // round, where it cancels an unaffordable Flare for free), both fighters attacking in the same
-    // step, a hex, and a swap that turns the swapped fighter.
+    // step, a hex, and a swap that leaves the swapped fighter facing away.
     let s: MatchState = createMatch({ fighterId: 'volta' }, { fighterId: 'vex' }, {}, 'classic');
     const rounds: [Plan, Plan][] = [
       [['focus', 'guard', 'voltaClap'], ['guard', 'focus', 'left']],
@@ -56,8 +56,8 @@ describe('rules version', () => {
           "95/35 e30/60 first:- ><",
           "95/35 e45/60 first:- ><",
           "55/10 e60/65 first:10 ><",
-          "55/10 e75/60 first:- <>",
-          "55/10 e75/75 first:- <>",
+          "55/10 e75/60 first:- >>",
+          "55/10 e75/75 first:- >>",
           "40/0 e90/50 first:10 <>",
         ],
       }

@@ -272,9 +272,9 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       c[1] = tc;
     }
     for (let i = 0; i < 2; i++) mv[i] = r[i] !== sr[i] || c[i] !== sc[i];
-    // A fighter who played a move card turns, and so does one who was swapped (same as rules.resolveStep).
-    if ((act[0] && card[0].isMove) || swapped) faceOne(0);
-    if ((act[1] && card[1].isMove) || swapped) faceOne(1);
+    // Only a fighter who played a move card turns, not one who was swapped (same as rules.resolveStep).
+    if (act[0] && card[0].isMove) faceOne(0);
+    if (act[1] && card[1].isMove) faceOne(1);
 
     // Both attack: the harder hit (as dealt now), then the fighter with less life, strikes first
     // (same as rules.strikeOrder).

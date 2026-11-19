@@ -1843,8 +1843,8 @@ export class BattleView {
             show(() => this.showArea([P[0].to, P[1].to], 'move-target'));
             await pause(300);
             view.pos = [{ ...P[0].to }, { ...P[1].to }];
-            // Both turn to face each other, the one swapped as well as the one who swapped.
-            place([0, 1]);
+            // Only the one who swapped turns: the other is left facing the old way.
+            place([i]);
             [0, 1].forEach((j) => {
               show(() => this.tokenAnim(j, 'hop'));
               float(j, STRINGS.swappedFloat, 'swap');

@@ -15,7 +15,7 @@ function duel(a: string, b: string, posA: Pos, posB: Pos, bonusA: string[] = [],
   return s;
 }
 
-describe('facing turns on your own move, or when swapped', () => {
+describe('facing turns only on your own move', () => {
   it('an attacker keeps facing when the enemy leaps past, so the attack whiffs', () => {
     // Cinder faces right at (1,1); Marin leaps from (1,2) over to (1,0) as Ember Jab goes off.
     const s = duel('cinder', 'marin', { r: 1, c: 1 }, { r: 1, c: 2 }, [], ['leapLeft']);
@@ -27,16 +27,24 @@ describe('facing turns on your own move, or when swapped', () => {
     expect(marin.facing).toBe(1); // the one who moved turned to face Cinder
   });
 
-  it('a swapped fighter turns to face the other, so its attack still lands', () => {
-    // Vex swaps places with Cinder: both end up facing each other, and Ember Jab hits Vex.
+  it('a swap leaves the other fighter facing away, so their attack whiffs', () => {
+    // Vex swaps places with Cinder; Cinder didn't play a move card, so Ember Jab goes the old way.
     const s = duel('cinder', 'vex', { r: 1, c: 1 }, { r: 1, c: 2 });
     const step = resolveRound(s, [['cinderJab', 'guard', 'focus'], ['vexSwap', 'guard', 'focus']]).steps[0];
     const [cinder, vex] = step.players;
     expect(cinder.final).toEqual({ r: 1, c: 2 });
     expect(vex.final).toEqual({ r: 1, c: 1 });
-    expect(cinder.facing).toBe(-1);
+    expect(cinder.facing).toBe(1);
+    expect(vex.hit).toBe('miss');
     expect(vex.facing).toBe(1);
-    expect(vex.hit).toBe('hit');
+  });
+
+  it('a swapped fighter turns back once they play a move card', () => {
+    const s = duel('cinder', 'vex', { r: 1, c: 1 }, { r: 1, c: 2 });
+    const r = resolveRound(s, [['guard', 'up', 'focus'], ['vexSwap', 'guard', 'focus']]);
+    expect(r.steps[0].players[0].facing).toBe(1); // swapped to (1,2), still facing right, away from Vex
+    expect(r.steps[1].players[0].final).toEqual({ r: 0, c: 2 });
+    expect(r.steps[1].players[0].facing).toBe(-1); // the step up turns Cinder toward Vex's column
   });
 
   it('the fighters face each other again before the next round', () => {

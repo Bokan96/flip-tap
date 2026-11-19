@@ -48,7 +48,7 @@ Every card has:
 | `planted` | Attack rule: can't be planned after a move card in the same round |
 | `healAtOrBelow` | Heal rule: only heals if the user's life is at or below this after the step's hits |
 | `trap` | Trap card: sets a trap with this damage on each square of its pattern |
-| `swap` | Move card: after movement, the two fighters trade places and both turn to face each other |
+| `swap` | Move card: after movement, the two fighters trade places; only the one who played it turns |
 | `forward` | Move card: the step's columns count toward the side the user faces |
 
 Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, **trap**, **reload**.
@@ -129,11 +129,11 @@ Patterns are written facing **right**: the left column is behind the user and th
 front, mirrored when the fighter faces left.
 
 **Facing (design choice):** both fighters turn to face each other's column at the start of every round.
-During a round a fighter turns when they play a move card (swaps included), and also when a swap
-moves them: afterwards they face the opponent's column. A fighter who doesn't move keeps facing the
-same way, even if the opponent leaps past them, so their attacks can go the wrong way and miss. Pushes
-and pulls never turn anyone. When both fighters share a column, a turning fighter keeps their previous
-facing.
+During a round a fighter turns only when they play a move card (swaps included): afterwards they face
+the opponent's column. A fighter who doesn't play one keeps facing the same way, even if the opponent
+leaps past them or swaps places with them, so their attacks can go the wrong way and miss until they
+play a move card themselves. Pushes and pulls never turn anyone. When both fighters share a column, a
+turning fighter keeps their previous facing.
 
 ## Round flow
 1. **Plan:** each player fills **3 slots** with cards from their deck.
@@ -156,8 +156,8 @@ previous step and can afford it at the start of this slot (`energy + cost >= 0`)
 does nothing.
 
 1. **Movement:** every active card's `step` is applied. Positions are clamped to the board. A fighter
-   whose active card is a move (a swap included), or who was swapped, then turns to face the opponent; the
-   other keeps their facing.
+   whose active card is a move (a swap included) then turns to face the opponent; the other keeps their
+   facing, even if they were swapped.
 2. **Hits:** for each player *X*, if the opponent's active card is an attack whose pattern (from the
    opponent's **new** position and facing) covers *X*'s **new** square, *X* is hit.
    - **Attack priority (design choice):** if *both* players attack in the same step, they don't
@@ -253,6 +253,7 @@ Bump it whenever a code change alters how a match plays out; the golden match in
 fails as a reminder. Revision 2: strike order by real damage (less life first on a tie), a swapped
 fighter turns, and a last-card stun carries into the next round in Classic. Revision 3: a fighter
 knocked out by a step's hits can't be healed back that step (heal cards, drain); the Root effect.
+Revision 4: a swapped fighter no longer turns (revision 2's swap rule undone).
 
 ## CPU opponent (original design)
 The AI enumerates every affordable 3-card plan it could make. It scores each plan against a sample of
