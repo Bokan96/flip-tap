@@ -14,7 +14,7 @@ export interface MatchupTable {
 
 export const MATCHUP_TABLES: MatchupTable[] = [
   {
-    "from": "2026-11-19",
+    "from": "2026-11-20",
     "band": [
       40,
       60
