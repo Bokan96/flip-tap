@@ -4,7 +4,7 @@ import { TWO_TAP } from '../content/variants';
 import { fastSimulate, type FastResult } from './fastsim';
 import { readPlayer, type PlayerModel, type RoundRecord } from './playerModel';
 import { Rng } from './rng';
-import { energyRecovery, firstCardCancelled, heldCard, heldPlays, playerTrace } from './rules';
+import { energyRecovery, firstCardCancelled, heldCard, heldPlays, isMover, playerTrace, stepsFirst } from './rules';
 import type { CardDef, MatchState, Plan, PlayerState, Seat } from './types';
 
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'expert';
@@ -143,7 +143,7 @@ export function enumeratePlans(player: PlayerState): Plan[] {
       const e = free ? energy : energy + card.cost;
       if (e < 0) continue;
       cur.push(id);
-      rec(Math.min(e, player.energyMax), reloaded || (!free && card.kind === 'reload'), moved || card.kind === 'move');
+      rec(Math.min(e, player.energyMax), reloaded || (!free && card.kind === 'reload'), moved || isMover(card));
       cur.pop();
     }
   };
@@ -155,7 +155,7 @@ export function enumeratePlans(player: PlayerState): Plan[] {
     rec(
       plays ? Math.min(player.energy + card.cost, player.energyMax) : player.energy,
       plays && card.kind === 'reload',
-      card.kind === 'move',
+      isMover(card),
     );
   } else rec(player.energy, false, false);
   if (!cancelled) return out;
@@ -238,8 +238,11 @@ function side(p: PlayerState): Side {
 // ---------- position: who can hit whom next round ----------
 
 interface Reach {
-  /** The deck's attacks: cost, damage (with any flat bonus), planted, and squares hit as (dr, dc) pairs facing right. */
-  attacks: { cost: number; damage: number; planted: boolean; cells: number[] }[];
+  /**
+   * The deck's attacks: cost, damage (with any flat bonus), planted, squares hit as (dr, dc) pairs
+   * facing right, and for a lunge the step it takes before striking (null otherwise).
+   */
+  attacks: { cost: number; damage: number; planted: boolean; cells: number[]; lunge: { dr: number; dc: number; forward: boolean } | null }[];
   /** Plain moves (no swaps): cost, step, and whether the step is relative to facing. */
   moves: { cost: number; dr: number; dc: number; forward: boolean }[];
 }
@@ -257,7 +260,13 @@ function reachOf(p: PlayerState): Reach {
   return {
     attacks: cards
       .filter((c) => c.kind === 'attack')
-      .map((c) => ({ cost: c.cost, damage: Math.max(0, (c.damage ?? 0) + p.mods.damageBonus), planted: !!c.planted, cells: cellsOf(c) })),
+      .map((c) => ({
+        cost: c.cost,
+        damage: Math.max(0, (c.damage ?? 0) + p.mods.damageBonus),
+        planted: !!c.planted,
+        cells: cellsOf(c),
+        lunge: stepsFirst(c) && c.step ? { dr: c.step[0], dc: c.step[1], forward: !!c.forward } : null,
+      })),
     moves: cards
       .filter((c) => c.kind === 'move' && !c.swap && c.step && (c.step[0] || c.step[1]))
       .map((c) => ({ cost: c.cost, dr: c.step![0], dc: c.step![1], forward: !!c.forward })),
@@ -286,12 +295,24 @@ function positionModel(state: MatchState) {
     for (let k = 0; k < cells.length; k += 2) if (r + cells[k] === vr && c + cells[k + 1] * f === vc) return true;
     return false;
   };
-  /** The strongest affordable hit from (r, c) facing f on a fighter at (vr, vc). */
+  /** The strongest affordable hit from (r, c) facing f on a fighter at (vr, vc); a lunge strikes from where it lands. */
   const best = (s: number, r: number, c: number, f: number, vr: number, vc: number, e: number, movedFirst: boolean) => {
     let d = 0;
     for (const a of reach[s].attacks) {
       if (e + a.cost < 0 || a.damage <= d || (movedFirst && a.planted)) continue;
-      if (hits(a.cells, r, c, f, vr, vc)) d = a.damage;
+      let ar = r;
+      let ac = c;
+      let af = f;
+      if (a.lunge) {
+        const nr = Math.min(rows - 1, Math.max(0, r + a.lunge.dr));
+        const nc = Math.min(cols - 1, Math.max(0, c + (a.lunge.forward ? a.lunge.dc * f : a.lunge.dc)));
+        if (open(nr, nc)) {
+          ar = nr;
+          ac = nc;
+        }
+        af = vc > ac ? 1 : vc < ac ? -1 : f; // a lunge turns its fighter toward the other
+      }
+      if (hits(a.cells, ar, ac, af, vr, vc)) d = a.damage;
     }
     return d;
   };

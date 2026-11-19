@@ -299,7 +299,12 @@ describe('content and match runner', () => {
     for (const c of Object.values(CARDS)) {
       if (c.push || c.stun || c.drain || c.sap || c.hex || c.vsMoved || c.recoil || c.planted) expect(c.kind, c.id).toBe('attack');
       if (c.counter) expect(['guard', 'move'], c.id).toContain(c.kind);
-      if (c.forward) expect(c.kind, c.id).toBe('move');
+      // A step (and its facing-relative `forward`) is on move cards, or on attacks that move.
+      if (c.forward) expect(c.step, c.id).toBeTruthy();
+      if (c.step) expect(['move', 'attack'], c.id).toContain(c.kind);
+      if (c.stepAfter) expect(c.kind === 'attack' && !!c.step, c.id).toBe(true);
+      // Planted means it can't follow a move, so a card that moves can't be planted.
+      if (c.planted) expect(c.step, c.id).toBeUndefined();
       if (c.healAtOrBelow !== undefined) expect(c.kind, c.id).toBe('heal');
       if (c.hex !== undefined) expect(c.hex, c.id).toBeGreaterThan(0);
     }

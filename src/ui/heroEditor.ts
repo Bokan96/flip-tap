@@ -323,8 +323,8 @@ function cardEditor(ui: Screens, d: CardDef, done: (saved: CardDef | null) => vo
     return `<div class="field"><span>${H().squares}</span><p class="note">${H().squaresHint}</p>
       <div class="sq-grid" style="--gc:${cols}">${cells}</div><div class="chips">${toggle('reach', H().reach, cols === 5)}</div></div>`;
   };
-  /** Where a move card goes: a 5×5 grid around the user. */
-  const destinationGrid = () => {
+  /** Where a move card (or an attack that moves) goes: a 5×5 grid around the user. Swaps are for move cards only. */
+  const destinationGrid = (swap = true) => {
     const [sr, sc] = d.step ?? [0, 0];
     const cells: string[] = [];
     for (let r = -2; r <= 2; r++)
@@ -335,7 +335,7 @@ function cardEditor(ui: Screens, d: CardDef, done: (saved: CardDef | null) => vo
       }
     return `<div class="field"><span>${H().destination}</span><p class="note">${H().destinationHint}</p>
       <div class="sq-grid" style="--gc:5">${cells.join('')}</div>
-      <div class="chips">${toggle('forward', H().forward, !!d.forward)}${toggle('swap', H().swap, !!d.swap)}</div></div>`;
+      <div class="chips">${toggle('forward', H().forward, !!d.forward)}${swap ? toggle('swap', H().swap, !!d.swap) : ''}</div></div>`;
   };
 
   const renderPreview = () => {
@@ -359,7 +359,20 @@ function cardEditor(ui: Screens, d: CardDef, done: (saved: CardDef | null) => vo
         stepper('hex', E.hex) +
         stepper('recoil', E.recoil) +
         stepper('vsMoved', H().vsMoved) +
-        `<div class="field"><span>${H().effects}</span><div class="chips">${toggle('stun', E.stun, !!d.stun)}${toggle('root', E.root, !!d.root)}${toggle('planted', E.planted, !!d.planted)}</div></div>`;
+        // A card that moves can't be planted (planted attacks can't follow a move).
+        `<div class="field"><span>${H().effects}</span><div class="chips">${toggle('stun', E.stun, !!d.stun)}${toggle('root', E.root, !!d.root)}${d.step ? '' : toggle('planted', E.planted, !!d.planted)}</div></div>` +
+        // An attack can also move: before the hit (a lunge) or after it (hit-and-run).
+        chipRow(
+          H().attackStep,
+          'stepMode',
+          [
+            { v: 'none', label: H().stepNone },
+            { v: 'first', label: H().stepFirst },
+            { v: 'after', label: H().stepAfter },
+          ],
+          !d.step ? 'none' : d.stepAfter ? 'after' : 'first',
+        ) +
+        (d.step ? destinationGrid(false) : '');
     } else if (d.kind === 'trap') body = squaresGrid() + stepper('trap', H().trapDamage);
     else if (d.kind === 'guard') body = stepper('guard', H().guard) + stepper('counter', E.counter) + stepper('blockSap', H().drainsEnergy);
     else if (d.kind === 'move') body = destinationGrid() + stepper('counter', E.counter);
@@ -401,6 +414,21 @@ function cardEditor(ui: Screens, d: CardDef, done: (saved: CardDef | null) => vo
       } else if (key === 'healBelow') {
         if (Number(v)) d.healAtOrBelow = Number(v);
         else delete d.healAtOrBelow;
+      } else if (key === 'stepMode') {
+        if (v === 'none') {
+          delete d.step;
+          delete d.forward;
+          delete d.stepAfter;
+        } else {
+          // A lunge starts one square forward, a hit-and-run one square back; the grid changes it.
+          if (!d.step) {
+            d.step = v === 'first' ? [0, 1] : [0, -1];
+            d.forward = true;
+          }
+          if (v === 'after') d.stepAfter = true;
+          else delete d.stepAfter;
+          delete d.planted;
+        }
       }
     } else if (tog) {
       const key = tog.dataset.toggle as 'stun' | 'root' | 'planted' | 'forward' | 'swap' | 'reach';

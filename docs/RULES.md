@@ -30,7 +30,8 @@ Every card has:
 | Field | Meaning |
 |---|---|
 | `cost` | Energy change applied to the user when it resolves (negative = spends, positive = gains) |
-| `step` | Movement `[rows, cols]` applied to the user (clamped to the board) |
+| `step` | Movement `[rows, cols]` applied to the user (clamped to the board). On a move card, or on an attack that moves (see below) |
+| `stepAfter` | Attack with a `step`: strike first, then step (hit-and-run). Without it the step comes first (lunge) |
 | `heal` | Life restored to the user |
 | `guard` | Damage absorbed this step if the user is hit |
 | `pattern` | 3×3 attack area centred on the user (only for attack and trap cards); rows may be 5 wide for a reach of 2 |
@@ -45,11 +46,11 @@ Every card has:
 | `hex` | Attack effect: if the hit deals damage, the target is **hexed** with this value (see below) |
 | `vsMoved` | Attack effect: extra damage against a target that moved this step |
 | `recoil` | Attack effect: the user loses this much life when the card resolves, hit or miss |
-| `planted` | Attack rule: can't be planned after a move card in the same round |
+| `planted` | Attack rule: can't be planned after a card that moves you (a move card, or an attack that moves) in the same round. A card that moves can't be planted |
 | `healAtOrBelow` | Heal rule: only heals if the user's life is at or below this after the step's hits |
 | `trap` | Trap card: sets a trap with this damage on each square of its pattern |
 | `swap` | Move card: after movement, the two fighters trade places; only the one who played it turns |
-| `forward` | Move card: the step's columns count toward the side the user faces |
+| `forward` | Move card or moving attack: the step's columns count toward the side the user faces |
 
 Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, **trap**, **reload**.
 
@@ -63,6 +64,17 @@ Card kinds: **move**, **guard**, **focus** (gain energy), **attack**, **heal**, 
   - A stun on the last step of a round **carries over**: the stunned player's first card next round does
     nothing (and costs nothing, so it may even be a card they couldn't afford). They see the stun while
     planning, and the planner marks that slot. (`BALANCE.carryDaze`; in Two-tap it cancels the locked-in card.)
+- **Attacks that move** come in two kinds, each with a badge on the card and its whole move drawn on
+  it (where you start, the blue square you step to, the red squares hit):
+  - **Lunge** (⇢): you step with the other moves of the step, turn to face the opponent, and strike
+    from the new square.
+  - **Hit and run** (↩): you strike from where you stand; once every hit and push of the step is done,
+    you step (from wherever a push left you) and turn to face the opponent. Square effects and traps
+    apply where you end up. Knocked out first, you don't step. This step doesn't count as moving for
+    the step's hits (Ambush, Slipstream).
+  - Both count as a move for planted attacks. Root stops the step but not the strike.
+  - Cards: Umbra's **Pounce** lunges; Zephyr's **Spiral** hits and runs; the bonus cards **Charge**
+    (lunge) and **Hit and Run**; and custom attack cards in the hero creator.
 - **Root** only works if the hit deals at least 1 damage after guard.
   - For the rest of the round the rooted player's move cards don't move them (and their own swap
     doesn't happen); the card is still paid for and still turns them to face the opponent. Pushes,
@@ -100,10 +112,10 @@ have none: their trap and hex damage is printed in full on their cards.
 |---|---|---|---|
 | Cinder | Kindle | Attacks deal +10 damage while Cinder is at 50 life or less | His big attacks have **recoil**; **Rekindle** (25 energy, +20 life) works only at 50 life or less |
 | Marin | Riptide | Pushes and pulls move the target 1 extra square | **Tidal Lure** pulls from 2 squares away; **Geyser** shoves foes in his own column |
-| Zephyr | Slipstream | Takes 10 less damage on steps where Zephyr moved | **Gale Dash** / **Sky Lunge**: costly forward moves with a counter |
+| Zephyr | Slipstream | Takes 10 less damage on steps where Zephyr moved | **Gale Dash** / **Sky Lunge**: costly forward moves with a counter; **Spiral** hits all around, then steps back |
 | Basalt | Bedrock | Can't be pushed or pulled | **Planted** attacks: cheap and strong, but not after a move |
 | Volta | Capacitor | Regains 10 extra energy every round | **Sap** attacks: weak, wide hits that drain energy |
-| Umbra | Ambush | Attacks deal +5 damage to a target that moved this step | **Pounce** / **Nightfall** deal much more to a target that moved |
+| Umbra | Ambush | Attacks deal +5 damage to a target that moved this step | **Pounce** (a lunge) / **Nightfall** deal much more to a target that moved |
 | Ferro | Magazine | Each attack fires once, then is **spent** until Ferro plays his **Reload** card | Reload |
 | Briar | — | — | Cheap traps (attacks can break them): Snare 35, Thorn Ring 25 |
 | Vex | — | — | **Hex** attacks (a hex worth 20) and Mirror Step (swap) |
@@ -155,9 +167,9 @@ Let *A* and *B* be the two players. A card is **active** if its owner was not st
 previous step and can afford it at the start of this slot (`energy + cost >= 0`). An inactive card
 does nothing.
 
-1. **Movement:** every active card's `step` is applied. Positions are clamped to the board. A fighter
-   whose active card is a move (a swap included) then turns to face the opponent; the other keeps their
-   facing, even if they were swapped.
+1. **Movement:** every active move card's or lunge's `step` is applied. Positions are clamped to the board. A fighter
+   whose active card is a move (a swap included) or a lunge then turns to face the opponent; the other
+   keeps their facing, even if they were swapped.
 2. **Hits:** for each player *X*, if the opponent's active card is an attack whose pattern (from the
    opponent's **new** position and facing) covers *X*'s **new** square, *X* is hit.
    - **Attack priority (design choice):** if *both* players attack in the same step, they don't
@@ -177,9 +189,11 @@ does nothing.
    A fighter the step's hits (and counters) bring to 0 is out: neither their heal card nor their
    drain brings them back that step.
 4. **Push and pull:** queued displacements happen at the same time. Nobody turns.
+5. **Hit and run:** each active hit-and-run of a fighter still standing and not rooted steps (both at
+   once), and that fighter turns to face the opponent.
    Then, in order: attacks **break** the enemy traps they covered, **square effects** (thorns,
    springs), **traps** springing, and finally new **traps** being set.
-5. **KO check:** if exactly one fighter has 0 Life, the other wins. If both reach 0 on the same step,
+6. **KO check:** if exactly one fighter has 0 Life, the other wins. If both reach 0 on the same step,
    the match is a **draw**. A KO ends the round immediately, and the remaining slots don't resolve.
 
 Movement resolves before attacks, so dodging is the core skill. A fighter that steps out of the
@@ -253,7 +267,8 @@ Bump it whenever a code change alters how a match plays out; the golden match in
 fails as a reminder. Revision 2: strike order by real damage (less life first on a tie), a swapped
 fighter turns, and a last-card stun carries into the next round in Classic. Revision 3: a fighter
 knocked out by a step's hits can't be healed back that step (heal cards, drain); the Root effect.
-Revision 4: a swapped fighter no longer turns (revision 2's swap rule undone).
+Revision 4: a swapped fighter no longer turns (revision 2's swap rule undone). Revision 5: attacks
+that move (lunge, hit-and-run).
 
 ## CPU opponent (original design)
 The AI enumerates every affordable 3-card plan it could make. It scores each plan against a sample of

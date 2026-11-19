@@ -22,40 +22,40 @@ export const MATCHUP_TABLES: MatchupTable[] = [
     "scores": {
       "cinder": {
         "marin": 48,
-        "zephyr": 51,
+        "zephyr": 58,
         "basalt": 45,
         "volta": 59,
-        "umbra": 52,
+        "umbra": 54,
         "ferro": 44,
         "briar": 50,
         "vex": 41
       },
       "marin": {
         "cinder": 52,
-        "zephyr": 56,
+        "zephyr": 46,
         "basalt": 36,
         "volta": 42,
-        "umbra": 38,
+        "umbra": 53,
         "ferro": 63,
         "briar": 58,
         "vex": 59
       },
       "zephyr": {
-        "cinder": 49,
-        "marin": 44,
-        "basalt": 51,
-        "volta": 51,
-        "umbra": 45,
-        "ferro": 43,
-        "briar": 46,
-        "vex": 63
+        "cinder": 43,
+        "marin": 54,
+        "basalt": 49,
+        "volta": 43,
+        "umbra": 55,
+        "ferro": 44,
+        "briar": 48,
+        "vex": 49
       },
       "basalt": {
         "cinder": 55,
         "marin": 64,
-        "zephyr": 49,
+        "zephyr": 51,
         "volta": 42,
-        "umbra": 48,
+        "umbra": 44,
         "ferro": 41,
         "briar": 48,
         "vex": 50
@@ -63,50 +63,50 @@ export const MATCHUP_TABLES: MatchupTable[] = [
       "volta": {
         "cinder": 41,
         "marin": 58,
-        "zephyr": 49,
+        "zephyr": 57,
         "basalt": 58,
-        "umbra": 51,
+        "umbra": 44,
         "ferro": 45,
         "briar": 48,
         "vex": 60
       },
       "umbra": {
-        "cinder": 48,
-        "marin": 63,
-        "zephyr": 55,
-        "basalt": 53,
-        "volta": 49,
-        "ferro": 53,
-        "briar": 42,
-        "vex": 44
+        "cinder": 46,
+        "marin": 47,
+        "zephyr": 45,
+        "basalt": 56,
+        "volta": 56,
+        "ferro": 59,
+        "briar": 37,
+        "vex": 51
       },
       "ferro": {
         "cinder": 56,
         "marin": 38,
-        "zephyr": 58,
+        "zephyr": 56,
         "basalt": 59,
         "volta": 55,
-        "umbra": 47,
+        "umbra": 41,
         "briar": 50,
         "vex": 44
       },
       "briar": {
         "cinder": 50,
         "marin": 43,
-        "zephyr": 54,
+        "zephyr": 53,
         "basalt": 53,
         "volta": 52,
-        "umbra": 58,
+        "umbra": 63,
         "ferro": 50,
         "vex": 55
       },
       "vex": {
         "cinder": 59,
         "marin": 41,
-        "zephyr": 38,
+        "zephyr": 51,
         "basalt": 50,
         "volta": 40,
-        "umbra": 56,
+        "umbra": 49,
         "ferro": 56,
         "briar": 45
       }

@@ -38,6 +38,10 @@ interface FastCard {
   swap: boolean;
   /** A move card (swap included): its player turns to face the other after moving. */
   isMove: boolean;
+  /** Moves with the step's moves and turns: a move card or a lunge (same as rules.stepsFirst). */
+  first: boolean;
+  /** An attack that steps after the hits and pushes (same as rules.stepsAfter). */
+  after: boolean;
   /** Guard: energy an attacker it blocks loses. */
   blockSap: number;
   /** Flattened [dr, dc] pairs, facing right. */
@@ -86,6 +90,8 @@ export function fastCard(id: string): FastCard {
       trap: c.kind === 'trap' ? (c.trap ?? 0) : 0,
       swap: !!c.swap,
       isMove: c.kind === 'move',
+      first: c.kind === 'move' || (isAttack && !!c.step && !c.stepAfter),
+      after: isAttack && !!c.step && !!c.stepAfter,
       blockSap: c.blockSap ?? 0,
       cells,
     };
@@ -249,8 +255,8 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       struck[i] = false;
       sr[i] = r[i];
       sc[i] = c[i];
-      // A rooted fighter's move card doesn't move them (same as rules.resolveStep).
-      if (act[i] && (card[i].dr || card[i].dc) && !rt[i]) {
+      // Move cards and lunges move now; a rooted fighter's don't (same as rules.resolveStep).
+      if (act[i] && card[i].first && (card[i].dr || card[i].dc) && !rt[i]) {
         const nr = clamp(r[i] + card[i].dr, 0, rows - 1);
         const ncc = clamp(c[i] + (card[i].forward ? card[i].dc * f[i] : card[i].dc), 0, cols - 1);
         if (open(nr, ncc)) {
@@ -272,9 +278,9 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       c[1] = tc;
     }
     for (let i = 0; i < 2; i++) mv[i] = r[i] !== sr[i] || c[i] !== sc[i];
-    // Only a fighter who played a move card turns, not one who was swapped (same as rules.resolveStep).
-    if (act[0] && card[0].isMove) faceOne(0);
-    if (act[1] && card[1].isMove) faceOne(1);
+    // Only a fighter who played a move card (or lunge) turns, not one who was swapped (same as rules.resolveStep).
+    if (act[0] && card[0].first) faceOne(0);
+    if (act[1] && card[1].first) faceOne(1);
 
     // Both attack: the harder hit (as dealt now), then the fighter with less life, strikes first
     // (same as rules.strikeOrder).
@@ -351,6 +357,22 @@ export function fastSimulate(state: MatchState, plan0: Plan, plan1: Plan): FastR
       }
       c[0] = nc[0];
       c[1] = nc[1];
+    }
+    // Hit-and-run: after the hits and pushes, step away and turn (same as rules.resolveStep).
+    if ((act[0] && card[0].after) || (act[1] && card[1].after)) {
+      const go = [false, false];
+      for (let i = 0; i < 2; i++) {
+        if (!act[i] || !card[i].after || life[i] <= 0 || rt[i]) continue;
+        go[i] = true;
+        const nr = clamp(r[i] + card[i].dr, 0, rows - 1);
+        const ncc = clamp(c[i] + (card[i].forward ? card[i].dc * f[i] : card[i].dc), 0, cols - 1);
+        if (open(nr, ncc)) {
+          r[i] = nr;
+          c[i] = ncc;
+        }
+      }
+      if (go[0]) faceOne(0);
+      if (go[1]) faceOne(1);
     }
     // Attacks break the enemy traps they cover (same as rules.resolveStep).
     if (traps.length) {

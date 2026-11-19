@@ -63,6 +63,13 @@ export function cleanName(raw: unknown, max = NAME_MAX): string {
     .slice(0, max);
 }
 
+/** A step of up to 2 squares each way, or null for none. */
+function cleanStep(raw: unknown): [number, number] | null {
+  const s = Array.isArray(raw) ? raw : [];
+  const dr = Math.max(-2, Math.min(2, Math.round(Number(s[0]) || 0)));
+  const dc = Math.max(-2, Math.min(2, Math.round(Number(s[1]) || 0)));
+  return dr || dc ? [dr, dc] : null;
+}
 const step5 = (v: unknown, [lo, hi]: readonly number[]) => Math.min(hi, Math.max(lo, Math.round(Number(v) / 5) * 5 || 0));
 
 /** 3 rows of 3 (or 5, a reach of 2) '0'/'1', with at least one square. */
@@ -99,7 +106,15 @@ export function cleanCard(input: unknown): CardDef | null {
       if (raw.root) c.root = true;
       if (DRAIN_STEPS.includes(Number(raw.drain))) c.drain = Number(raw.drain);
       (['sap', 'hex', 'recoil', 'vsMoved'] as const).forEach(optional);
-      if (raw.planted) c.planted = true;
+      // An attack can move too: first (a lunge) or after the hit (hit-and-run, `stepAfter`).
+      const step = cleanStep(raw.step);
+      if (step) {
+        c.step = step;
+        if (raw.forward) c.forward = true;
+        if (raw.stepAfter) c.stepAfter = true;
+      }
+      // Planted means it can't follow a move, so a card that moves can't be planted.
+      if (raw.planted && !step) c.planted = true;
       break;
     }
     case 'trap':
@@ -115,11 +130,9 @@ export function cleanCard(input: unknown): CardDef | null {
     case 'move': {
       if (raw.swap) c.swap = true;
       else {
-        const s = Array.isArray(raw.step) ? raw.step : [];
-        const dr = Math.max(-2, Math.min(2, Math.round(Number(s[0]) || 0)));
-        const dc = Math.max(-2, Math.min(2, Math.round(Number(s[1]) || 0)));
-        if (!dr && !dc) return null;
-        c.step = [dr, dc];
+        const step = cleanStep(raw.step);
+        if (!step) return null;
+        c.step = step;
         if (raw.forward) c.forward = true;
       }
       optional('counter');

@@ -30,6 +30,40 @@ function attackGrid(pattern: [string, string, string], facing: 1 | -1, cls = 'on
   return `<span class="mini-grid ${facing === -1 ? 'face-l' : 'face-r'}${wide}">${cells}</span>`;
 }
 
+/**
+ * An attack that moves, as one picture: where you start (outlined, with your facing), where you step
+ * (blue), and the squares hit (red): from the new square for a lunge, from the start for a
+ * hit-and-run. At least 3×3 around the start; widens for longer steps and reach.
+ */
+function hybridGrid(c: CardDef, facing: 1 | -1): string {
+  const [dr, dc0] = c.step!;
+  const dest = [dr, c.forward ? dc0 * facing : dc0];
+  const from = c.stepAfter ? [0, 0] : dest;
+  const hits: number[][] = [];
+  c.pattern!.forEach((row, i) => {
+    const half = (row.length - 1) / 2;
+    for (let j = 0; j < row.length; j++) if (row[j] === '1') hits.push([from[0] + i - 1, from[1] + (j - half) * facing]);
+  });
+  const all = [[-1, -1], [1, 1], dest, ...hits];
+  const minR = Math.min(...all.map((p) => p[0]));
+  const maxR = Math.max(...all.map((p) => p[0]));
+  const minC = Math.min(...all.map((p) => p[1]));
+  const maxC = Math.max(...all.map((p) => p[1]));
+  const cols = maxC - minC + 1;
+  let cells = '';
+  for (let r = minR; r <= maxR; r++) {
+    for (let col = minC; col <= maxC; col++) {
+      const cls = [
+        r === 0 && col === 0 ? 'me' : '',
+        r === dest[0] && col === dest[1] ? 'move' : '',
+        hits.some((h) => h[0] === r && h[1] === col) ? 'on' : '',
+      ].filter(Boolean);
+      cells += `<i class="${cls.join(' ')}"></i>`;
+    }
+  }
+  return `<span class="mini-grid hybrid ${facing === -1 ? 'face-l' : 'face-r'}${cols > 3 ? ' wide' : ''}" style="--gc:${cols}">${cells}</span>`;
+}
+
 /** Grid centred on the user with the destination square marked; widens for multi-square steps. */
 function moveGrid([dr, dc]: [number, number]): string {
   const halfR = Math.max(1, Math.abs(dr));
@@ -66,6 +100,7 @@ export function cardEffects(id: string | CardDef): Effect[] {
   if (c.recoil) out.push('recoil');
   if (c.kind === 'trap') out.push('trap');
   if (c.swap) out.push('swap');
+  if (c.kind === 'attack' && c.step) out.push(c.stepAfter ? 'hitrun' : 'lunge');
   return out;
 }
 
@@ -88,7 +123,7 @@ export function cardHtml(id: string | CardDef, opts: CardOpts = {}): string {
   let art = '';
   let stat = '';
   if (c.kind === 'attack' && c.pattern) {
-    art = attackGrid(c.pattern, opts.facing ?? 1);
+    art = c.step ? hybridGrid(c, opts.facing ?? 1) : attackGrid(c.pattern, opts.facing ?? 1);
     // A hex shows its full extra damage next to the hit's own.
     const hex = c.hex ? ` <span class="hexv" title="${STRINGS.effectNames.hex}">${STRINGS.effectIcons.hex} +${c.hex}</span>` : '';
     stat = `<span class="stat dmg" title="${STRINGS.cardTips.damage}">⚔ ${c.damage}${hex}</span>`;
@@ -151,6 +186,7 @@ export function describeCard(id: string | CardDef): string {
   if (c.push && c.push < 0) parts.push(STRINGS.descPull(-c.push));
   if (c.stun) parts.push(STRINGS.descStun);
   if (c.root) parts.push(STRINGS.descRoot);
+  if (c.kind === 'attack' && c.step) parts.push(c.stepAfter ? STRINGS.descHitRun : STRINGS.descLunge);
   if (c.counter) parts.push(STRINGS.descCounter(c.counter));
   if (c.drain) parts.push(STRINGS.descDrain(c.drain));
   if (c.sap) parts.push(STRINGS.descSap(c.sap));

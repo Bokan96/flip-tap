@@ -32,8 +32,9 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
  *      drain); the Root effect.
  *   4: a swapped fighter no longer turns: only a fighter who plays a move card does (revision 2's
  *      swap rule undone).
+ *   5: attacks that move: a lunge steps before the attacks, a hit-and-run after the hits and pushes.
  */
-export const RULES = { revision: 4 };
+export const RULES = { revision: 5 };
 
 export function cloneState(s: MatchState): MatchState {
   return {
@@ -208,14 +209,29 @@ export function ammoOk(player: PlayerState, plan: Plan): boolean {
   return true;
 }
 
-/** Planted attacks can't come after a move card in the same plan. */
+/** A move card, or an attack that steps before it strikes (a lunge): it moves with the step's moves. */
+export function stepsFirst(c: CardDef): boolean {
+  return c.kind === 'move' || (c.kind === 'attack' && !!c.step && !c.stepAfter);
+}
+
+/** An attack that strikes first and steps afterwards (hit-and-run), once the hits and pushes are done. */
+export function stepsAfter(c: CardDef): boolean {
+  return c.kind === 'attack' && !!c.step && !!c.stepAfter;
+}
+
+/** Any card that moves its player: move cards and attacks that move. */
+export function isMover(c: CardDef): boolean {
+  return stepsFirst(c) || stepsAfter(c);
+}
+
+/** Planted attacks can't come after a card that moves you (a move card, or an attack that moves) in the same plan. */
 export function plantedOk(plan: Plan): boolean {
   let moved = false;
   for (const id of plan) {
     if (!id) continue;
     const c = getCard(id);
-    if (c.kind === 'move') moved = true;
-    else if (c.planted && moved) return false;
+    if (c.planted && moved) return false;
+    if (isMover(c)) moved = true;
   }
   return true;
 }
@@ -236,9 +252,16 @@ export function threatArea(state: MatchState, seat: Seat): { now: Pos[]; reach: 
   const key = (q: Pos) => q.r * arena.cols + q.c;
   const now = new Map<number, Pos>();
   const reach = new Map<number, Pos>();
+  /** Where attack `a` strikes from, starting at `pos` facing `facing`: a lunge's landing square, turned. */
+  const origin = (a: CardDef, pos: Pos, facing: Facing): [Pos, Facing] => {
+    if (!stepsFirst(a)) return [pos, facing];
+    const land = movePos(arena, pos, a, facing);
+    return [land, faceTowards(land, foe.pos, facing)];
+  };
   for (const a of attacks) {
     if (p.energy + a.cost < 0) continue;
-    for (const q of attackArea(arena, a, p.pos, p.facing)) now.set(key(q), q);
+    const [from, face] = origin(a, p.pos, p.facing);
+    for (const q of attackArea(arena, a, from, face)) now.set(key(q), q);
   }
   for (const m of cards) {
     if (m.kind !== 'move' || m.swap || p.energy + m.cost < 0) continue;
@@ -247,7 +270,8 @@ export function threatArea(state: MatchState, seat: Seat): { now: Pos[]; reach: 
     const facing = faceTowards(to, foe.pos, p.facing);
     for (const a of attacks) {
       if (a.planted || p.energy + m.cost + a.cost < 0) continue;
-      for (const q of attackArea(arena, a, to, facing)) if (!now.has(key(q))) reach.set(key(q), q);
+      const [from, face] = origin(a, to, facing);
+      for (const q of attackArea(arena, a, from, face)) if (!now.has(key(q))) reach.set(key(q), q);
     }
   }
   return { now: [...now.values()], reach: [...reach.values()] };
@@ -471,10 +495,11 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   //    card (a swap included) turns to face the other; one who was leapt past or swapped keeps
   //    facing the old way until they play a move card themselves, so their attack can whiff (both
   //    turn to face each other again before the next round).
-  // A rooted fighter's move card doesn't move them (nor can they swap); it still turns them.
-  const rootBlocked = [0, 1].map((i) => active[i] && cards[i].kind === 'move' && !!ps[i].rooted);
+  //    Move cards and lunges (attacks that step first) move now; a hit-and-run steps after the hits.
+  // A rooted fighter's move card (or lunge) doesn't move them (nor can they swap); it still turns them.
+  const rootBlocked = [0, 1].map((i) => active[i] && stepsFirst(cards[i]) && !!ps[i].rooted);
   for (const i of [0, 1] as const) {
-    if (active[i] && !rootBlocked[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i], ps[i].facing);
+    if (active[i] && stepsFirst(cards[i]) && !rootBlocked[i]) ps[i].pos = movePos(state.arena, ps[i].pos, cards[i], ps[i].facing);
   }
   const swappers = [0, 1].filter((i) => active[i] && cards[i].swap && !rootBlocked[i]);
   // An immovable fighter can't be swapped by the other side (but can swap itself).
@@ -483,7 +508,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
   const moved = [0, 1].map((i) => !samePos(from[i], ps[i].pos));
   const to = [{ ...ps[0].pos }, { ...ps[1].pos }];
   for (const i of [0, 1] as const) {
-    if (active[i] && cards[i].kind === 'move') ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
+    if (active[i] && stepsFirst(cards[i])) ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
   }
 
   const hit: StepPlayerResult['hit'][] = ['none', 'none'];
@@ -619,6 +644,19 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     }
   }
 
+  // 5. Hit-and-run: after the hits and pushes, an attack that steps afterwards takes its player away
+  //    (both at once), and they turn to face the other. Not once knocked out, nor if rooted (a root
+  //    from this step's hit counts). This step doesn't count as moving for this step's hits.
+  const afterPush = [{ ...ps[0].pos }, { ...ps[1].pos }];
+  const retreats = [0, 1].filter((i) => active[i] && stepsAfter(cards[i]) && ps[i].life > 0);
+  for (const i of retreats) {
+    if (ps[i].rooted) rootBlocked[i] = true;
+    else ps[i].pos = movePos(state.arena, ps[i].pos, cards[i], ps[i].facing);
+  }
+  for (const i of retreats) {
+    if (!rootBlocked[i]) ps[i].facing = faceTowards(ps[i].pos, ps[i === 0 ? 1 : 0].pos, ps[i].facing);
+  }
+
   // Attacks break the enemy traps they cover, before any trap can spring this step.
   const brokenTraps: number[] = [];
   for (const o of [0, 1] as const) {
@@ -684,6 +722,7 @@ export function resolveStep(state: MatchState, cardIds: [string, string], slot: 
     from: from[i],
     to: to[i],
     final: { ...ps[i].pos },
+    afterPush: afterPush[i],
     moved: moved[i],
     facing: ps[i].facing,
     area: areas[i],

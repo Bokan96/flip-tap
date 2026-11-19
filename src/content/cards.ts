@@ -37,6 +37,8 @@ const bonus: CardDef[] = [
   { id: 'ignite', name: 'Evil Eye', kind: 'attack', cost: -15, damage: 10, pattern: ['000', '011', '000'], hex: 10, bonus: true, fx: 'beam' },
   { id: 'phaseStep', name: 'Phase Step', kind: 'move', cost: -15, swap: true, bonus: true },
   { id: 'entangle', name: 'Entangle', kind: 'attack', cost: -20, damage: 15, pattern: ['001', '011', '001'], root: true, bonus: true, fx: 'wave' },
+  { id: 'charge', name: 'Charge', kind: 'attack', cost: -20, damage: 20, pattern: ['000', '011', '000'], step: [0, 1], forward: true, bonus: true, fx: 'slash' },
+  { id: 'hitAndRun', name: 'Hit and Run', kind: 'attack', cost: -15, damage: 15, pattern: ['000', '011', '000'], step: [0, -1], forward: true, stepAfter: true, bonus: true, fx: 'slash' },
 ];
 
 const signature: CardDef[] = [
@@ -55,7 +57,8 @@ const signature: CardDef[] = [
 
   // Zephyr: costly dashes that punish an attack he steps into
   { id: 'zephyrGust', name: 'Gust', kind: 'attack', cost: -20, damage: 20, pattern: ['010', '111', '010'], push: 1, fx: 'wave' },
-  { id: 'zephyrSpiral', name: 'Spiral', kind: 'attack', cost: -20, damage: 15, pattern: ['111', '111', '111'] },
+  // Hit-and-run: the burst all around, then a step back.
+  { id: 'zephyrSpiral', name: 'Spiral', kind: 'attack', cost: -20, damage: 15, pattern: ['111', '111', '111'], step: [0, -1], forward: true, stepAfter: true },
   { id: 'zephyrEdge', name: 'Sky Edge', kind: 'attack', cost: -50, damage: 45, pattern: ['001', '011', '001'], fx: 'slash' },
   { id: 'zephyrDash', name: 'Gale Dash', kind: 'move', cost: -15, step: [0, 1], forward: true, counter: 20 },
   { id: 'zephyrLunge', name: 'Sky Lunge', kind: 'move', cost: -20, step: [0, 2], forward: true, counter: 30 },
@@ -93,7 +96,8 @@ const signature: CardDef[] = [
 
   // Umbra: flanking shapes that hit hardest when the rival moves
   { id: 'umbraClaw', name: 'Night Claw', kind: 'attack', cost: -20, damage: 25, pattern: ['001', '010', '001'], drain: 25 },
-  { id: 'umbraPounce', name: 'Pounce', kind: 'attack', cost: -15, damage: 10, pattern: ['011', '011', '011'], vsMoved: 5, fx: 'slash' },
+  // Lunge: a step forward, then the strike from there.
+  { id: 'umbraPounce', name: 'Pounce', kind: 'attack', cost: -20, damage: 10, pattern: ['011', '011', '011'], vsMoved: 5, step: [0, 1], forward: true, fx: 'slash' },
   { id: 'umbraNightfall', name: 'Nightfall', kind: 'attack', cost: -35, damage: 20, pattern: ['111', '101', '111'], vsMoved: 25, fx: 'burst' },
   { id: 'umbraGrasp', name: 'Void Grasp', kind: 'attack', cost: -40, damage: 35, pattern: ['011', '010', '011'], push: -1 },
 ];

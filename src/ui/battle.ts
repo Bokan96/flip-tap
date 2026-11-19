@@ -13,6 +13,7 @@ import {
   fatigueDamage,
   firstCardCancelled,
   heldCard,
+  isMover,
   isSpent,
   faceTowards,
   movePos,
@@ -22,6 +23,8 @@ import {
   playerTrace,
   resolveRound,
   samePos,
+  stepsAfter,
+  stepsFirst,
   stepsPerRound,
   threatArea,
 } from '../engine/rules';
@@ -1283,8 +1286,8 @@ export class BattleView {
       // A first card a carried stun cancels doesn't move anyone.
       const c = id && !(k === 0 && cancelled) ? getCard(id) : null;
       if (c) pos = movePos(this.state.arena, pos, c, facing);
-      // Only your own move cards turn you (assuming the opponent stays put).
-      if (c?.kind === 'move') facing = faceTowards(pos, them.pos, facing);
+      // Only your own cards that move you (move cards, moving attacks) turn you (assuming the opponent stays put).
+      if (c && isMover(c)) facing = faceTowards(pos, them.pos, facing);
       out.pos.push({ ...pos });
       out.facing.push(facing);
     }
@@ -1306,14 +1309,21 @@ export class BattleView {
     const marks: { pos: Pos; attack: boolean }[] = [];
     let prev = me.pos;
     const line = [me.pos];
-    this.plan.forEach((id, i) => {
-      if (!id) return;
-      const pos = path.pos[i];
-      const attack = getCard(id).kind === 'attack';
-      if (samePos(pos, prev) && !attack) return;
+    const mark = (pos: Pos, attack: boolean) => {
       const same = marks.find((m) => samePos(m.pos, pos));
       if (same) same.attack ||= attack;
       else marks.push({ pos, attack });
+    };
+    this.plan.forEach((id, i) => {
+      if (!id) return;
+      const c = getCard(id);
+      const pos = path.pos[i];
+      // A hit-and-run strikes where it stands, then steps: the attack marks the square before.
+      const after = c.kind === 'attack' && stepsAfter(c);
+      if (after) mark(prev, true);
+      const attackHere = c.kind === 'attack' && !after;
+      if (samePos(pos, prev) && !attackHere) return;
+      mark(pos, attackHere);
       if (!samePos(pos, line[line.length - 1])) line.push(pos);
       prev = pos;
     });
@@ -1348,12 +1358,16 @@ export class BattleView {
     const facingBefore = slot === 0 ? me.facing : path.facing[slot - 1];
     const c = getCard(card);
     const pos = movePos(this.state.arena, before, c, facingBefore);
-    // Only a move card turns you; any other card aims the way you already face.
-    const facing = c.kind === 'move' ? faceTowards(pos, them.pos, facingBefore) : facingBefore;
+    // Only a card that moves you first (a move card, a lunge) turns you before it acts; anything else
+    // aims the way you already face. A hit-and-run strikes from where you stand, then steps.
+    const facing = stepsFirst(c) ? faceTowards(pos, them.pos, facingBefore) : facingBefore;
+    const strikeFrom = stepsAfter(c) ? before : pos;
     // Same colour language as the cards: red = where an attack hits, blue = where a move lands.
     const cls = c.kind === 'attack' ? 'preview-atk' : c.kind === 'trap' ? 'preview-trap' : c.kind === 'move' ? 'preview-move' : 'preview';
-    const squares = c.kind === 'attack' || c.kind === 'trap' ? attackArea(this.state.arena, c, pos, facing) : [pos];
+    const squares = c.kind === 'attack' || c.kind === 'trap' ? attackArea(this.state.arena, c, strikeFrom, facing) : [pos];
     this.showArea(squares, cls);
+    // An attack that moves also shows where it takes you.
+    if (c.kind === 'attack' && c.step) this.showArea([pos], 'preview-move');
   }
 
   /**
@@ -1774,14 +1788,15 @@ export class BattleView {
         sfx('thud');
       }
 
-      // A push or pull lands just after the hit.
-      if (!samePos(view.pos[d], pd.final)) {
+      // A push or pull lands just after the hit (where the push left them: a hit-and-run step comes later).
+      const pushedTo = pd.afterPush ?? pd.final;
+      if (!samePos(view.pos[d], pushedTo)) {
         await pause(300);
         show(() => {
           this.tokenAnim(d, 'skid');
           this.fx.particles(view.pos[d], themeColor('--fx-dust'), 6, 'dust');
         });
-        view.pos[d] = { ...pd.final };
+        view.pos[d] = { ...pushedTo };
         place();
         sfx('thud');
       }
@@ -1792,12 +1807,53 @@ export class BattleView {
       const c = getCard(P[i].cardId);
       return c.kind === 'move' ? (c.swap ? 1.5 : 1) : c.kind === 'attack' ? 3 : c.kind === 'heal' || c.kind === 'trap' ? 4 : 2;
     };
-    const order = [0, 1].sort((x, y) => phase(x) - phase(y) || (step.sequence ? step.sequence.indexOf(x as Seat) - step.sequence.indexOf(y as Seat) : x - y));
-    const last = only === undefined ? order.length - 1 : order.indexOf(only);
+    /*
+     * Each card is one beat, except an attack that moves, which is two: a lunge steps with the
+     * moves (its strike comes with the attacks), a hit-and-run steps away after every strike and
+     * push. The card flips and is paid for on its first beat and stamped on its last.
+     */
+    type Beat = { i: number; part: 'card' | 'lunge' | 'retreat'; phase: number };
+    const beats: Beat[] = [];
+    for (const i of [0, 1]) {
+      const c = getCard(P[i].cardId);
+      const live = P[i].active && !P[i].stunned && c.kind === 'attack';
+      if (live && stepsFirst(c)) beats.push({ i, part: 'lunge', phase: 1 });
+      beats.push({ i, part: 'card', phase: phase(i) });
+      if (live && stepsAfter(c)) beats.push({ i, part: 'retreat', phase: 3.5 });
+    }
+    const seq = (i: number) => (step.sequence ? step.sequence.indexOf(i as Seat) : i);
+    beats.sort((x, y) => x.phase - y.phase || seq(x.i) - seq(y.i));
+    const last = only === undefined ? beats.length - 1 : beats.map((b) => b.i).lastIndexOf(only);
+    const opened = new Set<number>();
 
-    for (const [k, i] of order.entries()) {
+    /** A fighter steps to `dest` (blue target square, a hop, dust), turning to face the other. */
+    const stepTo = async (i: number, dest: Pos) => {
+      if (samePos(dest, view.pos[i])) return place([i]); // a move that goes nowhere still turns its fighter
+      show(() => this.showArea([dest], 'move-target'));
+      await pause(300);
+      view.pos[i] = { ...dest };
+      place([i]);
+      show(() => {
+        this.tokenAnim(i, 'hop');
+        setTimeout(() => this.fx.particles(dest, themeColor('--fx-dust'), 6, 'dust'), ms(420));
+      });
+      sfx('step');
+    };
+    /** Rooted: the card's step doesn't happen (the fighter still turns). */
+    const rooted = (i: number) => {
+      float(i, STRINGS.rootHeld, 'root');
+      show(() => this.tokenAnim(i, 'skid'));
+      sfx('thud');
+      place([i]);
+    };
+
+    for (const [k, b] of beats.entries()) {
       if (k > last) break;
-      ghost = only !== undefined && k < last;
+      const i = b.i;
+      ghost = only !== undefined && i !== only;
+      const first = !opened.has(i);
+      opened.add(i);
+      const final = !beats.slice(k + 1).some((x) => x.i === i);
       const p = P[i];
       const o = i === 0 ? 1 : 0;
       const c = getCard(p.cardId);
@@ -1806,11 +1862,18 @@ export class BattleView {
       if (!ghost) {
         // The card comes into the spotlight, its fighter lights up and its caption shows, together.
         this.markCard(i, step.slot);
-        this.actingFx(i, c.kind === 'attack' && p.active && !p.stunned);
-        this.setCaption(beatCaption(step, i as Seat, names, [ps[0].fighterId, ps[1].fighterId]));
-        card.querySelector('.play-stamp')?.remove();
+        this.actingFx(i, c.kind === 'attack' && p.active && !p.stunned && b.part === 'card');
+        const N = STRINGS.narrate;
+        this.setCaption(
+          b.part === 'lunge'
+            ? N.card(names[i], c.name, p.rootBlocked ? N.rooted : N.lunges)
+            : b.part === 'retreat'
+              ? N.card(names[i], c.name, p.rootBlocked ? N.rooted : N.fallsBack)
+              : beatCaption(step, i as Seat, names, [ps[0].fighterId, ps[1].fighterId]),
+        );
+        if (first) card.querySelector('.play-stamp')?.remove();
       }
-      if (pb.live && plans) {
+      if (first && pb.live && plans) {
         // The card steps forward face down, then flips over.
         card.className = `play-card now face-down${p.active ? '' : ' inactive'}${p.stunned ? ' stunned' : ''}`;
         card.querySelector('.play-face')!.innerHTML =
@@ -1821,7 +1884,7 @@ export class BattleView {
         card.classList.add('flipped');
         sfx('flip');
       }
-      await pause(READ_MS);
+      await pause(first ? READ_MS : READ_MS / 2);
 
       if (p.stunned) {
         // Cancelled by a stun: the card plays out as nothing.
@@ -1829,14 +1892,21 @@ export class BattleView {
         float(i, STRINGS.stunned, 'stun');
       } else if (p.active) {
         show(() => this.cardActs(i, step.slot));
-        energy(i, c.cost);
-        hud();
-        if (c.kind === 'move' && p.rootBlocked) {
+        if (first) {
+          energy(i, c.cost);
+          hud();
+        }
+        if (b.part === 'lunge') {
+          // A lunge steps with the step's moves; it strikes later, with the attacks.
+          if (p.rootBlocked) rooted(i);
+          else await stepTo(i, p.to);
+        } else if (b.part === 'retreat') {
+          // A hit-and-run steps away once every strike and push is done.
+          if (p.rootBlocked) rooted(i);
+          else await stepTo(i, p.final);
+        } else if (c.kind === 'move' && p.rootBlocked) {
           // Rooted: the move card doesn't move them (it still turns them to face the other).
-          float(i, STRINGS.rootHeld, 'root');
-          show(() => this.tokenAnim(i, 'skid'));
-          sfx('thud');
-          place([i]);
+          rooted(i);
         } else if (c.kind === 'move' && c.swap) {
           // Both fighters trade places (once, even if both played a swap).
           if (p.swapped && !(samePos(view.pos[0], P[0].to) && samePos(view.pos[1], P[1].to))) {
@@ -1853,18 +1923,7 @@ export class BattleView {
           }
         } else if (c.kind === 'move') {
           // Where this move alone took them: before any swap later this step.
-          const dest = p.swapped ? P[o].to : p.to;
-          if (!samePos(dest, view.pos[i])) {
-            show(() => this.showArea([dest], 'move-target'));
-            await pause(300);
-            view.pos[i] = { ...dest };
-            place([i]);
-            show(() => {
-              this.tokenAnim(i, 'hop');
-              setTimeout(() => this.fx.particles(dest, themeColor('--fx-dust'), 6, 'dust'), ms(420));
-            });
-            sfx('step');
-          } else place([i]); // a move that goes nowhere still turns its fighter to face the other
+          await stepTo(i, p.swapped ? P[o].to : p.to);
         } else if (c.kind === 'guard') {
           // The shield stays up for the rest of the step.
           tokens[i].classList.add('guarding');
@@ -1896,10 +1955,10 @@ export class BattleView {
           if (this.renderTraps([...kept, ...mine], !ghost)) sfx('place');
         }
       }
-      // Guard cards are stamped by the attack they meet (see strike).
-      if (c.kind !== 'guard') stampCard(i);
-      // Every card gets the same time on the board, however little it does.
-      const rest = CARD_MS - (performance.now() - t0) / pb.pace();
+      // Guard cards are stamped by the attack they meet (see strike); a two-beat card on its last beat.
+      if (final && c.kind !== 'guard') stampCard(i);
+      // Every card gets the same time on the board, however little it does (a step beat less).
+      const rest = (b.part === 'card' ? CARD_MS : CARD_MS * 0.45) - (performance.now() - t0) / pb.pace();
       if (rest > 0) await pause(rest);
       if (!ghost) this.clearAreas();
     }

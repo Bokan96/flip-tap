@@ -228,6 +228,8 @@ h3 { font-size: .95rem; text-transform: uppercase; letter-spacing: .08em; color:
 .mini-grid.wide { grid-template-columns: repeat(var(--gc), calc(var(--cell) * .72)); }
 .mini-grid i.on { background: var(--attack); }
 .mini-grid i.move { background: var(--move); box-shadow: 0 0 6px var(--move); }
+/* An attack that moves: the square it steps to is also hit (a lunge's own square): red, ringed blue. */
+.mini-grid i.move.on { background: var(--attack); box-shadow: inset 0 0 0 max(1px, calc(var(--cell) * .14)) var(--move); }
 .mini-grid i.me { outline: 1px solid #fff; outline-offset: -1px; }
 .mini-grid i.me::after {
   /* facing arrow on the user's square (attack cards only) */

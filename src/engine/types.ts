@@ -18,7 +18,11 @@ export interface CardDef {
   kind: CardKind;
   /** Energy change for the user when the card resolves (negative spends). */
   cost: number;
-  /** Movement [rows, cols]; cols are absolute (not facing-relative). */
+  /**
+   * Movement [rows, cols]; cols are absolute (not facing-relative). Move cards, and attack cards that
+   * also move: a lunge steps first and strikes from the new square, a hit-and-run (`stepAfter`)
+   * strikes first and steps afterwards.
+   */
   step?: [number, number];
   heal?: number;
   guard?: number;
@@ -62,8 +66,10 @@ export interface CardDef {
   trap?: number;
   /** Move card: after movement, the two fighters trade places. */
   swap?: boolean;
-  /** Move card: the step's columns are relative to facing (positive = toward the opponent). */
+  /** Move card (or moving attack): the step's columns are relative to facing (positive = toward the opponent). */
   forward?: boolean;
+  /** Attack with a `step`: strike first, then step (hit-and-run). Without it the step comes first (lunge). */
+  stepAfter?: boolean;
   /** Attack animation style; guessed from the pattern when omitted (see ui/fx.ts). */
   fx?: 'slash' | 'burst' | 'wave' | 'beam' | 'quake';
   /** Bonus cards are earned in Tournament mode. */
@@ -204,8 +210,10 @@ export interface StepPlayerResult {
   from: Pos;
   /** Position after movement. */
   to: Pos;
-  /** Position after push/pull (same as `to` if not displaced). */
+  /** Position at the end of the step: after push/pull and a hit-and-run step. */
   final: Pos;
+  /** Position after push/pull, before a hit-and-run step (absent in older logs: use `final`). */
+  afterPush?: Pos;
   moved: boolean;
   facing: Facing;
   /** Squares covered by this player's attack (empty if not an attack). */
