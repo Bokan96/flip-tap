@@ -25,7 +25,12 @@ function stored<T extends string>(key: string, allowed: readonly T[], fallback: 
 export type Speed = 'fast' | 'normal' | 'slow';
 /** Slowest first, the order the speed slider shows them. */
 export const SPEEDS: readonly Speed[] = ['slow', 'normal', 'fast'];
-const MULTIPLIER: Record<Speed, number> = { fast: 0.6, normal: 1, slow: 1.5 };
+/**
+ * How long the battle's pauses last (each card's turn on the board, the beat before its effect, the
+ * end of a round) against the base timings in ui/battle.ts. Animations themselves keep their length.
+ * Normal gives each card about 2.2 s; Fast is a little quicker than the original Normal.
+ */
+const MULTIPLIER: Record<Speed, number> = { fast: 0.85, normal: 1.3, slow: 1.8 };
 const speed = stored<Speed>('fliptap.speed', SPEEDS, () => 'normal');
 export const getSpeed = speed.get;
 export const setSpeed = speed.set;
